@@ -1,5 +1,7 @@
 module Cassette
 
-# package code goes here
+include("tapes.jl")
+include("scalars.jl")
+include("arrays.jl")
 
 end # module
