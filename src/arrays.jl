@@ -1,13 +1,8 @@
-struct TrackedArray{E<:AbstractExecution,V<:Real,N,A<:AbstractArray{V,N}} <: AbstractArray{V,N}
-    exec::E
+struct TrackedArray{G,V,N,A<:AbstractArray{V,N}} <: AbstractArray{TrackedReal{G,V},N}
+    tape::Tape{G}
     value::A
-    tape::Tape
 end
 
-function TrackedArray(exec::E,
-                      value::AbstractArray{V,N},
-                      tape::Tape = DISABLED) where {E,V,N}
-    return TrackedArray{E,V,N,typeof(value)}(exec, value, tape)
+function TrackedArray(tape::Tape{G}, value::AbstractArray{V,N}) where {G,V,N}
+    return TrackedArray{G,V,N,typeof(value)}(tape, value)
 end
-
-TrackedArray(value::AbstractArray, tape::Tape = DISABLED) = TrackedArray(BasicExecution(), value, tape)
