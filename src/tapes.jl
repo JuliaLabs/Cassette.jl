@@ -71,8 +71,8 @@ function specialize(i::OperationInstruction, ::TypeGenre)
                                 typeof.(i.output))
 end
 
-# value recording #
-#-----------------#
+# ValueGenre specialization #
+#---------------------------#
 
 # This can be overloaded to ensure that external state is "captured",
 # such that external reference-breaking (e.g. destructive assignment)
