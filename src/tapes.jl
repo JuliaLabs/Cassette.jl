@@ -114,5 +114,5 @@ function Base.merge(a::Tape{G}, b::Tape{G}, c::Tape{G}) where G
 end
 
 function Base.merge(tapes::Tape{G}...) where G
-    return merge(merge(tapes[1], tapes[2], tapes[3]), tapes[2:end]...)
+    return merge(merge(tapes[1], tapes[2], tapes[3]), tapes[2:end]...)::Tape{G}
 end
