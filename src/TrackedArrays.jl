@@ -2,11 +2,8 @@
 # TrackedArray #
 ################
 
-struct TrackedArray{G,V,N,A<:AbstractArray{V,N}} <: AbstractArray{TrackedReal{G,V},N}
+mutable struct TrackedArray{G,V,N,AV<:AbstractArray{V,N},C,AC} <: AbstractArray{TrackedReal{G,V,C},N}
     tape::Tape{G}
-    value::A
-end
-
-function TrackedArray(tape::Tape{G}, value::AbstractArray{V,N}) where {G,V,N}
-    return TrackedArray{G,V,N,typeof(value)}(tape, value)
+    value::AV
+    cache::AC
 end
