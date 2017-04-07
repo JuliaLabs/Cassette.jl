@@ -26,25 +26,25 @@ end
 Tape(genre::AbstractGenre) = Tape(genre, Vector{AbstractInstruction}())
 
 function record!(tape::Tape, instruction::AbstractInstruction)
-    push!(tape.instructions, specialize(instruction, tape.genre))
+    push!(tape.instructions, instruction)
     return tape
 end
 
-########################
-# OperationInstruction #
-########################
+#############
+# Operation #
+#############
 
-struct OperationInstruction{F,I,O,C} <: AbstractInstruction
+struct Operation{F,I,O,C} <: AbstractInstruction
     func::F
     input::I
     output::O
     cache::C
 end
 
-OperationInstruction(func, input, output) = OperationInstruction(func, input, output, nothing)
+Operation(func, input, output) = Operation(func, input, output, nothing)
 
-# SyntaxGenre specialization #
-#----------------------------#
+# SyntaxGenre #
+#-------------#
 
 struct SyntaxVariable
     id::UInt
@@ -52,51 +52,67 @@ struct SyntaxVariable
 end
 
 function Base.show(io::IO, var::SyntaxVariable)
-    return print(io "var_", string(base(62, object_id(var.id)))[1:3])
+    return print(io, "var_", string(base(62, object_id(var.id)))[1:3])
 end
 
-function specialize(i::OperationInstruction, ::SyntaxGenre)
-    return OperationInstruction(i.func,
-                                SyntaxVariable.(i.input),
-                                SyntaxVariable.(i.output))
+function record!(tape::Tape{SyntaxGenre}, f::F, input...) where F
+    output = track(Skip(f)(input...), tape)
+    record!(tape, Operation(f, SyntaxVar.(input), SyntaxVar.(output)))
+    return output
 end
 
-# TypeGenre specialization #
-#--------------------------#
+# TypeGenre #
+#-----------#
 
-function specialize(i::OperationInstruction, ::TypeGenre)
-    # TODO: Should this "un-track" any Tracked* types in the input/output?
-    return OperationInstruction(typeof(i.func),
-                                typeof.(i.input),
-                                typeof.(i.output))
+function record!(tape::Tape{TypeGenre}, f::F, input...) where F
+    output = track(Skip(f)(input...), tape)
+    record!(tape, Operation(typeof(f), typeof.(input), typeof.(output)))
+    return output
 end
 
-# ValueGenre specialization #
-#---------------------------#
+# ValueGenre #
+#------------#
 
-# This can be overloaded to ensure that external state is "captured",
-# such that external reference-breaking (e.g. destructive assignment)
-# doesn't break internal instruction state. By default, `capture` is
-# a no-op.
-@inline capture(state) = state
-
-# This can be overloaded for specific functions which need to
-# allocate memory used in forward/reverse execution passes.
-@inline value_cache(f, input, output) = nothing
-
-function specialize(i::OperationInstruction, ::ValueGenre)
-    return OperationInstruction(i.func,
-                                capture.(i.input),
-                                capture.(i.output),
-                                value_cache(i.func, i.input, i.output))
+function record!(tape::Tape{ValueGenre}, f::F, input...) where F
+    output = track(Skip(f)(input...), tape)
+    record!(tape, Operation(f, capture.(input), capture.(output)))
+    return output
 end
 
 ####################
 # MergeInstruction #
 ####################
 
-struct MergeInstruction{G<:AbstractGenre,N} <: AbstractInstruction
+struct TapeMerge{G<:AbstractGenre,N} <: AbstractInstruction
     tapes::NTuple{N,Tape{G}}
 end
 
-@inline specialize(i::MergeInstruction{G}, ::G) where {G} = i
+function Base.merge(a::Tape{G}, b::Tape{G}) where G
+    if a === b
+        return a::Tape{G}
+    else
+        tape = Tape(G())
+        record!(tape, TapeMerge(a, b))
+        return tape::Tape{G}
+    end
+end
+
+function Base.merge(a::Tape{G}, b::Tape{G}, c::Tape{G}) where G
+    if a === b && b === c
+        return a::Tape{G}
+    else
+        tape = Tape(G())
+        if a === b
+            record!(tape, TapeMerge(a, c))
+        elseif b === c
+            record!(tape, TapeMerge(a, b))
+        else
+            record!(tape, TapeMerge(a, b, c))
+        end
+        return tape::Tape{G}
+    end
+end
+
+function Base.merge(tapes::Tape{G}...) where G
+    return merge(merge(tapes[1], tapes[2], tapes[3]), tapes[2:end]...)
+end
