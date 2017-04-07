@@ -1,7 +1,5 @@
 module Cassette
 
-using Base.RefValue
-
 #############
 # constants #
 #############
