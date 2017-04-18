@@ -1,7 +1,7 @@
 module Cassette
 
 #############
-# constants #
+# utilities #
 #############
 
 const ARRAY_TYPES = [:AbstractArray, :AbstractVector, :AbstractMatrix, :Array,
@@ -30,6 +30,8 @@ const SKIPPED_UNARY_REAL_FUNCS = [:isinf, :isnan, :isfinite, :iseven, :isodd,
 
 const SKIPPED_BINARY_REAL_FUNCS = [:isequal, :isless, :<, :>, :(==), :(!=),
                                    :(<=), :(>=)]
+
+idstr(x) = string(base(62, object_id(x)))[1:3]
 
 ############
 # includes #

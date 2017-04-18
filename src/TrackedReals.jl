@@ -57,3 +57,11 @@ for f in SKIPPED_BINARY_REAL_FUNCS
         end
     end
 end
+
+###################
+# Pretty Printing #
+###################
+
+function Base.show(io::IO, t::TrackedReal{G}) where G
+    return print(io, "TrackedReal{$G}<$(idstr(t))>($(value(t)), $(t.cache))")
+end
