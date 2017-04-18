@@ -8,6 +8,18 @@ mutable struct TrackedReal{G,V<:Real,C} <: Real
     cache::C
 end
 
+#############
+# accessors #
+#############
+
+value(x::TrackedReal) = x.value
+
+###########
+# `track` #
+###########
+
+track(x::Real, tape::Tape) = TrackedReal(tape, x, nothing)
+
 ########################
 # Recordable Execution #
 ########################

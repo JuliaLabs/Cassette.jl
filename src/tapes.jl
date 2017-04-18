@@ -18,14 +18,14 @@ struct ValueGenre  <: AbstractGenre end
 # tapes #
 #########
 
-immutable Tape{G<:AbstractGenre} <: AbstractTape{G}
+struct Tape{G<:AbstractGenre} <: AbstractTape{G}
     genre::G
     instructions::Vector{AbstractInstruction}
 end
 
 Tape(genre::AbstractGenre) = Tape(genre, Vector{AbstractInstruction}())
 
-function record!(tape::Tape, instruction::AbstractInstruction)
+function Base.push!(tape::Tape, instruction::AbstractInstruction)
     push!(tape.instructions, instruction)
     return tape
 end
@@ -57,7 +57,7 @@ end
 
 function record!(tape::Tape{SyntaxGenre}, f::F, input...) where F
     output = track(Skip(f)(input...), tape)
-    record!(tape, Operation(f, SyntaxVar.(input), SyntaxVar.(output)))
+    push!(tape, Operation(f, SyntaxVariable.(input), SyntaxVariable.(output)))
     return output
 end
 
@@ -66,7 +66,7 @@ end
 
 function record!(tape::Tape{TypeGenre}, f::F, input...) where F
     output = track(Skip(f)(input...), tape)
-    record!(tape, Operation(typeof(f), typeof.(input), typeof.(output)))
+    push!(tape, Operation(typeof(f), typeof.(input), typeof.(output)))
     return output
 end
 
@@ -75,7 +75,7 @@ end
 
 function record!(tape::Tape{ValueGenre}, f::F, input...) where F
     output = track(Skip(f)(input...), tape)
-    record!(tape, Operation(f, capture.(input), capture.(output)))
+    push!(tape, Operation(f, capture.(input), capture.(output)))
     return output
 end
 

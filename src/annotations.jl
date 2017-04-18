@@ -30,9 +30,9 @@ end
 
 #=
 works for the following formats:
-- `@directive(f)(args...)`
-- `@directive f(args...) = ...`
-- `@directive f = (args...) -> ...`
+- `@annotation(f)(args...)`
+- `@annotation f(args...) = ...`
+- `@annotation f = (args...) -> ...`
 =#
 function annotate(::Type{T}, expr) where T<:Annotation
     if isa(expr, Expr) && (expr.head == :(=) || expr.head == :function)
