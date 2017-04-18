@@ -92,7 +92,7 @@ function Base.merge(a::Tape{G}, b::Tape{G}) where G
         return a::Tape{G}
     else
         tape = Tape(G())
-        record!(tape, TapeMerge(a, b))
+        push!(tape, TapeMerge(a, b))
         return tape::Tape{G}
     end
 end
@@ -103,11 +103,11 @@ function Base.merge(a::Tape{G}, b::Tape{G}, c::Tape{G}) where G
     else
         tape = Tape(G())
         if a === b
-            record!(tape, TapeMerge(a, c))
+            push!(tape, TapeMerge(a, c))
         elseif b === c
-            record!(tape, TapeMerge(a, b))
+            push!(tape, TapeMerge(a, b))
         else
-            record!(tape, TapeMerge(a, b, c))
+            push!(tape, TapeMerge(a, b, c))
         end
         return tape::Tape{G}
     end
