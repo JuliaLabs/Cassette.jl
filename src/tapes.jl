@@ -26,7 +26,7 @@ Base.length(tape::Tape) = length(tape.instructions)
 
 function record!(tape::Tape, f::F, input...) where F
     output = track(Skip(f)(input...), tape)
-    push!(tape, edit(tape.genre, Operation(f, input, output)))
+    push!(tape, edit(Operation(f, input, output), tape.genre))
     return output
 end
 
@@ -79,13 +79,26 @@ struct ValueGenre <: AbstractGenre end
 
 edit(op::Operation, ::ValueGenre) = Operation(op.func, capture.(op.input), capture.(op.output))
 
-####################
-# MergeInstruction #
-####################
+#############
+# TapeMerge #
+#############
+# Problem: If merges are implemented as they are below, then any initial tape
+# merge will likely set off a "chain reaction" where most non-unary operations
+# thereafter will require a tape merge. Maybe it would be better, in the event
+# of a mixed-tape operation, to write a "depedency lock" instruction to all
+# involved tapes? So basically write the `TapeMerge` instruction to all the
+# tapes, but don't create new tapes.
+
+# This still doesn't really address the main problem, though - any instance of
+# a mixed-tape operation means there will likely be more to follow. Cluttering
+# up the tapes with merge instructions seems like a bad idea given this pattern
+# of behavior...
 
 struct TapeMerge{G<:AbstractGenre,N} <: AbstractInstruction
     tapes::NTuple{N,Tape{G}}
 end
+
+TapeMerge(tapes::Tape...) = TapeMerge(tapes)
 
 function Base.merge(a::Tape{G}, b::Tape{G}) where G
     if a === b
@@ -126,17 +139,26 @@ compactrepr(x::Tuple, pad="") = "("*join(map(compactrepr, x), ",\n "*pad)*")"
 compactrepr(x::AbstractArray, pad="") = length(x) < 5 ? match(r"\[.*?\]", repr(x)).match : summary(x)
 compactrepr(x, pad="") = repr(x)
 
-function Base.show(io::IO, instruction::Operation, pad = "")
+function Base.show(io::IO, tm::TapeMerge{G}) where G
+    print(io, "TapeMerge{$G}(")
+    print(io, "Tape<$(idstr(tm.tapes[1]))>")
+    for tape in tm.tapes[2:end]
+        print(io, ", Tape<$(idstr(tape))>")
+    end
+    print(io, ")")
+end
+
+function Base.show(io::IO, op::Operation, pad = "")
     println(io, pad, "Operation:")
     argpad =         "          "
-    println(io, pad, "  func:   ", instruction.func)
-    println(io, pad, "  input:  ", compactrepr(instruction.input, argpad))
-    println(io, pad, "  output: ", compactrepr(instruction.output, argpad))
-    print(io,   pad, "  cache:  ", compactrepr(instruction.cache, argpad))
+    println(io, pad, "  func:   ", op.func)
+    println(io, pad, "  input:  ", compactrepr(op.input, argpad))
+    println(io, pad, "  output: ", compactrepr(op.output, argpad))
+    print(io,   pad, "  cache:  ", compactrepr(op.cache, argpad))
 end
 
 function Base.show(io::IO, tape::Tape{G}) where G
-    println("$(length(tape))-element Tape{$G}:")
+    println("$(length(tape))-element Tape{$G}<$(idstr(tape))>:")
     i = 1
     for instruction in tape.instructions
         print(io, "$i => ")
