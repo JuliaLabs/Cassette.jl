@@ -1,43 +1,17 @@
-abstract type AbstractGenre end
-
-###############
-# SyntaxGenre #
-###############
-
-struct SyntaxVariable
-    id::UInt
-    SyntaxVariable(x) = new(object_id(value(x)))
-end
-
-Base.show(io::IO, var::SyntaxVariable) = print(io, "var_", idstr(var.id))
-
-struct SyntaxGenre <: AbstractGenre end
-
-@inline remix(::SyntaxGenre, op::Operation) = Operation(op.func, SyntaxVariable.(op.input), SyntaxVariable.(op.output))
-
-#############
-# TypeGenre #
-#############
-
-struct TypedVariable
-    var::SyntaxVariable
-    typ::DataType
-end
-
-TypedVariable(x) = TypedVariable(SyntaxVariable(x), typeof(value(x)))
-
-Base.show(io::IO, tvar::TypedVariable) = print(io, tvar.var, "::", tvar.typ)
-
-struct TypeGenre <: AbstractGenre end
-
-@inline remix(::TypeGenre, op::Operation) = Operation(op.func, TypedVariable.(op.input), TypedVariable.(op.output))
-
 ##############
 # ValueGenre #
 ##############
 
 struct ValueGenre <: AbstractGenre end
 
-@inline remix(::ValueGenre, op::Operation) = Operation(op.func, capture.(op.input), capture.(op.output))
+node_eltype(::ValueGenre, value) = RealNode{ValueGenre,eltype(value),Void}
+node_cache(::ValueGenre, value) = nothing
 
-@inline capture(x) = x
+Base.similar(::Type{ValueGenre}) = ValueGenre()
+Base.similar(::ValueGenre) = ValueGenre()
+
+# If the output is a `Real` or `AbstractArray`, track `output` before returning it
+@inline (hook::ForwardHook{ValueGenre})(output::Union{Real,AbstractArray}, input...) = track(output, hook.genre, FunctionNode(hook.func, input))#
+
+# If the output is any other type (e.g. `Bool`), don't track it (since we don't have an appropriate node type)
+@inline (hook::ForwardHook{ValueGenre})(value, input...) = value
