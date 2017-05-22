@@ -11,16 +11,22 @@ end
 # Default Primitive Execution #
 ###############################
 
-@inline untrack_call(f, a) = f(untrack(a))
-@inline untrack_call(f, a, b) = f(untrack(a), untrack(b))
-@inline untrack_call(f, a, b, c) = f(untrack(a), untrack(b), untrack(c))
-@inline untrack_call(f, a, b, c, d) = f(untrack(a), untrack(b), untrack(c), untrack(d))
-@inline untrack_call(f, a, b, c, d, e) = f(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e))
-@inline untrack_call(f, args...) = f(untrack.(args)...)
+@inline untrack_call(f::F, a) where {F} = f(untrack(a))
+@inline untrack_call(f::F, a, b) where {F} = f(untrack(a), untrack(b))
+@inline untrack_call(f::F, a, b, c) where {F} = f(untrack(a), untrack(b), untrack(c))
+@inline untrack_call(f::F, a, b, c, d) where {F} = f(untrack(a), untrack(b), untrack(c), untrack(d))
+@inline untrack_call(f::F, a, b, c, d, e) where {F} = f(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e))
+@inline untrack_call(f::F, a, b, c, d, e, others...) where {F} = f(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e), untrack.(others)...)
 
-@inline function (p::Primitive)(input...)
-    output = untrack_call(p.func, input...)
-    return maybe_track_output(p, output, input, TrackableTrait(output))
+# This doesn't specialize on DataType arguments naively, so we have to force specialization
+# by unrolling access + type assertions via a generated function.
+@generated function (p::Primitive)(input...)
+    typed_input = [:(input[$i]::$(input[i])) for i in 1:nfields(input)]
+    return quote
+        $(Expr(:meta, :inline))
+        output = untrack_call(p.func, $(typed_input...))
+        return maybe_track_output(p, output, input, TrackableTrait(output))
+    end
 end
 
 # If `output` is `Trackable`, then return a tracked version of it
@@ -37,9 +43,9 @@ struct Intercept{F} <: Function
     func::F
 end
 
-@inline Intercept(i::Intercept) = Intercept(p.func)
+@inline Intercept(i::Intercept) = Intercept(i.func)
 
-@inline (i::Intercept)(input...) = Primitive(promote_genre(input...), p.func)(input...)
+@inline (i::Intercept)(input...) = Primitive(promote_genre(input...), i.func)(input...)
 
 #=
 works for the following formats:

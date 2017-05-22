@@ -52,8 +52,8 @@ const ValueNode = Union{RealNode,ArrayNode}
 struct Trackable end
 struct NotTrackable end
 
-TrackableTrait(::Union{AbstractArray,Real}) = Trackable()
-TrackableTrait(::Any) = NotTrackable()
+@inline TrackableTrait(::Union{AbstractArray,Real}) = Trackable()
+@inline TrackableTrait(::Any) = NotTrackable()
 
 @inline function track(value::Union{AbstractArray,Real},
                        genre::AbstractGenre = ValueGenre(),
@@ -65,11 +65,12 @@ TrackableTrait(::Any) = NotTrackable()
     end
 end
 
-untrack(x) = x
-untrack(n::RealNode) = n.value
-untrack(n::ArrayNode) = n.value
+@inline untrack(x::X) where {X} = x
+@inline untrack(n::RealNode) = n.value
+@inline untrack(n::ArrayNode) = n.value
+@inline untrack(::Type{T}) where {T<:ValueNode} = valtype(T)
 
-isroot(n::ValueNode) = n.parent === ROOT
+@inline isroot(n::ValueNode) = n.parent === ROOT
 
 function walkback(f, n)
     hasparent = isa(n, ValueNode) && !(isroot(n))
@@ -82,16 +83,16 @@ function walkback(f, n)
     return nothing
 end
 
-valtype(::T) where {T} = T
-valtype(::RealNode{<:Any,V}) where {V} = V
-valtype(::ArrayNode{<:Any,V}) where {V} = V
-valtype(::Type{RealNode{<:Any,V,<:Any}}) where {V} = V
-valtype(::Type{ArrayNode{<:Any,V,<:Any,<:Any,<:Any}}) where {V} = V
+@inline valtype(x::X) where {X} = x
+@inline valtype(x::RealNode{<:Any,V}) where {V} = V
+@inline valtype(x::ArrayNode{<:Any,V}) where {V} = V
+@inline valtype(x::Type{RealNode{G,V,C}}) where {G,V,C} = V
+@inline valtype(x::Type{ArrayNode{G,V,C,T,N}}) where {G,V,C,T,N} = V
 
-genre(g::AbstractGenre) = g
-genre(n::RealNode) = n.genre
-genre(n::ArrayNode) = n.genre
-genre(x) = ValueGenre()
+@inline genre(x::X) where {X} = ValueGenre()
+@inline genre(g::AbstractGenre) = g
+@inline genre(n::RealNode) = n.genre
+@inline genre(n::ArrayNode) = n.genre
 
 ###################
 # Pretty Printing #

@@ -2,15 +2,11 @@
 # Math #
 ########
 
-for f in RealInterface.UNARY_MATH
+for f in vcat(RealInterface.UNARY_MATH, RealInterface.UNARY_ARITHMETIC)
     @eval @inline Base.$(f)(x::RealNode) = @intercept($f)(x)
 end
 
-for f in RealInterface.UNARY_SPECIAL_MATH
-    @eval @inline SpecialFunctions.$(f)(x::RealNode) = @intercept($f)(x)
-end
-
-for f in RealInterface.BINARY_MATH
+for f in vcat(RealInterface.BINARY_MATH, RealInterface.BINARY_ARITHMETIC)
     @eval @inline Base.$(f)(a::RealNode, b::RealNode) = @intercept($f)(a, b)
     for R in REAL_TYPES
         @eval begin
@@ -18,6 +14,10 @@ for f in RealInterface.BINARY_MATH
             @inline Base.$(f)(a::$R, b::RealNode) = @intercept($f)(a, b)
         end
     end
+end
+
+for f in RealInterface.UNARY_SPECIAL_MATH
+    @eval @inline SpecialFunctions.$(f)(x::RealNode) = @intercept($f)(x)
 end
 
 for f in RealInterface.BINARY_SPECIAL_MATH
@@ -88,8 +88,8 @@ end
 # Conversion/Promotion #
 ########################
 
-Base.convert(::Type{RealNode{G,V,C}}, x::Real) where {G<:AbstractGenre,V<:Real,C}     = RealNode(V(x), similar(G))
-Base.convert(::Type{RealNode{G,V,C}}, n::RealNode) where {G<:AbstractGenre,V<:Real,C} = RealNode(V(untrack(n)), similar(G))
+Base.convert(::Type{RealNode{G,V,C}}, x::Real) where {G<:AbstractGenre,V<:Real,C}     = track(V(x), similar(G))
+Base.convert(::Type{RealNode{G,V,C}}, n::RealNode) where {G<:AbstractGenre,V<:Real,C} = track(V(untrack(n)), similar(G))
 
 Base.convert(::Type{T}, n::RealNode) where {T<:Real} = T(untrack(n))
 Base.convert(::Type{T}, n::T) where {T<:RealNode} = n
