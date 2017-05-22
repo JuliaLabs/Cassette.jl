@@ -7,8 +7,6 @@ struct Primitive{G,F} <: Function
     func::F
 end
 
-@inline (p::Primitive)(input...) = error("Primitive execution is not yet defined for genre $(e.genre) and function $(e.func).")
-
 ###############################
 # Default Primitive Execution #
 ###############################
