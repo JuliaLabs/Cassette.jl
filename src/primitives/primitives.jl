@@ -1,4 +1,37 @@
 #############
+# Primitive #
+#############
+
+struct Primitive{G,F} <: Function
+    genre::G
+    func::F
+end
+
+@inline (p::Primitive)(input...) = error("Primitive execution is not yet defined for genre $(e.genre) and function $(e.func).")
+
+###############################
+# Default Primitive Execution #
+###############################
+
+@inline untrack_call(f, a) = f(untrack(a))
+@inline untrack_call(f, a, b) = f(untrack(a), untrack(b))
+@inline untrack_call(f, a, b, c) = f(untrack(a), untrack(b), untrack(c))
+@inline untrack_call(f, a, b, c, d) = f(untrack(a), untrack(b), untrack(c), untrack(d))
+@inline untrack_call(f, a, b, c, d, e) = f(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e))
+@inline untrack_call(f, args...) = f(untrack.(args)...)
+
+@inline function (p::Primitive)(input...)
+    output = untrack_call(p.func, input...)
+    return maybe_track_output(p, output, input, TrackableTrait(output))
+end
+
+# If `output` is `Trackable`, then return a tracked version of it
+@inline maybe_track_output(p::Primitive, output, input, ::Trackable) = track(output, p.genre, FunctionNode(p.func, input))
+
+# If `output` is `NotTrackable`, then just return it
+@inline maybe_track_output(p::Primitive, output, input, ::NotTrackable) = output
+
+#############
 # Intercept #
 #############
 
@@ -50,36 +83,3 @@ macro intercept(expr)
     end
     return esc(result)
 end
-
-#############
-# Primitive #
-#############
-
-struct Primitive{G,F} <: Function
-    genre::G
-    func::F
-end
-
-@inline (p::Primitive)(input...) = error("Primitive execution is not yet defined for genre $(e.genre) and function $(e.func).")
-
-###############################
-# Default Primitive Execution #
-###############################
-
-@inline untrack_call(f, a) = f(untrack(a))
-@inline untrack_call(f, a, b) = f(untrack(a), untrack(b))
-@inline untrack_call(f, a, b, c) = f(untrack(a), untrack(b), untrack(c))
-@inline untrack_call(f, a, b, c, d) = f(untrack(a), untrack(b), untrack(c), untrack(d))
-@inline untrack_call(f, a, b, c, d, e) = f(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e))
-@inline untrack_call(f, args...) = f(untrack.(args)...)
-
-@inline function (p::Primitive)(input...)
-    output = untrack_call(p.func, input...)
-    return maybe_track_output(p, output, input, TrackableTrait(output))
-end
-
-# If `output` is `Trackable`, then return a tracked version of it
-@inline maybe_track_output(p::Primitive, output, input, ::Trackable) = track(output, p.genre, FunctionNode(p.func, input))
-
-# If `output` is `NotTrackable`, then just return it
-@inline maybe_track_output(p::Primitive, output, input, ::NotTrackable) = output
