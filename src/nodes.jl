@@ -88,6 +88,11 @@ valtype(::ArrayNode{<:Any,V}) where {V} = V
 valtype(::Type{RealNode{<:Any,V,<:Any}}) where {V} = V
 valtype(::Type{ArrayNode{<:Any,V,<:Any,<:Any,<:Any}}) where {V} = V
 
+genre(g::AbstractGenre) = g
+genre(n::RealNode) = n.genre
+genre(n::ArrayNode) = n.genre
+genre(x) = ValueGenre()
+
 ###################
 # Pretty Printing #
 ###################
