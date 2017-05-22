@@ -82,6 +82,12 @@ function walkback(f, n)
     return nothing
 end
 
+valtype(::T) where {T} = T
+valtype(::RealNode{<:Any,V}) where {V} = V
+valtype(::ArrayNode{<:Any,V}) where {V} = V
+valtype(::Type{RealNode{<:Any,V,<:Any}}) where {V} = V
+valtype(::Type{ArrayNode{<:Any,V,<:Any,<:Any,<:Any}}) where {V} = V
+
 ###################
 # Pretty Printing #
 ###################

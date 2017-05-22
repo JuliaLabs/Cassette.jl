@@ -1,54 +1,31 @@
-########################
-# Conversion/Promotion #
-########################
-
-Base.convert(T::Type{<:Real}, n::RealNode) = @primitive(convert)(T, n)
-Base.convert(T::Type{<:RealNode}, x::Real) = @primitive(convert)(T, x)
-Base.convert(::Type{T}, n::T) where {T<:RealNode} = n
-
-Base.promote_rule(A::Type{<:Real}, B::Type{<:RealNode}) = @primitive(promote_rule)(A, B)
-Base.promote_rule(::Type{RealNode{GA,A}}, ::Type{RealNode{GB,B}}) where {A<:Real,B<:Real} = RealNode{promote_genre(GA,GB),promote_type(A,B)}
-
-for R in REAL_TYPES
-    @eval Base.promote_rule(::Type{$R}, ::Type{RealNode{V}}) where {V<:Real} = RealNode{promote_type($R,V)}
-end
-
-Base.promote_array_type(_, ::Type{T}, ::Type{F}) where {T<:RealNode,F<:AbstractFloat} = promote_type(T, F)
-Base.promote_array_type(_, ::Type{F}, ::Type{T}) where {F<:AbstractFloat,T<:RealNode} = promote_type(T, F)
-Base.promote_array_type(_, ::Type{T}, ::Type{F}, ::Type{S}) where {T<:RealNode,F<:AbstractFloat,S} = S
-Base.promote_array_type(_, ::Type{F}, ::Type{T}, ::Type{S}) where {F<:AbstractFloat,T<:RealNode,S} = S
-
-Base.r_promote(::typeof(+), x::RealNode) = x
-Base.r_promote(::typeof(*), x::RealNode) = x
-
 ########
 # Math #
 ########
 
 for f in RealInterface.UNARY_MATH
-    @eval @inline Base.$(f)(x::RealNode) = @primitive($f)(x)
+    @eval @inline Base.$(f)(x::RealNode) = @intercept($f)(x)
 end
 
 for f in RealInterface.UNARY_SPECIAL_MATH
-    @eval @inline SpecialFunctions.$(f)(x::RealNode) = @primitive($f)(x)
+    @eval @inline SpecialFunctions.$(f)(x::RealNode) = @intercept($f)(x)
 end
 
 for f in RealInterface.BINARY_MATH
-    @eval @inline Base.$(f)(a::RealNode, b::RealNode) = @primitive($f)(a, b)
+    @eval @inline Base.$(f)(a::RealNode, b::RealNode) = @intercept($f)(a, b)
     for R in REAL_TYPES
         @eval begin
-            @inline Base.$(f)(a::RealNode, b::$R) = @primitive($f)(a, b)
-            @inline Base.$(f)(a::$R, b::RealNode) = @primitive($f)(a, b)
+            @inline Base.$(f)(a::RealNode, b::$R) = @intercept($f)(a, b)
+            @inline Base.$(f)(a::$R, b::RealNode) = @intercept($f)(a, b)
         end
     end
 end
 
 for f in RealInterface.BINARY_SPECIAL_MATH
-    @eval @inline SpecialFunctions.$(f)(a::RealNode, b::RealNode) = @primitive($f)(a, b)
+    @eval @inline SpecialFunctions.$(f)(a::RealNode, b::RealNode) = @intercept($f)(a, b)
     for R in REAL_TYPES
         @eval begin
-            @inline SpecialFunctions.$(f)(a::RealNode, b::$R) = @primitive($f)(a, b)
-            @inline SpecialFunctions.$(f)(a::$R, b::RealNode) = @primitive($f)(a, b)
+            @inline SpecialFunctions.$(f)(a::RealNode, b::$R) = @intercept($f)(a, b)
+            @inline SpecialFunctions.$(f)(a::$R, b::RealNode) = @intercept($f)(a, b)
         end
     end
 end
@@ -58,50 +35,77 @@ end
 ##############
 
 for f in RealInterface.UNARY_PREDICATES
-    @eval @inline Base.$(f)(x::RealNode) = @primitive($(f))(x)
+    @eval @inline Base.$(f)(x::RealNode) = @intercept($(f))(x)
 end
 
 for f in RealInterface.BINARY_PREDICATES
-    @eval @inline Base.$(f)(a::RealNode, b::RealNode) = @primitive($(f))(a, b)
+    @eval @inline Base.$(f)(a::RealNode, b::RealNode) = @intercept($(f))(a, b)
     for R in REAL_TYPES
         @eval begin
-            @inline Base.$(f)(a::$R, b::RealNode) = @primitive($(f))(a, b)
-            @inline Base.$(f)(a::RealNode, b::$R) = @primitive($(f))(a, b)
+            @inline Base.$(f)(a::$R, b::RealNode) = @intercept($(f))(a, b)
+            @inline Base.$(f)(a::RealNode, b::$R) = @intercept($(f))(a, b)
         end
     end
 end
 
-#################
-# Miscellaneous #
-#################
+###########################
+# Miscellaneous Functions #
+###########################
 
-Base.copy(n::RealNode) = @primitive(copy)(n)
+@inline Base.copy(n::RealNode) = n
 
-Base.hash(n::RealNode) = @primitive(hash)(n)
-Base.hash(n::RealNode, hsh::UInt) = @primitive(hash)(n, hsh)
+@inline Base.hash(n::RealNode) = hash(n)
 
-Base.float(n::RealNode) = @primitive(float)(n)
+@inline Base.hash(n::RealNode, hsh::UInt) = hash(n, hsh)
 
-Base.one(T::Type{<:RealNode}) = @primitive(one)(T)
+@inline Base.float(n::RealNode) = @intercept(float)(n)
 
-Base.zero(T::Type{<:RealNode}) = @primitive(zero)(T)
+@inline Base.one(T::Type{<:RealNode}) = @intercept(one)(T)
 
-Base.rand(T::Type{<:RealNode}) = @primitive(rand)(T)
-Base.rand(rng::AbstractRNG, T::Type{<:RealNode}) = @primitive(rand)(rng, T)
+@inline Base.zero(T::Type{<:RealNode}) = @intercept(zero)(T)
 
-Base.eps(n::RealNode) = @primitive(eps)(n)
-Base.eps(T::Type{<:RealNode}) = @primitive(eps)(T)
+@inline Base.rand(T::Type{<:RealNode}) = @intercept(rand)(T)
+@inline Base.rand(rng::AbstractRNG, T::Type{<:RealNode}) = @intercept(rand)(rng, T)
 
-Base.floor(n::RealNode) = @primitive(floor)(n)
-Base.floor(T::Type{<:Real}, n::RealNode) = @primitive(floor)(T, n)
+@inline Base.eps(n::RealNode) = @intercept(eps)(n)
+@inline Base.eps(T::Type{<:RealNode}) = @intercept(eps)(T)
 
-Base.ceil(n::RealNode) = @primitive(ceil)(n)
-Base.ceil(T::Type{<:Real}, n::RealNode) =  @primitive(ceil)(T, n)
+@inline Base.floor(n::RealNode) = @intercept(floor)(n)
+@inline Base.floor(T::Type{<:Real}, n::RealNode) = @intercept(floor)(T, n)
 
-Base.trunc(n::RealNode) = @primitive(trunc)(n)
-Base.trunc(T::Type{<:Real}, n::RealNode) = @primitive(trunc)(T, n)
+@inline Base.ceil(n::RealNode) = @intercept(ceil)(n)
+@inline Base.ceil(T::Type{<:Real}, n::RealNode) =  @intercept(ceil)(T, n)
 
-Base.round(n::RealNode) = @primitive(round)(n)
-Base.round(T::Type{<:Real}, n::RealNode) = @primitive(round)(T, n)
+@inline Base.trunc(n::RealNode) = @intercept(trunc)(n)
+@inline Base.trunc(T::Type{<:Real}, n::RealNode) = @intercept(trunc)(T, n)
 
-Base.rtoldefault(T::Type{<:RealNode}) = @primitive(rtoldefault)(T)
+@inline Base.round(n::RealNode) = @intercept(round)(n)
+@inline Base.round(T::Type{<:Real}, n::RealNode) = @intercept(round)(T, n)
+
+@inline Base.rtoldefault(T::Type{<:RealNode}) = @intercept(rtoldefault)(T)
+
+########################
+# Conversion/Promotion #
+########################
+
+Base.convert(::Type{RealNode{G,V,C}}, x::Real) where {G<:AbstractGenre,V<:Real,C}     = RealNode(V(x), similar(G))
+Base.convert(::Type{RealNode{G,V,C}}, n::RealNode) where {G<:AbstractGenre,V<:Real,C} = RealNode(V(untrack(n)), similar(G))
+
+Base.convert(::Type{T}, n::RealNode) where {T<:Real} = T(untrack(n))
+Base.convert(::Type{T}, n::T) where {T<:RealNode} = n
+
+Base.promote_rule(::Type{T}, ::Type{RealNode{G,V,C}}) where {T<:Real,G,V,C} = RealNode{G,promote_type(T,V),C}
+
+for T in REAL_TYPES
+    @eval Base.promote_rule(::Type{$T}, ::Type{RealNode{G,V,C}}) where {G,V,C} = RealNode{G,promote_type($T,V),C}
+end
+
+Base.promote_rule(::Type{RealNode{GA,A}}, ::Type{RealNode{GB,B}}) where {GA,A,GB,B} = RealNode{promote_type(GA,GB),promote_type(A,B)}
+
+Base.promote_array_type(_, ::Type{T}, ::Type{F}) where {T<:RealNode,F<:AbstractFloat} = promote_type(T, F)
+Base.promote_array_type(_, ::Type{F}, ::Type{T}) where {F<:AbstractFloat,T<:RealNode} = promote_type(T, F)
+Base.promote_array_type(_, ::Type{T}, ::Type{F}, ::Type{S}) where {T<:RealNode,F<:AbstractFloat,S} = S
+Base.promote_array_type(_, ::Type{F}, ::Type{T}, ::Type{S}) where {F<:AbstractFloat,T<:RealNode,S} = S
+
+Base.r_promote(::typeof(+), x::RealNode) = x
+Base.r_promote(::typeof(*), x::RealNode) = x
