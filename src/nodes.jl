@@ -65,7 +65,7 @@ struct NotTrackable end
     end
 end
 
-@inline untrack(x::X) where {X} = x
+@inline untrack(x) = x
 @inline untrack(n::RealNode) = n.value
 @inline untrack(n::ArrayNode) = n.value
 @inline untrack(::Type{T}) where {T<:ValueNode} = valtype(T)
@@ -83,13 +83,13 @@ function walkback(f, n)
     return nothing
 end
 
-@inline valtype(x::X) where {X} = x
+@inline valtype(x) = x
 @inline valtype(x::RealNode{<:Any,V}) where {V} = V
 @inline valtype(x::ArrayNode{<:Any,V}) where {V} = V
 @inline valtype(x::Type{RealNode{G,V,C}}) where {G,V,C} = V
 @inline valtype(x::Type{ArrayNode{G,V,C,T,N}}) where {G,V,C,T,N} = V
 
-@inline genre(x::X) where {X} = ValueGenre()
+@inline genre(x) = ValueGenre()
 @inline genre(g::AbstractGenre) = g
 @inline genre(n::RealNode) = n.genre
 @inline genre(n::ArrayNode) = n.genre

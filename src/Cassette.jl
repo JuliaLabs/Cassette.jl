@@ -14,7 +14,7 @@ const REAL_TYPES = [:Bool, :Integer, :Rational, :BigFloat, :BigInt,
                     :AbstractFloat, :Real]
 
 idstr(x) = string(base(62, object_id(x)))[1:3]
-idsym(x) = Symbol("_" * idstr(value(x)))
+idsym(x) = Symbol("_" * idstr(untrack(x)))
 
 abstract type AbstractGenre end
 
