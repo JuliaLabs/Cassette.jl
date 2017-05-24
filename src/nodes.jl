@@ -98,26 +98,34 @@ end
 # Pretty Printing #
 ###################
 
-function Base.show(io::IO, n::RealNode)
-    return print(io, "RealNode<$(idstr(n));$(n.genre)>($(n.value))")
+idstr(x) = base(62, object_id(x))
+
+function Base.show(io::IO, n::FunctionNode)
+    return print(io, "FunctionNode<$(n.func)>$(n.input)")
 end
 
-########
-# Expr #
-########
+function Base.show(io::IO, n::RealNode)
+    return print(io, "RealNode<$(idstr(n))>($(n.value))")
+end
 
-function Base.Expr(output::ValueNode)
-    lines = Expr[]
-    declared = Symbol[]
+#########################
+# Expression Generation #
+#########################
+
+idsym(x) = Symbol("x_" * idstr(untrack(x)))
+
+function toexpr(output::ValueNode)
+    body = Expr(:block)
+    args = Symbol[]
     walkback(output) do x, hasparent
         y = idsym(x)
         if hasparent
             p = x.parent
-            push!(lines, :($y = $(p.func)($(idsym.(p.input)...))))
+            push!(body.args, :($y = $(p.func)($(idsym.(p.input)...))))
         else
-            in(y, declared) || push!(declared, y)
+            in(y, args) || push!(args, y)
         end
     end
-    push!(lines, Expr(:local, reverse(declared)...))
-    return Expr(:block, reverse(lines)...)
+    reverse!(body.args)
+    return reverse(args), body
 end
