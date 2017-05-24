@@ -49,11 +49,8 @@ end
 
 const ValueNode = Union{RealNode,ArrayNode}
 
-struct Trackable end
-struct NotTrackable end
-
-@inline TrackableTrait(::Union{AbstractArray,Real}) = Trackable()
-@inline TrackableTrait(::Any) = NotTrackable()
+@inline istrackable(::Union{AbstractArray,Real}) = True()
+@inline istrackable(::Any) = False()
 
 @inline function track(value::Union{AbstractArray,Real},
                        genre::AbstractGenre = ValueGenre(),

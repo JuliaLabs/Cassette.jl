@@ -26,15 +26,14 @@ end
     return quote
         $(Expr(:meta, :inline))
         output = untrack_call(p.func, $(typed_input...))
-        return maybe_track_output(p, output, input, TrackableTrait(output))
+        return track_if_possible(p, output, input)
     end
 end
 
-# If `output` is `Trackable`, then return a tracked version of it
-@inline maybe_track_output(p::Primitive, output, input, ::Trackable) = track(output, p.genre, FunctionNode(p.func, input))
+@inline track_if_possible(p::Primitive, output, input) = conditional_track(istrackable(output), p, output, input)
 
-# If `output` is `NotTrackable`, then just return it untracked
-@inline maybe_track_output(p::Primitive, output, input, ::NotTrackable) = output
+@inline conditional_track(::True,  p::Primitive, output, input) = track(output, p.genre, FunctionNode(p.func, input))
+@inline conditional_track(::False, p::Primitive, output, input) = output
 
 #############
 # Intercept #

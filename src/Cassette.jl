@@ -15,6 +15,12 @@ const REAL_TYPES = [:Bool, :Integer, :Rational, :BigFloat, :BigInt,
 
 abstract type AbstractGenre end
 
+abstract BoolTrait
+
+struct True <: BoolTrait end
+
+struct False <: BoolTrait end
+
 ############
 # includes #
 ############
