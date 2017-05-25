@@ -95,32 +95,32 @@ end
 # Pretty Printing #
 ###################
 
-idstr(x) = base(62, object_id(x))
+idstring(x) = base(62, object_id(x))
 
 function Base.show(io::IO, n::FunctionNode)
     return print(io, "FunctionNode<$(n.func)>$(n.input)")
 end
 
 function Base.show(io::IO, n::RealNode)
-    return print(io, "RealNode<$(idstr(n))>($(n.value))")
+    return print(io, "RealNode<$(idstring(n))>($(n.value))")
 end
 
 #########################
 # Expression Generation #
 #########################
-# TODO: non-ValueNodes should be interpolated as constants
 
-idsym(x) = Symbol("x_" * idstr(untrack(x)))
+interpolated_variable(x::ValueNode) = Symbol("x_" * idstring(untrack(x)))
+interpolated_variable(x) = x
 
 function toexpr(output::ValueNode)
     body = Expr(:block)
     args = Symbol[]
     walkback(output) do x, hasparent
-        y = idsym(x)
+        y = interpolated_variable(x)
         if hasparent
             p = x.parent
-            push!(body.args, :($y = $(p.func)($(idsym.(p.input)...))))
-        else
+            push!(body.args, :($y = $(p.func)($(interpolated_variable.(p.input)...))))
+        elseif isa(x, ValueNode)
             in(y, args) || push!(args, y)
         end
     end
