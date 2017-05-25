@@ -27,7 +27,9 @@ struct False <: BoolTrait end
 
 include("nodes.jl")
 include("genres.jl")
-include("primitives/primitives.jl")
-include("primitives/scalars.jl")
+include("directives.jl")
+include("operations/scalars.jl")
+include("operations/arrays.jl")
+include("operations/elementwise.jl")
 
 end # module

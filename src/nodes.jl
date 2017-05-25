@@ -108,6 +108,7 @@ end
 #########################
 # Expression Generation #
 #########################
+# TODO: non-ValueNodes should be interpolated as constants
 
 idsym(x) = Symbol("x_" * idstr(untrack(x)))
 

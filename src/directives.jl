@@ -1,41 +1,4 @@
 #############
-# Primitive #
-#############
-
-struct Primitive{G,F} <: Function
-    genre::G
-    func::F
-end
-
-###############################
-# Default Primitive Execution #
-###############################
-
-@inline untrack_call(f::F, a) where {F} = f(untrack(a))
-@inline untrack_call(f::F, a, b) where {F} = f(untrack(a), untrack(b))
-@inline untrack_call(f::F, a, b, c) where {F} = f(untrack(a), untrack(b), untrack(c))
-@inline untrack_call(f::F, a, b, c, d) where {F} = f(untrack(a), untrack(b), untrack(c), untrack(d))
-@inline untrack_call(f::F, a, b, c, d, e) where {F} = f(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e))
-@inline untrack_call(f::F, a, b, c, d, e, others...) where {F} = f(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e), untrack.(others)...)
-
-# This doesn't specialize on DataType arguments naively, so we have to force specialization
-# by unrolling access + type assertions via a generated function. This is pretty annoying
-# since the naive method is so simple otherwise...
-@generated function (p::Primitive)(input...)
-    typed_input = [:(input[$i]::$(input[i])) for i in 1:nfields(input)]
-    return quote
-        $(Expr(:meta, :inline))
-        output = untrack_call(p.func, $(typed_input...))
-        return track_if_possible(p, output, input)
-    end
-end
-
-@inline track_if_possible(p::Primitive, output, input) = conditional_track(istrackable(output), p, output, input)
-
-@inline conditional_track(::True,  p::Primitive, output, input) = track(output, p.genre, FunctionNode(p.func, input))
-@inline conditional_track(::False, p::Primitive, output, input) = output
-
-#############
 # Intercept #
 #############
 
@@ -45,7 +8,7 @@ end
 
 @inline Intercept(i::Intercept) = Intercept(i.func)
 
-@inline (i::Intercept)(input...) = Primitive(promote_genre(input...), i.func)(input...)
+@inline (i::Intercept)(input...) = Record(promote_genre(input...), i.func)(input...)
 
 #=
 works for the following formats:
@@ -87,3 +50,36 @@ macro intercept(expr)
     end
     return esc(result)
 end
+
+##########
+# Record #
+##########
+
+struct Record{G,F}
+    genre::G
+    func::F
+end
+
+@inline untrack_call(f::F, a) where {F} = f(untrack(a))
+@inline untrack_call(f::F, a, b) where {F} = f(untrack(a), untrack(b))
+@inline untrack_call(f::F, a, b, c) where {F} = f(untrack(a), untrack(b), untrack(c))
+@inline untrack_call(f::F, a, b, c, d) where {F} = f(untrack(a), untrack(b), untrack(c), untrack(d))
+@inline untrack_call(f::F, a, b, c, d, e) where {F} = f(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e))
+@inline untrack_call(f::F, a, b, c, d, e, others...) where {F} = f(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e), untrack.(others)...)
+
+# This doesn't specialize on DataType arguments naively, so we have to force specialization
+# by unrolling access + type assertions via a generated function. This is pretty annoying
+# since the naive method is so simple otherwise...
+@generated function (r::Record)(input...)
+    typed_input = [:(input[$i]::$(input[i])) for i in 1:nfields(input)]
+    return quote
+        $(Expr(:meta, :inline))
+        output = untrack_call(r.func, $(typed_input...))
+        return track_if_possible(r, output, input)
+    end
+end
+
+@inline track_if_possible(r::Record, output, input) = conditional_track(istrackable(output), r, output, input)
+
+@inline conditional_track(::True,  r::Record, output, input) = track(output, r.genre, FunctionNode(r.func, input))
+@inline conditional_track(::False, r::Record, output, input) = output
