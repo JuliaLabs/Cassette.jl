@@ -94,3 +94,20 @@ Base.norm(n::ArrayNode, p) = @intercept(norm)(n, p)
 Base.vecnorm(n::ArrayNode, p) = @intercept(vecnorm)(n, p)
 
 Base.cond(n::ArrayNode, p) = @intercept(cond)(n, p)
+
+#############
+# Broadcast #
+#############
+
+@inline Base.Broadcast._containertype(::Type{<:ArrayNode}) = ArrayNode
+
+@inline Base.Broadcast.promote_containertype(::Type{ArrayNode}, ::Type{ArrayNode}) = ArrayNode
+@inline Base.Broadcast.promote_containertype(::Type{ArrayNode}, _) = ArrayNode
+@inline Base.Broadcast.promote_containertype(_, ::Type{ArrayNode}) = ArrayNode
+
+for A in ARRAY_TYPES
+    @eval @inline Base.Broadcast.promote_containertype(::Type{ArrayNode}, ::Type{$A}) = ArrayNode
+    @eval @inline Base.Broadcast.promote_containertype(::Type{$A}, ::Type{ArrayNode}) = ArrayNode
+end
+
+@inline Base.Broadcast.broadcast_c(f, ::Type{ArrayNode}, args...) = @intercept(broadcast)(f, args...)
