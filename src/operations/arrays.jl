@@ -18,7 +18,7 @@ Base.next(n::ArrayNode, state) = @intercept(next)(untrack(n), state)
 
 Base.done(n::ArrayNode, state) = @intercept(done)(untrack(n), state)
 
-Base.IndexStyle(::Type{T<:ArrayNode}) where {T} = IndexStyle(valtype(T))
+Base.IndexStyle(::Type{T}) where {T<:ArrayNode} = IndexStyle(valtype(T))
 Base.IndexStyle(n::ArrayNode) = IndexStyle(untrack(n))
 
 Base.similar(n::ArrayNode) = similar(untrack(n), eltype(n))
@@ -41,8 +41,8 @@ Base.zeros(n::ArrayNode, ::Type{T}) where {T} = @intercept(zeros)(n, T)
 Base.zeros(n::ArrayNode, ::Type{T}, dims::Tuple) where {T} = @intercept(zeros)(n, T, dims)
 Base.zeros(n::ArrayNode, ::Type{T}, dims...) where {T} = @intercept(zeros)(n, T, dims...)
 
-Base.reshape(n::ArrayNode, dims::Type{Val{N}) = @intercept(reshape)(n, dims)
-Base.reshape(n::ArrayNode, dims::Tuple{Vararg{Int,N}}) = @intercept(reshape)(n, dims)
+Base.reshape(n::ArrayNode, dims::Type{Val{N}}) where {N} = @intercept(reshape)(n, dims)
+Base.reshape(n::ArrayNode, dims::Tuple{Vararg{Int,N}}) where {N} = @intercept(reshape)(n, dims)
 Base.reshape(n::ArrayNode, dims::Int64...) = @intercept(reshape)(n, dims...)
 Base.reshape(n::ArrayNode, dims::AbstractUnitRange...) = @intercept(reshape)(n, dims...)
 Base.reshape(n::ArrayNode, dims::Union{AbstractUnitRange,Int64}...) = @intercept(reshape)(n, dims...)
@@ -56,12 +56,11 @@ const UNARY_ARRAY_MATH = [:sum, :prod, :cumsum, :cumprod, :normalize, :norm, :ve
                           :nullspace, :expm, :logm, :sqrtm, :istriu, :istril, :isposdef,
                           :issymmetric, :isdiag, :ishermitian, :transpose, :ctranspose]
 
-const BINARY_ARRAY_MATH = [:A_ldiv_Bc, :A_ldiv_Bt, :A_mul_B, :A_mul_Bc, :A_mul_Bt,
-                           :A_rdiv_Bc, :A_rdiv_Bt, :Ac_ldiv_B, :Ac_ldiv_B, :Ac_ldiv_Bc,
-                           :Ac_mul_B, :Ac_mul_Bc, :Ac_rdiv_B, :Ac_rdiv_Bc, :At_ldiv_B,
-                           :At_ldiv_B, :At_ldiv_Bt, :At_mul_B, :At_mul_Bt, :At_rdiv_B,
-                           :At_rdiv_Bt, :kron, :dot, :cross, :vecdot, :+, :-, :*, :/, :\,
-                           :^]
+const BINARY_ARRAY_MATH = [:A_ldiv_Bc, :A_ldiv_Bt, :A_mul_Bc, :A_mul_Bt, :A_rdiv_Bc,
+                           :A_rdiv_Bt, :Ac_ldiv_B, :Ac_ldiv_Bc, :Ac_mul_B, :Ac_mul_Bc,
+                           :Ac_rdiv_B, :Ac_rdiv_Bc, :At_ldiv_B, :At_ldiv_Bt, :At_mul_B,
+                           :At_mul_Bt, :At_rdiv_B, :At_rdiv_Bt, :kron, :dot, :cross,
+                           :vecdot, :+, :-, :*, :/, :\, :^]
 
 # Not all of these methods will be valid, but it won't matter
 # because the underlying function will throw the appropriate
