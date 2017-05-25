@@ -49,9 +49,6 @@ end
 
 const ValueNode = Union{RealNode,ArrayNode}
 
-@inline istrackable(::Union{AbstractArray,Real}) = True()
-@inline istrackable(::Any) = False()
-
 @inline function track(value::Union{AbstractArray,Real},
                        genre::AbstractGenre = ValueGenre(),
                        parent::FunctionNode = ROOT)
@@ -62,9 +59,28 @@ const ValueNode = Union{RealNode,ArrayNode}
     end
 end
 
+@generated function maybe_tracked(::AbstractArray{T}) where T
+    result = ifelse(T <: RealNode || !(isleaftype(T)), :(False()), :(True()))
+    return quote
+        $(Expr(:meta, :inline))
+        $result
+    end
+end
+
+@inline maybe_tracked(x) = False()
+@inline maybe_tracked(::ArrayNode) = True()
+@inline maybe_tracked(::RealNode) = True()
+
+@inline istrackable(::Union{AbstractArray,Real}) = True()
+@inline istrackable(::Any) = False()
+
+@inline maybe_untrack(::False, x) = x
+@inline maybe_untrack(::True, x) = untrack.(x)
+
 @inline untrack(x) = x
-@inline untrack(n::RealNode) = n.value
+@inline untrack(x::AbstractArray) = maybe_untrack(maybe_tracked(x), x)
 @inline untrack(n::ArrayNode) = n.value
+@inline untrack(n::RealNode) = n.value
 @inline untrack(::Type{T}) where {T<:ValueNode} = valtype(T)
 
 @inline isroot(n::ValueNode) = n.parent === ROOT

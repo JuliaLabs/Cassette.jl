@@ -79,7 +79,7 @@ end
     end
 end
 
-@inline track_if_possible(r::Record, output, input) = conditional_track(istrackable(output), r, output, input)
+@inline track_if_possible(r::Record, output, input) = maybe_track(istrackable(output), r, output, input)
 
-@inline conditional_track(::True,  r::Record, output, input) = track(output, r.genre, FunctionNode(r.func, input))
-@inline conditional_track(::False, r::Record, output, input) = output
+@inline maybe_track(::True,  r::Record, output, input) = track(output, r.genre, FunctionNode(r.func, input))
+@inline maybe_track(::False, r::Record, output, input) = output

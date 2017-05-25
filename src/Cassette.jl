@@ -28,6 +28,5 @@ include("genres.jl")
 include("directives.jl")
 include("operations/scalars.jl")
 include("operations/arrays.jl")
-include("operations/elementwise.jl")
 
 end # module
