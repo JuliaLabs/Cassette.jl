@@ -2,13 +2,17 @@ module Cassette
 
 using RealInterface
 using SpecialFunctions
+using StaticArrays
 
 #####################
 # basic definitions #
 #####################
 
 const ARRAY_TYPES = [:AbstractArray, :AbstractVector, :AbstractMatrix, :Array,
-                     :Vector, :Matrix]
+                     :Vector, :Matrix, :(StaticArrays.StaticArray),
+                     :(StaticArrays.FieldVector), :(StaticArrays.MArray),
+                     :(StaticArrays.SArray), :(StaticArrays.SUnitRange),
+                     :(StaticArrays.SizedArray)]
 
 const REAL_TYPES = [:Bool, :Integer, :Rational, :BigFloat, :BigInt,
                     :AbstractFloat, :Real]
