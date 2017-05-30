@@ -88,8 +88,8 @@ end
 # Conversion/Promotion #
 ########################
 
-Base.convert(::Type{RealNode{G,V,C}}, x::Real) where {G<:AbstractGenre,V<:Real,C}     = track(V(x), similar(G))
-Base.convert(::Type{RealNode{G,V,C}}, n::RealNode) where {G<:AbstractGenre,V<:Real,C} = track(V(untrack(n)), similar(G))
+Base.convert(::Type{RealNode{G,V,C}}, x::Real) where {G<:AbstractGenre,V<:Real,C} = track(V(x), G())
+Base.convert(::Type{RealNode{G,V,C}}, n::RealNode) where {G<:AbstractGenre,V<:Real,C} = track(V(untrack(n)), G())
 
 Base.convert(::Type{T}, n::RealNode) where {T<:Real} = error("""
                                                              Attempted to convert a value of type $(typeof(n)) to type $T.

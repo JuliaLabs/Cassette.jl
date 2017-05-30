@@ -3,6 +3,7 @@ module Cassette
 using RealInterface
 using SpecialFunctions
 using StaticArrays
+using FunctionWrappers
 
 #####################
 # basic definitions #

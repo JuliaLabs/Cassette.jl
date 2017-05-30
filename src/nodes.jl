@@ -15,7 +15,7 @@ const ROOT = FunctionNode(nothing, ())
 # RealNode #
 #----------#
 
-struct RealNode{G<:AbstractGenre,V<:Real,C} <: Real
+mutable struct RealNode{G<:AbstractGenre,V<:Real,C} <: Real
     genre::G
     value::V
     cache::C
@@ -30,7 +30,7 @@ end
 # ArrayNode #
 #-----------#
 
-struct ArrayNode{G<:AbstractGenre,V<:AbstractArray,C,T<:RealNode,N} <: AbstractArray{T,N}
+mutable struct ArrayNode{G<:AbstractGenre,V<:AbstractArray,C,T<:RealNode,N} <: AbstractArray{T,N}
     genre::G
     value::V
     cache::C
