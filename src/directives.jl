@@ -1,12 +1,17 @@
+
+abstract type Directive <: Function end
+
 #############
 # Intercept #
 #############
 
-struct Intercept{F} <: Function
+struct Intercept{F} <: Directive
     func::F
 end
 
-@inline Intercept(i::Intercept) = Intercept(i.func)
+@inline Intercept(d::Directive) = Intercept(unwrap(d))
+
+@inline unwrap(i::Intercept) = i.func
 
 @inline (i::Intercept)(input...) = Record(promote_genre(input...), i.func)(input...)
 
@@ -55,17 +60,33 @@ end
 # Record #
 ##########
 
-struct Record{G,F} <: Function
+struct Untrack{F} <: Directive
+    func::F
+end
+
+@inline Untrack(d::Directive) = Untrack(unwrap(d))
+
+@inline unwrap(u::Untrack) = u.func
+
+@inline (u::Untrack)(a) where {G,F} = u.f(untrack(a))
+@inline (u::Untrack)(a, b) where {G,F} = u.f(untrack(a), untrack(b))
+@inline (u::Untrack)(a, b, c) where {G,F} = u.f(untrack(a), untrack(b), untrack(c))
+@inline (u::Untrack)(a, b, c, d) where {G,F} = u.f(untrack(a), untrack(b), untrack(c), untrack(d))
+@inline (u::Untrack)(a, b, c, d, e) where {G,F} = u.f(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e))
+@inline (u::Untrack)(a, b, c, d, e, others...) where {G,F} = u.f(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e), untrack.(others)...)
+
+##########
+# Record #
+##########
+
+struct Record{G<:AbstractGenre,F} <: Directive
     genre::G
     func::F
 end
 
-@inline untrack_call(f::F, a) where {F} = f(untrack(a))
-@inline untrack_call(f::F, a, b) where {F} = f(untrack(a), untrack(b))
-@inline untrack_call(f::F, a, b, c) where {F} = f(untrack(a), untrack(b), untrack(c))
-@inline untrack_call(f::F, a, b, c, d) where {F} = f(untrack(a), untrack(b), untrack(c), untrack(d))
-@inline untrack_call(f::F, a, b, c, d, e) where {F} = f(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e))
-@inline untrack_call(f::F, a, b, c, d, e, others...) where {F} = f(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e), untrack.(others)...)
+@inline Record(genre::AbstractGenre, d::Directive) = Record(genre, unwrap(d))
+
+@inline unwrap(r::Record) = r.func
 
 # This doesn't specialize on DataType arguments naively, so we have to force specialization
 # by unrolling access + type assertions via a generated function. This is pretty annoying
@@ -74,8 +95,7 @@ end
     typed_input = [:(input[$i]::$(input[i])) for i in 1:nfields(input)]
     return quote
         $(Expr(:meta, :inline))
-        output = untrack_call(r.func, $(typed_input...))
-        return track_if_possible(r, output, input)
+        return track_if_possible(r, Untrack(r)($(typed_input...)), input)
     end
 end
 
