@@ -12,11 +12,11 @@ Base.length(n::ArrayNode) = length(untrack(n))
 
 Base.indices(n::ArrayNode) = indices(untrack(n))
 
-Base.start(n::ArrayNode) = @intercept(start)(untrack(n))
+Base.start(n::ArrayNode) = start(n)
 
-Base.next(n::ArrayNode, state) = @intercept(next)(untrack(n), state)
+Base.next(n::ArrayNode, state) = next(n, state)
 
-Base.done(n::ArrayNode, state) = @intercept(done)(untrack(n), state)
+Base.done(n::ArrayNode, state) = done(n, state)
 
 Base.IndexStyle(::Type{T}) where {T<:ArrayNode} = IndexStyle(valtype(T))
 Base.IndexStyle(n::ArrayNode) = IndexStyle(untrack(n))

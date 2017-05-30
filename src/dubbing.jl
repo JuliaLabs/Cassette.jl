@@ -1,19 +1,29 @@
+###########
+# Untrack #
+###########
 
-abstract type Directive <: Function end
+struct Untrack{F} <: Function
+    func::F
+end
+
+@inline (u::Untrack{F})(a) where {F} = u.func(untrack(a))
+@inline (u::Untrack{F})(a, b) where {F} = u.func(untrack(a), untrack(b))
+@inline (u::Untrack{F})(a, b, c) where {F} = u.func(untrack(a), untrack(b), untrack(c))
+@inline (u::Untrack{F})(a, b, c, d) where {F} = u.func(untrack(a), untrack(b), untrack(c), untrack(d))
+@inline (u::Untrack{F})(a, b, c, d, e) where {F} = u.func(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e))
+@inline (u::Untrack{F})(a, b, c, d, e, others...) where {F} = u.func(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e), untrack.(others)...)
 
 #############
 # Intercept #
 #############
 
-struct Intercept{F} <: Directive
+struct Intercept{F} <: Function
     func::F
 end
 
-@inline Intercept(d::Directive) = Intercept(unwrap(d))
+@inline Intercept(i::Intercept) = i
 
-@inline unwrap(i::Intercept) = i.func
-
-@inline (i::Intercept)(input...) = Record(promote_genre(input...), i.func)(input...)
+@inline (i::Intercept)(input...) = Dub(Record(), promote_genre(input...), i.func)(input...)
 
 #=
 works for the following formats:
@@ -56,56 +66,56 @@ macro intercept(expr)
     return esc(result)
 end
 
-##########
-# Record #
-##########
+#######
+# Dub #
+#######
 
-struct Untrack{F} <: Directive
-    func::F
-end
+abstract type DubMode end
 
-@inline Untrack(d::Directive) = Untrack(unwrap(d))
-
-@inline unwrap(u::Untrack) = u.func
-
-@inline (u::Untrack)(a) where {G,F} = u.f(untrack(a))
-@inline (u::Untrack)(a, b) where {G,F} = u.f(untrack(a), untrack(b))
-@inline (u::Untrack)(a, b, c) where {G,F} = u.f(untrack(a), untrack(b), untrack(c))
-@inline (u::Untrack)(a, b, c, d) where {G,F} = u.f(untrack(a), untrack(b), untrack(c), untrack(d))
-@inline (u::Untrack)(a, b, c, d, e) where {G,F} = u.f(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e))
-@inline (u::Untrack)(a, b, c, d, e, others...) where {G,F} = u.f(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e), untrack.(others)...)
-
-##########
-# Record #
-##########
-
-struct Record{G<:AbstractGenre,F} <: Directive
+struct Dub{M<:DubMode,G<:AbstractGenre,F} <: Function
+    mode::M
     genre::G
     func::F
 end
 
-@inline Record(genre::AbstractGenre, d::Directive) = Record(genre, unwrap(d))
+# Record #
+#--------#
 
-@inline unwrap(r::Record) = r.func
+struct Record <: DubMode end
 
 #=
 This doesn't specialize on DataType arguments naively, so we have to force specialization
 by unrolling access + type assertions via a generated function. This is pretty annoying
 since the naive method is so simple and clean otherwise:
 
-@inline (r::Record)(input...) = track_if_possible(r, Untrack(r)(input...), input)
+@inline (d::Dub{Record})(input...) = track_if_possible(d, Untrack(d.func)(input...), input)
 
 =#
-@generated function (r::Record)(input...)
+@generated function (d::Dub{Record})(input...)
     typed_input = [:(input[$i]::$(input[i])) for i in 1:nfields(input)]
     return quote
         $(Expr(:meta, :inline))
-        return track_if_possible(r, Untrack(r)($(typed_input...)), input)
+        return track_if_possible(d, Untrack(d.func)($(typed_input...)), input)
     end
 end
 
-@inline track_if_possible(r::Record, output::Tuple, input) = map(o -> track_if_possible(r, o, input), output)
-@inline track_if_possible(r::Record, output, input) = _track_if_possible(trackability(output), r, output, input)
+@inline track_if_possible(d::Dub, output::Tuple, input) = map(o -> track_if_possible(d, o, input), output)
+@inline track_if_possible(d::Dub, output, input) = _track_if_possible(d, output, input, trackability(output))
 
-@inline _track_if_possible(::NotTrackable, r::Record, output, input) = output
-@inline _track_if_possible(::Any, r::Record, output, input) = track(output, r.genre, FunctionNode(r.func, input))
+@inline _track_if_possible(d::Dub, output, input, ::NotTrackable) = output
+@inline _track_if_possible(d::Dub, output, input, ::Any) = track(output, d.genre, FunctionNode(d.func, input))
+
+# Forward #
+#---------#
+
+struct Forward <: DubMode end
+
+function (d::Dub{Forward,ValueGenre})(cache, output::ValueNode, input...)
+    output.value = Untrack(d.func)(input...)
+    return nothing
+end
+
+# Reverse #
+#---------#
+
+struct Reverse <: DubMode end

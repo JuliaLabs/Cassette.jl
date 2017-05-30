@@ -26,7 +26,8 @@ abstract type AbstractGenre end
 
 include("nodes.jl")
 include("genres.jl")
-include("directives.jl")
+include("dubbing.jl")
+include("taping.jl")
 include("operations/scalars.jl")
 include("operations/arrays.jl")
 
