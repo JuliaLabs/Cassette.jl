@@ -91,7 +91,12 @@ end
 Base.convert(::Type{RealNode{G,V,C}}, x::Real) where {G<:AbstractGenre,V<:Real,C}     = track(V(x), similar(G))
 Base.convert(::Type{RealNode{G,V,C}}, n::RealNode) where {G<:AbstractGenre,V<:Real,C} = track(V(untrack(n)), similar(G))
 
-Base.convert(::Type{T}, n::RealNode) where {T<:Real} = T(untrack(n))
+Base.convert(::Type{T}, n::RealNode) where {T<:Real} = error("""
+                                                             Attempted to convert a value of type $(typeof(n)) to type $T.
+                                                             Cassette does not allow such lossy conversions, since they
+                                                             disrupt the flow of metadata through the computation, often
+                                                             resulting in silent/difficult-to-track-down bugs.
+                                                             """)
 Base.convert(::Type{T}, n::T) where {T<:RealNode} = n
 
 Base.promote_rule(::Type{T}, ::Type{RealNode{G,V,C}}) where {T<:Real,G,V,C} = RealNode{G,promote_type(T,V),C}
