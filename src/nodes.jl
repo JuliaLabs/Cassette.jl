@@ -20,9 +20,7 @@ struct RealNode{G<:AbstractGenre,V<:Real,C} <: Real
     value::V
     cache::C
     parent::FunctionNode
-    function RealNode(genre::G, value::V, parent::FunctionNode) where {G,V}
-        cache = node_cache(genre, value)
-        C = typeof(cache)
+    function RealNode(genre::G, value::V, cache::C, parent::FunctionNode) where {G,V,C}
         return new{G,V,C}(genre, value, cache, parent)
     end
 end
@@ -35,10 +33,8 @@ struct ArrayNode{G<:AbstractGenre,V<:AbstractArray,C,T<:RealNode,N} <: AbstractA
     value::V
     cache::C
     parent::FunctionNode
-    function ArrayNode(genre::G, value::V, parent::FunctionNode) where {G,N,V<:AbstractArray{<:Real,N}}
-        cache = node_cache(genre, value)
-        C = typeof(cache)
-        T = node_eltype(genre, value)
+    function ArrayNode(genre::G, value::V, cache::C, parent::FunctionNode) where {G,N,V<:AbstractArray{<:Real,N},C}
+        T = node_eltype(genre, value, cache)
         return new{G,V,C,T,N}(genre, value, cache, parent)
     end
 end
@@ -51,14 +47,17 @@ const ValueNode = Union{RealNode,ArrayNode}
 
 @inline function track(value::Union{AbstractArray,Real},
                        genre::AbstractGenre = ValueGenre(),
+                       cache = node_cache(genre, value),
                        parent::FunctionNode = ROOT)
     if isa(value, Real)
-        return RealNode(genre, value, parent)
+        return RealNode(genre, value, cache, parent)
     elseif isa(value, AbstractArray)
-        return ArrayNode(genre, value, parent)
+        return ArrayNode(genre, value, cache, parent)
     end
 end
 
+# This is technically inferrable/type stable, but I don't trust
+# Julia to branch at compile time rather than run time.
 @generated function maybe_tracked(::AbstractArray{T}) where T
     result = ifelse(T <: RealNode || !(isleaftype(T)), :(False()), :(True()))
     return quote

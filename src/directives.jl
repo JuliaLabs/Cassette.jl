@@ -69,7 +69,7 @@ end
 
 # This doesn't specialize on DataType arguments naively, so we have to force specialization
 # by unrolling access + type assertions via a generated function. This is pretty annoying
-# since the naive method is so simple otherwise...
+# since the naive method is so simple and clean otherwise...
 @generated function (r::Record)(input...)
     typed_input = [:(input[$i]::$(input[i])) for i in 1:nfields(input)]
     return quote
@@ -81,5 +81,5 @@ end
 
 @inline track_if_possible(r::Record, output, input) = maybe_track(istrackable(output), r, output, input)
 
-@inline maybe_track(::True,  r::Record, output, input) = track(output, r.genre, FunctionNode(r.func, input))
+@inline maybe_track(::True,  r::Record, output, input) = track(output, r.genre, node_cache(r.genre, output), FunctionNode(r.func, input))
 @inline maybe_track(::False, r::Record, output, input) = output
