@@ -55,7 +55,7 @@ end
 # Record #
 ##########
 
-struct Record{G,F}
+struct Record{G,F} <: Function
     genre::G
     func::F
 end
@@ -79,7 +79,8 @@ end
     end
 end
 
-@inline track_if_possible(r::Record, output, input) = maybe_track(istrackable(output), r, output, input)
+@inline track_if_possible(r::Record, output::Tuple, input) = map(o -> track_if_possible(r, o, input), output)
+@inline track_if_possible(r::Record, output, input) = _track_if_possible(trackability(output), r, output, input)
 
-@inline maybe_track(::True,  r::Record, output, input) = track(output, r.genre, node_cache(r.genre, output), FunctionNode(r.func, input))
-@inline maybe_track(::False, r::Record, output, input) = output
+@inline _track_if_possible(::NotTrackable, r::Record, output, input) = output
+@inline _track_if_possible(::Any, r::Record, output, input) = track(output, r.genre, FunctionNode(r.func, input))

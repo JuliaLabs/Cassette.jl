@@ -20,7 +20,9 @@ struct RealNode{G<:AbstractGenre,V<:Real,C} <: Real
     value::V
     cache::C
     parent::FunctionNode
-    function RealNode(genre::G, value::V, cache::C, parent::FunctionNode) where {G,V,C}
+    function RealNode(genre::G, value::V, parent::FunctionNode) where {G,V,C}
+        cache = node_cache(genre, value)
+        C = typeof(cache)
         return new{G,V,C}(genre, value, cache, parent)
     end
 end
@@ -33,8 +35,10 @@ struct ArrayNode{G<:AbstractGenre,V<:AbstractArray,C,T<:RealNode,N} <: AbstractA
     value::V
     cache::C
     parent::FunctionNode
-    function ArrayNode(genre::G, value::V, cache::C, parent::FunctionNode) where {G,N,V<:AbstractArray{<:Real,N},C}
-        T = node_eltype(genre, value, cache)
+    function ArrayNode(genre::G, value::V, parent::FunctionNode) where {G,N,V<:AbstractArray{<:Real,N}}
+        cache = node_cache(genre, value)
+        C = typeof(cache)
+        T = node_eltype(genre, value)
         return new{G,V,C,T,N}(genre, value, cache, parent)
     end
 end
@@ -45,42 +49,54 @@ end
 
 const ValueNode = Union{RealNode,ArrayNode}
 
-@inline function track(value::Union{AbstractArray,Real},
+# trackability trait #
+#--------------------#
+
+struct Trackable end
+struct NotTrackable end
+struct TrackableElementwise end
+
+@inline trackability(::Any) = NotTrackable()
+@inline trackability(::Real) = Trackable()
+@inline trackability(::AbstractArray{<:Real}) = Trackable()
+@inline trackability(::AbstractArray) = TrackableElementwise()
+
+# istracked trait #
+#-----------------#
+
+struct Tracked end
+struct NotTracked end
+struct TrackedElementwise end
+struct MaybeTrackedElementwise end
+
+@inline istracked(::Any) = NotTracked()
+@inline istracked(::AbstractArray{T}) where {T} = isleaftype(T) ? NotTracked() : MaybeTrackedElementwise()
+@inline istracked(::AbstractArray{<:RealNode}) = TrackedElementwise()
+@inline istracked(::ArrayNode) = Tracked()
+@inline istracked(::RealNode) = Tracked()
+
+# track/untrack #
+#---------------#
+
+@inline function track(value,
                        genre::AbstractGenre = ValueGenre(),
-                       cache = node_cache(genre, value),
                        parent::FunctionNode = ROOT)
-    if isa(value, Real)
-        return RealNode(genre, value, cache, parent)
-    elseif isa(value, AbstractArray)
-        return ArrayNode(genre, value, cache, parent)
-    end
+    return _track(trackability(value), value, genre, parent)
 end
 
-# This is technically inferrable/type stable, but I don't trust
-# Julia to branch at compile time rather than run time.
-@generated function maybe_tracked(::AbstractArray{T}) where T
-    result = ifelse(T <: RealNode || !(isleaftype(T)), :(False()), :(True()))
-    return quote
-        $(Expr(:meta, :inline))
-        $result
-    end
-end
+@inline _track(::Trackable,            value::Real,          genre, parent) = RealNode(genre, value, parent)
+@inline _track(::Trackable,            value::AbstractArray, genre, parent) = ArrayNode(genre, value, parent)
+@inline _track(::TrackableElementwise, value::AbstractArray, genre, parent) = map(v -> RealNode(genre, v, parent), value)
 
-@inline maybe_tracked(x) = False()
-@inline maybe_tracked(::ArrayNode) = True()
-@inline maybe_tracked(::RealNode) = True()
-
-@inline istrackable(::Union{AbstractArray,Real}) = True()
-@inline istrackable(::Any) = False()
-
-@inline maybe_untrack(::False, x) = x
-@inline maybe_untrack(::True, x) = untrack.(x)
-
-@inline untrack(x) = x
-@inline untrack(x::AbstractArray) = maybe_untrack(maybe_tracked(x), x)
 @inline untrack(n::ArrayNode) = n.value
 @inline untrack(n::RealNode) = n.value
-@inline untrack(::Type{T}) where {T<:ValueNode} = valtype(T)
+@inline untrack(x) = _untrack(istracked(x), x)
+
+@inline _untrack(::Union{MaybeTrackedElementwise,TrackedElementwise}, x) = untrack.(x)
+@inline _untrack(::NotTracked, x) = x
+
+# walkback #
+#----------#
 
 @inline isroot(n::ValueNode) = n.parent === ROOT
 
@@ -95,11 +111,17 @@ function walkback(f, n)
     return nothing
 end
 
+# valtype #
+#---------#
+
 @inline valtype(x) = x
 @inline valtype(x::RealNode{<:Any,V}) where {V} = V
 @inline valtype(x::ArrayNode{<:Any,V}) where {V} = V
 @inline valtype(x::Type{RealNode{G,V,C}}) where {G,V,C} = V
 @inline valtype(x::Type{ArrayNode{G,V,C,T,N}}) where {G,V,C,T,N} = V
+
+# genre #
+#-------#
 
 @inline genre(x) = ValueGenre()
 @inline genre(g::AbstractGenre) = g

@@ -18,7 +18,7 @@
 
 struct ValueGenre <: AbstractGenre end
 
-@inline node_eltype(::ValueGenre, value, cache) = RealNode{ValueGenre,eltype(value),Void}
+@inline node_eltype(::ValueGenre, value) = RealNode{ValueGenre,eltype(value),Void}
 @inline node_cache(::ValueGenre, value) = nothing
 
 @inline Base.similar(::Type{ValueGenre}) = ValueGenre()
