@@ -88,9 +88,14 @@ end
 
 @inline unwrap(r::Record) = r.func
 
-# This doesn't specialize on DataType arguments naively, so we have to force specialization
-# by unrolling access + type assertions via a generated function. This is pretty annoying
-# since the naive method is so simple and clean otherwise...
+#=
+This doesn't specialize on DataType arguments naively, so we have to force specialization
+by unrolling access + type assertions via a generated function. This is pretty annoying
+since the naive method is so simple and clean otherwise:
+
+@inline (r::Record)(input...) = track_if_possible(r, Untrack(r)(input...), input)
+
+=#
 @generated function (r::Record)(input...)
     typed_input = [:(input[$i]::$(input[i])) for i in 1:nfields(input)]
     return quote
