@@ -1,3 +1,13 @@
+####################################
+# External `<:AbstractArray` Types #
+####################################
+
+const ARRAY_TYPES = [:AbstractArray, :AbstractVector, :AbstractMatrix, :Array,
+                     :Vector, :Matrix, :(StaticArrays.StaticArray),
+                     :(StaticArrays.FieldVector), :(StaticArrays.MArray),
+                     :(StaticArrays.SArray), :(StaticArrays.SUnitRange),
+                     :(StaticArrays.SizedArray)]
+
 ###########################
 # AbstractArray Interface #
 ###########################

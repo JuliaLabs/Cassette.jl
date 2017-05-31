@@ -1,3 +1,10 @@
+###########################
+# External `<:Real` Types #
+###########################
+
+const REAL_TYPES = [:Bool, :Integer, :Rational, :BigFloat, :BigInt,
+                    :AbstractFloat, :Real]
+
 ########
 # Math #
 ########
