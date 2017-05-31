@@ -30,7 +30,7 @@ end
     return output_node
 end
 
-trackability(::Record) = Trackable()
+@inline (r::Record{ValueGenre})(output, ::DataType) = track(output, r.genre)
 
 #############
 # Intercept #
@@ -42,7 +42,6 @@ end
 
 @inline Intercept(i::Intercept) = i
 
-
 # This doesn't specialize on DataType arguments naively, so we have to force specialization
 # by unrolling access + type assertions via a generated function. This is pretty annoying
 # since the naive method is so simple and clean otherwise...
@@ -52,18 +51,14 @@ end
         $(Expr(:meta, :inline))
         output = Untrack(i.func)($(typed_input...))
         genre = promote_genre($(typed_input...))
-        record = Record(genre, i.func)
-        return conditionally_record(record, output, input, trackability(record))
+        return conditionally_record(Record(genre, i.func), output, input)
     end
 end
 
-@inline conditionally_record(r::Record, output::Tuple, input, ::NotTrackable) = output
+@inline conditionally_record(r::Record, output::Tuple, input) = map(o -> conditionally_record(r, o, input), output)
+@inline conditionally_record(r::Record, output,        input) = conditionally_record(r, output, input, trackability(output))
 @inline conditionally_record(r::Record, output,        input, ::NotTrackable) = output
-@inline conditionally_record(r::Record, output::Tuple, input, ::Any) = map(o -> _conditionally_record(r, o, input, trackability(o)), output)
-@inline conditionally_record(r::Record, output,        input, ::Any) = _conditionally_record(r, output, input, trackability(output))
-
-@inline _conditionally_record(r::Record, output, input, ::NotTrackable) = output
-@inline _conditionally_record(r::Record, output, input, ::Any) = r(output, input...)
+@inline conditionally_record(r::Record, output,        input, ::Any) = r(output, input...)
 
 #=
 works for the following formats:
