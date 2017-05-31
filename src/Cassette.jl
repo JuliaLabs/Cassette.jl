@@ -18,16 +18,13 @@ const ARRAY_TYPES = [:AbstractArray, :AbstractVector, :AbstractMatrix, :Array,
 const REAL_TYPES = [:Bool, :Integer, :Rational, :BigFloat, :BigInt,
                     :AbstractFloat, :Real]
 
-abstract type AbstractGenre end
-
 ############
 # includes #
 ############
 
-include("nodes.jl")
 include("genres.jl")
-include("overdubbing.jl")
-include("taping.jl")
+include("nodes.jl")
+include("tapes.jl")
 include("operations/scalars.jl")
 include("operations/arrays.jl")
 

@@ -1,3 +1,26 @@
+#################
+# AbstractGenre #
+#################
+
+abstract type AbstractGenre end
+
+macro defgenre(G)
+    return esc(:(struct $G <: $(AbstractGenre) end))
+end
+
+@inline genre(g::AbstractGenre) = g
+@inline genre(x) = ValueGenre()
+
+##############
+# ValueGenre #
+##############
+
+@defgenre ValueGenre
+
+@inline node_eltype(::ValueGenre, value) = RealNode{ValueGenre,eltype(value),Void}
+@inline node_cache(::ValueGenre, value) = nothing
+@inline promote_genre(::ValueGenre, ::ValueGenre) = ValueGenre()
+
 #############
 # Promotion #
 #############
@@ -11,13 +34,3 @@
 
 @inline promote_genre(a::AbstractGenre, b::AbstractGenre) = error("promote_genre not defined between $(a) and $(b)")
 @inline promote_genre(g::AbstractGenre) = g
-
-##############
-# ValueGenre #
-##############
-
-struct ValueGenre <: AbstractGenre end
-
-@inline node_eltype(::ValueGenre, value) = RealNode{ValueGenre,eltype(value),Void}
-@inline node_cache(::ValueGenre, value) = nothing
-@inline promote_genre(::ValueGenre, ::ValueGenre) = ValueGenre()

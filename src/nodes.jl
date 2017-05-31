@@ -5,12 +5,15 @@
 # FunctionNode #
 #--------------#
 
-struct FunctionNode{F,I<:Tuple}
+struct FunctionNode{G<:AbstractGenre,F,O,I<:Tuple,C}
+    genre::G
     func::F
+    output::O
     input::I
+    cache::C
 end
 
-const ROOT = FunctionNode(nothing, ())
+const ROOT = FunctionNode(ValueGenre(), nothing, nothing, tuple(), nothing)
 
 # RealNode #
 #----------#
@@ -20,7 +23,7 @@ mutable struct RealNode{G<:AbstractGenre,V<:Real,C} <: Real
     value::V
     cache::C
     parent::FunctionNode
-    function RealNode(genre::G, value::V, parent::FunctionNode) where {G,V,C}
+    function RealNode(genre::G, value::V, parent::FunctionNode) where {G,V}
         cache = node_cache(genre, value)
         C = typeof(cache)
         return new{G,V,C}(genre, value, cache, parent)
@@ -78,18 +81,15 @@ struct MaybeTrackedElementwise end
 # track/untrack #
 #---------------#
 
-@inline function track(value,
-                       genre::AbstractGenre = ValueGenre(),
-                       parent::FunctionNode = ROOT)
-    return _track(trackability(value), value, genre, parent)
-end
+@inline track(value, genre::AbstractGenre = ValueGenre()) = _track(trackability(value), value, genre)
 
-@inline _track(::Trackable,            value::Real,          genre, parent) = RealNode(genre, value, parent)
-@inline _track(::Trackable,            value::AbstractArray, genre, parent) = ArrayNode(genre, value, parent)
-@inline _track(::TrackableElementwise, value::AbstractArray, genre, parent) = map(v -> RealNode(genre, v, parent), value)
+@inline _track(::Trackable,            value::Real,          genre) = RealNode(genre, value, ROOT)
+@inline _track(::Trackable,            value::AbstractArray, genre) = ArrayNode(genre, value, ROOT)
+@inline _track(::TrackableElementwise, value::AbstractArray, genre) = RealNode.(genre, value, ROOT)
 
 @inline untrack(n::ArrayNode) = n.value
 @inline untrack(n::RealNode) = n.value
+@inline untrack(::Type{T}) where {T<:ValueNode} = valtype(T)
 @inline untrack(x) = _untrack(istracked(x), x)
 
 @inline _untrack(::Union{MaybeTrackedElementwise,TrackedElementwise}, x) = untrack.(x)
@@ -123,8 +123,6 @@ end
 # genre #
 #-------#
 
-@inline genre(x) = ValueGenre()
-@inline genre(g::AbstractGenre) = g
 @inline genre(n::RealNode) = n.genre
 @inline genre(n::ArrayNode) = n.genre
 
@@ -162,5 +160,6 @@ function toexpr(output::ValueNode)
         end
     end
     reverse!(body.args)
-    return reverse(args), body
+    reverse!(args)
+    return args, body
 end
