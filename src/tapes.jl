@@ -24,13 +24,22 @@ struct Record{G<:AbstractGenre,F} <: Function
     func::F
 end
 
-@inline function (r::Record)(output, input_nodes...)
+@inline function (r::Record{ValueGenre})(input...)
+    output = Untrack(r.func)(input...)
+    return conditionally_track(r, output, input)
+end
+
+@inline (r::Record{ValueGenre})(::Type{T}) where {T} = track(Untrack(r.func)(T), r.genre)
+
+@inline conditionally_track(r::Record, output::Tuple, input) = map(o -> conditionally_track(r, o, input), output)
+@inline conditionally_track(r::Record, output, input) = conditionally_track(r, output, input, trackability(output))
+@inline conditionally_track(r::Record, output, input, ::NotTrackable) = output
+
+@inline function conditionally_track(r::Record, output, input_nodes, ::Any)
     output_node = track(output, r.genre)
     output_node.parent = FunctionNode(r.genre, r.func, output_node, input_nodes, nothing)
     return output_node
 end
-
-@inline (r::Record{ValueGenre})(output, ::DataType) = track(output, r.genre)
 
 #############
 # Intercept #
@@ -49,16 +58,10 @@ end
     typed_input = [:(input[$i]::$(input[i])) for i in 1:nfields(input)]
     return quote
         $(Expr(:meta, :inline))
-        output = Untrack(i.func)($(typed_input...))
         genre = promote_genre($(typed_input...))
-        return conditionally_record(Record(genre, i.func), output, input)
+        return Record(genre, i.func)($(typed_input...))
     end
 end
-
-@inline conditionally_record(r::Record, output::Tuple, input) = map(o -> conditionally_record(r, o, input), output)
-@inline conditionally_record(r::Record, output,        input) = conditionally_record(r, output, input, trackability(output))
-@inline conditionally_record(r::Record, output,        input, ::NotTrackable) = output
-@inline conditionally_record(r::Record, output,        input, ::Any) = r(output, input...)
 
 #=
 works for the following formats:
