@@ -55,9 +55,11 @@ const ValueNode = Union{RealNode,ArrayNode}
 # trackability trait #
 #--------------------#
 
-struct Trackable end
-struct NotTrackable end
-struct TrackableElementwise end
+abstract type TrackabilityTrait end
+
+struct Trackable <: TrackabilityTrait end
+struct NotTrackable <: TrackabilityTrait end
+struct TrackableElementwise <: TrackabilityTrait end
 
 @inline trackability(::Any) = NotTrackable()
 @inline trackability(::Real) = Trackable()
@@ -67,10 +69,12 @@ struct TrackableElementwise end
 # istracked trait #
 #-----------------#
 
-struct Tracked end
-struct NotTracked end
-struct TrackedElementwise end
-struct MaybeTrackedElementwise end
+abstract type IstrackedTrait end
+
+struct Tracked <: IstrackedTrait end
+struct NotTracked <: IstrackedTrait end
+struct TrackedElementwise <: IstrackedTrait end
+struct MaybeTrackedElementwise <: IstrackedTrait end
 
 @inline istracked(::Any) = NotTracked()
 @inline istracked(::AbstractArray{T}) where {T} = isleaftype(T) ? NotTracked() : MaybeTrackedElementwise()

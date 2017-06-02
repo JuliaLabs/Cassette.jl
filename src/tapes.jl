@@ -24,22 +24,30 @@ struct Record{G<:AbstractGenre,F} <: Function
     func::F
 end
 
-@inline function (r::Record{ValueGenre})(input...)
-    output = Untrack(r.func)(input...)
-    return conditionally_track(r, output, input)
-end
-
-@inline (r::Record{ValueGenre})(::Type{T}) where {T} = track(Untrack(r.func)(T), r.genre)
-
-@inline conditionally_track(r::Record, output::Tuple, input) = map(o -> conditionally_track(r, o, input), output)
-@inline conditionally_track(r::Record, output, input) = conditionally_track(r, output, input, trackability(output))
-@inline conditionally_track(r::Record, output, input, ::NotTrackable) = output
-
-@inline function conditionally_track(r::Record, output, input_nodes, ::Any)
+@inline (r::Record{ValueGenre})(output, input)
     output_node = track(output, r.genre)
-    output_node.parent = FunctionNode(r.genre, r.func, output_node, input_nodes, nothing)
+    output_node.parent = FunctionNode(r.genre, r.func, output_node, input, nothing)
     return output_node
 end
+
+@inline (r::Record{ValueGenre})(output, ::Tuple{Type{T}}) where {T} = track(output, r.genre)
+
+###########
+# Execute #
+###########
+
+struct Execute{G<:AbstractGenre,F} <: Function
+    genre::G
+    func::F
+end
+
+@inline (e::Execute)(input...) = call_record(Record(e.genre, e.func), Untrack(e.func)(input...), input)
+@inline (e::Execute)(::Type{T}) where {T} = call_record(Record(e.genre, e.func), Untrack(e.func)(T), (T,))
+
+@inline call_record(r::Record, output::NTuple{N}, input::Tuple, args...) where {N} = NTuple{N}(r(o, input, args...) for o in output)
+@inline call_record(r::Record, output, input::Tuple, args...) = call_record(trackability(output), r, output, input, args...)
+@inline call_record(::TrackabilityTrait, r::Record, output, input::Tuple, args...) = r(output, input, args...)
+@inline call_record(::NotTrackable, r::Record, output, input::Tuple, args...) = output
 
 #############
 # Intercept #
@@ -51,17 +59,8 @@ end
 
 @inline Intercept(i::Intercept) = i
 
-# This doesn't specialize on DataType arguments naively, so we have to force specialization
-# by unrolling access + type assertions via a generated function. This is pretty annoying
-# since the naive method is so simple and clean otherwise...
-@generated function (i::Intercept{<:Any})(input...)
-    typed_input = [:(input[$i]::$(input[i])) for i in 1:nfields(input)]
-    return quote
-        $(Expr(:meta, :inline))
-        genre = promote_genre($(typed_input...))
-        return Record(genre, i.func)($(typed_input...))
-    end
-end
+@inline (i::Intercept)(input...) = Execute(promote_genre(input...), i.func)(input...)
+@inline (i::Intercept)(::Type{T}) where {T} = Execute(genre(T), i.func)(T)
 
 #=
 works for the following formats:
