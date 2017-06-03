@@ -24,7 +24,7 @@ struct Record{G<:AbstractGenre,F} <: Function
     func::F
 end
 
-@inline (r::Record{ValueGenre})(output, input)
+@inline function (r::Record{ValueGenre})(output, input)
     output_node = track(output, r.genre)
     output_node.parent = FunctionNode(r.genre, r.func, output_node, input, nothing)
     return output_node
