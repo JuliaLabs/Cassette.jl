@@ -6,7 +6,7 @@ using StaticArrays
 using FunctionWrappers
 
 include("genres.jl")
-include("nodes.jl")
+include("notes.jl")
 include("tapes.jl")
 include("utilities.jl")
 include("operations/reals.jl")

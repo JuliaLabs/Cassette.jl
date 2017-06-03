@@ -25,9 +25,9 @@ struct Record{G<:AbstractGenre,F} <: Function
 end
 
 @inline function (r::Record{ValueGenre})(output, input)
-    output_node = track(output, r.genre)
-    output_node.parent = FunctionNode(r.genre, r.func, output_node, input, nothing)
-    return output_node
+    output_note = track(output, r.genre)
+    output_note.parent = FunctionNote(r.genre, r.func, output_note, input, nothing)
+    return output_note
 end
 
 @inline (r::Record{ValueGenre})(output, ::Tuple{Type{T}}) where {T} = track(output, r.genre)
@@ -107,13 +107,13 @@ end
 # Instruction Wrappers #
 ########################
 
-struct ForwardWrapper{F<:FunctionNode} <: Function
+struct ForwardWrapper{F<:FunctionNote} <: Function
     instruction::F
 end
 
 (w::ForwardWrapper)() = (execute!(ForwardMode(), w.instruction); nothing)
 
-struct ReverseWrapper{F<:FunctionNode} <: Function
+struct ReverseWrapper{F<:FunctionNote} <: Function
     instruction::F
 end
 
@@ -126,23 +126,25 @@ end
 const ExecutionWrapper = FunctionWrappers.FunctionWrapper{Void,Tuple{}}
 
 struct Tape
-    instructions::Vector{FunctionNode}
+    instructions::Vector{FunctionNote}
     forward::Vector{ExecutionWrapper}
     reverse::Vector{ExecutionWrapper}
-    function Tape(instructions::Vector{FunctionNode})
+    function Tape(instructions::Vector{FunctionNote})
         forward = [ExecutionWrapper(ForwardWrapper(instructions[i])) for i in 1:length(instructions)]
         reverse = [ExecutionWrapper(ReverseWrapper(instructions[i])) for i in length(instructions):-1:1]
         return new(instructions, forward, reverse)
     end
 end
 
-function Tape(output::ValueNode)
-    instructions = Vector{FunctionNode}()
-    walkback(output) do node, hasparent
-        hasparent && push!(instructions, node.parent)
+function Tape(output::ValueNote)
+    instructions = Vector{FunctionNote}()
+    walkback(output) do note, hasparent
+        hasparent && push!(instructions, dub(note.parent))
     end
     return Tape(reverse!(instructions))
 end
+
+@inline dub(note::FunctionNote) = note
 
 #############
 # Execution #
@@ -156,7 +158,7 @@ struct ReverseMode <: ExecutionMode end
 execute!(::ForwardMode, t::Tape) = (for f! in t.forward; f!(); end; nothing)
 execute!(::ReverseMode, t::Tape) = (for f! in t.reverse; f!(); end; nothing)
 
-function execute!(::ForwardMode, n::FunctionNode{ValueGenre,<:Any,<:RealNode,<:Tuple})
+function execute!(::ForwardMode, n::FunctionNote{ValueGenre,<:Any,<:RealNote,<:Tuple})
     n.output.value += Untrack(n.func)(n.input...)
     return nothing
 end
