@@ -5,17 +5,13 @@
 # FunctionNote #
 #--------------#
 
-struct FunctionNote{G<:AbstractGenre,F,O,I<:Tuple,C}
+struct FunctionNote{G<:AbstractGenre,F,I<:Tuple}
     genre::G
     func::F
-    output::O
     input::I
-    cache::C
 end
 
-const ROOT = FunctionNote(ValueGenre(), nothing, nothing, tuple(), nothing)
-
-@inline update_cache(note::FunctionNote, cache) = FunctionNote(note.genre, note.func, note.output, note.input, cache)
+const ROOT = FunctionNote(ValueGenre(), nothing, tuple())
 
 # RealNote #
 #----------#

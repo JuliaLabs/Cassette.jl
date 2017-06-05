@@ -26,11 +26,11 @@ end
 
 @inline function (r::Record{ValueGenre})(output, input)
     output_note = track(output, r.genre)
-    output_note.parent = FunctionNote(r.genre, r.func, output_note, input, nothing)
+    output_note.parent = FunctionNote(r.genre, r.func, input)
     return output_note
 end
 
-@inline (r::Record{ValueGenre})(output, ::Tuple{Type{T}}) where {T} = track(output, r.genre)
+@inline (r::Record{ValueGenre})(output, ::Tuple{<:DataType}) = track(output, r.genre)
 
 ###########
 # Execute #
@@ -103,62 +103,69 @@ macro intercept(expr)
     return esc(result)
 end
 
-########################
-# Instruction Wrappers #
-########################
-
-struct ForwardWrapper{F<:FunctionNote} <: Function
-    instruction::F
-end
-
-(w::ForwardWrapper)() = (execute!(ForwardMode(), w.instruction); nothing)
-
-struct ReverseWrapper{F<:FunctionNote} <: Function
-    instruction::F
-end
-
-(w::ReverseWrapper)() = (execute!(ReverseMode(), w.instruction); nothing)
-
 ########
 # Tape #
 ########
 
-const ExecutionWrapper = FunctionWrappers.FunctionWrapper{Void,Tuple{}}
+# Dub #
+#-----#
+
+struct Dub{G<:AbstractGenre,F,I<:Tuple,O,C}
+    genre::G
+    func::F
+    input::I
+    output::O
+    cache::C
+end
+
+@inline Dub(note::FunctionNote, output, cache = nothing) = Dub(note.genre, note.func, note.input, output, cache)
+
+# Playing Dubs #
+#--------------#
+
+abstract type PlayMode end
+
+struct ForwardMode <: PlayMode end
+struct ReverseMode <: PlayMode end
+
+const PlayWrapper = FunctionWrappers.FunctionWrapper{Void,Tuple{}}
+
+struct Play{D<:Dub,M<:PlayMode} <: Function
+    dub::D
+    mode::M
+end
+
+@noinline (p::Play)() = (play!(p.dub, p.mode); nothing)
+
+# play! #
+#-------#
+
+@inline function play!(dub::Dub{ValueGenre,<:Any,<:Tuple,<:RealNote}, ::ForwardMode)
+    dub.output.value += Untrack(dub.func)(dub.input...)
+    return nothing
+end
+
+# Tape #
+#------#
 
 struct Tape
-    instructions::Vector{FunctionNote}
-    forward::Vector{ExecutionWrapper}
-    reverse::Vector{ExecutionWrapper}
-    function Tape(instructions::Vector{FunctionNote})
-        forward = [ExecutionWrapper(ForwardWrapper(instructions[i])) for i in 1:length(instructions)]
-        reverse = [ExecutionWrapper(ReverseWrapper(instructions[i])) for i in length(instructions):-1:1]
-        return new(instructions, forward, reverse)
+    dubs::Vector{Dub}
+    forward::Vector{PlayWrapper}
+    reverse::Vector{PlayWrapper}
+    function Tape(dubs::Vector{Dub})
+        forward = [PlayWrapper(Play(dubs[i], ForwardMode())) for i in 1:length(dubs)]
+        reverse = [PlayWrapper(Play(dubs[i], ReverseMode())) for i in length(dubs):-1:1]
+        return new(dubs, forward, reverse)
     end
 end
 
 function Tape(output::ValueNote)
-    instructions = Vector{FunctionNote}()
-    walkback(output) do note, hasparent
-        hasparent && push!(instructions, dub(note.parent))
+    dubs = Vector{Dub}()
+    walkback(output) do dub, hasparent
+        hasparent && push!(dubs, Dub(dub.parent, dub))
     end
-    return Tape(reverse!(instructions))
+    return Tape(reverse!(dubs))
 end
 
-@inline dub(note::FunctionNote) = note
-
-#############
-# Execution #
-#############
-
-abstract type ExecutionMode end
-
-struct ForwardMode <: ExecutionMode end
-struct ReverseMode <: ExecutionMode end
-
-execute!(::ForwardMode, t::Tape) = (for f! in t.forward; f!(); end; nothing)
-execute!(::ReverseMode, t::Tape) = (for f! in t.reverse; f!(); end; nothing)
-
-function execute!(::ForwardMode, n::FunctionNote{ValueGenre,<:Any,<:RealNote,<:Tuple})
-    n.output.value += Untrack(n.func)(n.input...)
-    return nothing
-end
+play!(t::Tape, ::ForwardMode) = (for f! in t.forward; f!(); end; nothing)
+play!(t::Tape, ::ReverseMode) = (for f! in t.reverse; f!(); end; nothing)
