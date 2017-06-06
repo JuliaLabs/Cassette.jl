@@ -2,7 +2,7 @@
 # Chord #
 #########
 
-struct Chord{G<:AbstractGenre,F,I<:Tuple,O,C}
+struct Instruction{G<:AbstractGenre,F,I<:Tuple,O<:ValueNote,C}
     genre::G
     func::F
     input::I
@@ -10,7 +10,14 @@ struct Chord{G<:AbstractGenre,F,I<:Tuple,O,C}
     cache::C
 end
 
-@inline Chord(note::FunctionNote, output, cache = nothing) = Chord(note.genre, note.func, note.input, output, cache)
+@noinline Instruction(parent::FunctionNote, output::ValueNote) = Dub(parent.genre, parent.func)(output, parent.input)
+
+struct Dub{G<:AbstractGenre,F} <: Function
+    genre::G
+    func::F
+end
+
+(dub::Dub{ValueGenre}(output, input) = Instruction(dub.genre, dub.func, dub.input, dub.output, nothing)
 
 ###########
 # Replay! #
@@ -21,7 +28,7 @@ abstract type ReplayMode end
 struct ForwardMode <: ReplayMode end
 struct ReverseMode <: ReplayMode end
 
-struct Replay!{M<:ReplayMode,G<:AbstractGenre,F}
+struct Replay!{M<:ReplayMode,G<:AbstractGenre,F} <: Function
     mode::M
     genre::G
     func::F
@@ -68,10 +75,13 @@ end
 function Tape(output::ValueNote)
     chords = Vector{Chord}()
     walkback(output) do note, hasparent
-        hasparent && push!(chords, Chord(note.parent, note))
+        if hasparent
+            push!(chords, Dub(note.))
     end
     return Tape(reverse!(chords))
 end
+
+
 
 ###########
 # replay! #

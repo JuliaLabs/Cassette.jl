@@ -30,7 +30,11 @@ end
     return output_note
 end
 
-@inline (r::Record{ValueGenre})(output, ::Tuple{<:DataType}) = track(output, r.genre)
+@inline (r::Record{ValueGenre})(output, ::Tuple{<:DataType})   = track(output, r.genre)
+@inline (r::Record{ValueGenre,typeof(ones)})(output, input)    = track(output, r.genre)
+@inline (r::Record{ValueGenre,typeof(zeros)})(output, input)   = track(output, r.genre)
+@inline (r::Record{ValueGenre,typeof(copy)})(output, input)    = track(output, r.genre)
+@inline (r::Record{ValueGenre,typeof(reshape)})(output, input) = track(output, r.genre)
 
 ###########
 # Execute #
