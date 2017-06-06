@@ -12,21 +12,41 @@ end
 
 @inline Chord(note::FunctionNote, output, cache = nothing) = Chord(note.genre, note.func, note.input, output, cache)
 
-#############
-# PlayChord #
-#############
+###########
+# Replay! #
+###########
 
-abstract type PlayMode end
+abstract type ReplayMode end
 
-struct ForwardMode <: PlayMode end
-struct ReverseMode <: PlayMode end
+struct ForwardMode <: ReplayMode end
+struct ReverseMode <: ReplayMode end
 
-struct PlayChord{C<:Chord,M<:PlayMode} <: Function
-    chord::C
+struct Replay!{M<:ReplayMode,G<:AbstractGenre,F}
     mode::M
+    genre::G
+    func::F
 end
 
-@noinline (p::PlayChord)() = (play!(p.chord, p.mode); nothing)
+@inline function (r::Replay!{ForwardMode,ValueGenre})(output::RealNote, input, cache)
+    output.value = Untrack(r.func)(input...)
+    return nothing
+end
+
+@inline function (r::Replay!{ForwardMode,ValueGenre})(output::ArrayNote, input, cache)
+    copy!(output.value, Untrack(r.func)(chord.input...))
+    return nothing
+end
+
+################
+# ReplayCaller #
+################
+
+struct ReplayCaller{M<:ReplayMode,C<:Chord} <: Function
+    mode::M
+    chord::C
+end
+
+@noinline (p::ReplayCaller)() = (Replay!(p.mode, p.chord.genre, p.func)(p.output, p.input, p.cache); nothing)
 
 ########
 # Tape #
@@ -39,8 +59,8 @@ struct Tape
     forward::Vector{ExecutionWrapper}
     reverse::Vector{ExecutionWrapper}
     function Tape(chords::Vector{Chord})
-        forward = [ExecutionWrapper(Play(chords[i], ForwardMode())) for i in 1:length(chords)]
-        reverse = [ExecutionWrapper(Play(chords[i], ReverseMode())) for i in length(chords):-1:1]
+        forward = [ExecutionWrapper(ReplayCaller(ForwardMode(), chords[i])) for i in 1:length(chords)]
+        reverse = [ExecutionWrapper(ReplayCaller(ReverseMode(), chords[i])) for i in length(chords):-1:1]
         return new(chords, forward, reverse)
     end
 end
@@ -53,19 +73,9 @@ function Tape(output::ValueNote)
     return Tape(reverse!(chords))
 end
 
-#########
-# play! #
-#########
+###########
+# replay! #
+###########
 
-@inline function play!(chord::Chord{ValueGenre,<:Any,<:Tuple,<:RealNote}, ::ForwardMode)
-    chord.output.value = Untrack(chord.func)(chord.input...)
-    return nothing
-end
-
-@inline function play!(chord::Chord{ValueGenre,<:Any,<:Tuple,<:ArrayNote}, ::ForwardMode)
-    copy!(chord.output.value, Untrack(chord.func)(chord.input...))
-    return nothing
-end
-
-play!(t::Tape, ::ForwardMode) = (for c! in t.forward; c!(); end; nothing)
-play!(t::Tape, ::ReverseMode) = (for c! in t.reverse; c!(); end; nothing)
+replay!(t::Tape, ::ForwardMode) = (for f! in t.forward; f!(); end; nothing)
+replay!(t::Tape, ::ReverseMode) = (for f! in t.reverse; f!(); end; nothing)
