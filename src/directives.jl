@@ -27,8 +27,8 @@ end
 
 @inline Intercept(i::Intercept) = i
 
-@inline (i::Intercept)(input...) = Transport(Play(), promote_genre(input...), i.func)(input...)
-@inline (i::Intercept)(::Type{T}) where {T} = Transport(Play(), genre(T), i.func)(T)
+@inline (i::Intercept)(input...) = Hook(Play(), promote_genre(input...), i.func)(input...)
+@inline (i::Intercept)(::Type{T}) where {T} = Hook(Play(), genre(T), i.func)(T)
 
 #=
 works for the following formats:
@@ -71,73 +71,84 @@ macro intercept(expr)
     return esc(result)
 end
 
-#############
-# Transport #
-#############
+########
+# Hook #
+########
 
-abstract type TransportMode end
+abstract type HookMode end
 
-struct Play      <: TransportMode end
-struct Record    <: TransportMode end
-struct Dub       <: TransportMode end
-struct Replay{D} <: TransportMode end
+struct Play   <: HookMode end
+struct Record <: HookMode end
+struct Dub    <: HookMode end
+struct Replay <: HookMode end
+struct Rewind <: HookMode end
 
-struct Transport{M<:TransportMode,G<:AbstractGenre,F} <: Directive
+struct Hook{M<:HookMode,G<:AbstractGenre,F} <: Directive
     mode::M
     genre::G
     func::F
 end
 
-# Play Mode #
-#-----------#
+##############
+# Hook{Play} #
+##############
 
-@inline function (t::Transport{Play})(input...)
-    t = Transport(Record(), t.genre, t.func)
-    output = Untrack(t.func)(input...)
-    return call_record(t, output, input)
+@inline function (h::Hook{Play})(input...)
+    record = Hook(Record(), h.genre, h.func)
+    output = Untrack(h.func)(input...)
+    return call_record(record, output, input)
 end
 
 # include this method just to force specialization for `DataType` arguments
-@inline function (t::Transport{Play})(::Type{T}) where {T}
-    t = Transport(Record(), t.genre, t.func)
-    output = Untrack(t.func)(T)
-    return call_record(t, output, tuple(T))
+@inline function (h::Hook{Play})(::Type{T}) where {T}
+    record = Hook(Record(), h.genre, h.func)
+    output = Untrack(h.func)(T)
+    return call_record(record, output, tuple(T))
 end
 
-@inline call_record(t::Transport{Record}, output::NTuple{N}, input::Tuple, args...) where {N} = NTuple{N}(t(o, input, args...) for o in output)
-@inline call_record(t::Transport{Record}, output, input::Tuple, args...) = call_record(trackability(output), t, output, input, args...)
-@inline call_record(::TrackabilityTrait, t::Transport{Record}, output, input::Tuple, args...) = t(output, input, args...)
-@inline call_record(::NotTrackable, t::Transport{Record}, output, input::Tuple, args...) = output
+@inline call_record(h::Hook{Record}, output::NTuple{N}, input::Tuple, args...) where {N} = NTuple{N}(h(o, input, args...) for o in output)
+@inline call_record(h::Hook{Record}, output, input::Tuple, args...) = call_record(trackability(output), h, output, input, args...)
+@inline call_record(::TrackabilityTrait, h::Hook{Record}, output, input::Tuple, args...) = h(output, input, args...)
+@inline call_record(::NotTrackable, h::Hook{Record}, output, input::Tuple, args...) = output
 
-# Record Mode #
-#-------------#
+###########################
+# Hook{Record,ValueGenre} #
+###########################
 
-@inline function (t::Transport{Record,ValueGenre})(output, input)
-    output_note = track(output, t.genre)
-    output_note.parent = FunctionNote(t.genre, t.func, input)
+@inline function (h::Hook{Record,ValueGenre})(output, input)
+    output_note = track(output, h.genre)
+    output_note.parent = FunctionNote(h.genre, h.func, input)
     return output_note
 end
 
-@inline (t::Transport{Record,ValueGenre})(output, ::Tuple{<:DataType})   = track(output, t.genre)
-@inline (t::Transport{Record,ValueGenre,typeof(ones)})(output, input)    = track(output, t.genre)
-@inline (t::Transport{Record,ValueGenre,typeof(zeros)})(output, input)   = track(output, t.genre)
-@inline (t::Transport{Record,ValueGenre,typeof(copy)})(output, input)    = track(output, t.genre)
-@inline (t::Transport{Record,ValueGenre,typeof(reshape)})(output, input) = track(output, t.genre)
+@inline (h::Hook{Record,ValueGenre})(output, ::Tuple{<:DataType})   = track(output, h.genre)
+@inline (h::Hook{Record,ValueGenre,typeof(ones)})(output, input)    = track(output, h.genre)
+@inline (h::Hook{Record,ValueGenre,typeof(zeros)})(output, input)   = track(output, h.genre)
+@inline (h::Hook{Record,ValueGenre,typeof(copy)})(output, input)    = track(output, h.genre)
+@inline (h::Hook{Record,ValueGenre,typeof(reshape)})(output, input) = track(output, h.genre)
 
-# Dub Mode #
-#----------#
+########################
+# Hook{Dub,ValueGenre} #
+########################
 
-(t::Transport{Dub,ValueGenre}(output, input) = Instruction(t.genre, t.func, t.input, t.output, nothing)
+(h::Hook{Dub,ValueGenre}(output, input) = Instruction(h.genre, h.func, input, output, nothing)
 
+###########################
+# Hook{Replay,ValueGenre} #
+###########################
 
-@inline function (t::Transport{Record,ValueGenre})(output, input)
-    output_note = track(output, t.genre)
-    output_note.parent = FunctionNote(t.genre, t.func, input)
-    return output_note
+@inline function (h::Hook{Replay,ValueGenre})(output::RealNote, input::Tuple, cache)
+    output.value = Untrack(r.func)(input...)
+    return nothing
 end
 
-@inline (t::Transport{Record,ValueGenre})(output, ::Tuple{<:DataType})   = track(output, t.genre)
-@inline (t::Transport{Record,ValueGenre,typeof(ones)})(output, input)    = track(output, t.genre)
-@inline (t::Transport{Record,ValueGenre,typeof(zeros)})(output, input)   = track(output, t.genre)
-@inline (t::Transport{Record,ValueGenre,typeof(copy)})(output, input)    = track(output, t.genre)
-@inline (t::Transport{Record,ValueGenre,typeof(reshape)})(output, input) = track(output, t.genre)
+@inline function (h::Hook{Replay,ValueGenre})(output::ArrayNote, input::Tuple, cache)
+    copy!(output.value, Untrack(r.func)(input...))
+    return nothing
+end
+
+###########################
+# Hook{Rewind,ValueGenre} #
+###########################
+
+# ValueGenre doesn't support `Rewind`.
