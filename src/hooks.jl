@@ -106,12 +106,12 @@ end
 # Hook{Record,ValueGenre} #
 ###########################
 
-@inline (h::Hook{Record,ValueGenre})(output, input, _) = track(output, h.genre, FunctionNote(h.genre, h.func, input, _))
-@inline (h::Hook{Record,ValueGenre})(output, ::Tuple{<:DataType}, _)   = track(output, h.genre)
-@inline (h::Hook{Record,ValueGenre,typeof(ones)})(output, input, _)    = track(output, h.genre)
-@inline (h::Hook{Record,ValueGenre,typeof(zeros)})(output, input, _)   = track(output, h.genre)
-@inline (h::Hook{Record,ValueGenre,typeof(copy)})(output, input, _)    = track(output, h.genre)
-@inline (h::Hook{Record,ValueGenre,typeof(reshape)})(output, input, _) = track(output, h.genre)
+@inline (h::Hook{Record,ValueGenre})(output, input, ::Void) = track(output, h.genre, FunctionNote(h.genre, h.func, input, _))
+@inline (h::Hook{Record,ValueGenre})(output, ::Tuple{<:DataType}, ::Void)   = track(output, h.genre)
+@inline (h::Hook{Record,ValueGenre,typeof(ones)})(output, input, ::Void)    = track(output, h.genre)
+@inline (h::Hook{Record,ValueGenre,typeof(zeros)})(output, input, ::Void)   = track(output, h.genre)
+@inline (h::Hook{Record,ValueGenre,typeof(copy)})(output, input, ::Void)    = track(output, h.genre)
+@inline (h::Hook{Record,ValueGenre,typeof(reshape)})(output, input, ::Void) = track(output, h.genre)
 
 ########################
 # Hook{Dub,ValueGenre} #
