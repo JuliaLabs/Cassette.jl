@@ -97,17 +97,19 @@ struct MaybeTrackedElementwise <: IstrackedTrait end
 @inline _untrack(::Union{MaybeTrackedElementwise,TrackedElementwise}, x) = untrack.(x)
 @inline _untrack(::NotTracked, x) = x
 
-# walkback #
-#----------#
+# rewind! #
+#---------#
 
 @inline isroot(n::ValueNote) = n.parent === ROOT
 
-function walkback(f, n)
+rewind!(f, n::ValueNote) = _rewind!(f, n)
+
+function _rewind!(f, n)
     hasparent = isa(n, ValueNote) && !(isroot(n))
     f(n, hasparent)
     if hasparent
         for ancestor in n.parent.input
-            walkback(f, ancestor)
+            _rewind!(f, ancestor)
         end
     end
     return nothing
