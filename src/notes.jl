@@ -5,13 +5,14 @@
 # FunctionNote #
 #--------------#
 
-struct FunctionNote{G<:AbstractGenre,F,I<:Tuple}
+struct FunctionNote{G<:AbstractGenre,F,I<:Tuple,C}
     genre::G
     func::F
     input::I
+    cache::C
 end
 
-const ROOT = FunctionNote(ValueGenre(), nothing, tuple())
+const ROOT = FunctionNote(ValueGenre(), nothing, tuple(), nothing)
 
 # RealNote #
 #----------#
@@ -39,7 +40,7 @@ mutable struct ArrayNote{G<:AbstractGenre,V<:AbstractArray,C,T<:RealNote,N} <: A
     function ArrayNote(genre::G, value::V, parent::FunctionNote) where {G,N,V<:AbstractArray{<:Real,N}}
         cache = note_cache(genre, value)
         C = typeof(cache)
-        T = note_eltype(genre, value)
+        T = RealNote{G,eltype(value),note_cache_eltype(genre, value)}
         return new{G,V,C,T,N}(genre, value, cache, parent)
     end
 end
@@ -83,11 +84,11 @@ struct MaybeTrackedElementwise <: IstrackedTrait end
 # track/untrack #
 #---------------#
 
-@inline track(value, genre::AbstractGenre = ValueGenre()) = _track(trackability(value), value, genre)
+@inline track(value, genre::AbstractGenre = ValueGenre(), parent::FunctionNote = ROOT) = _track(trackability(value), value, genre, parent)
 
-@inline _track(::Trackable,            value::Real,          genre) = RealNote(genre, value, ROOT)
-@inline _track(::Trackable,            value::AbstractArray, genre) = ArrayNote(genre, value, ROOT)
-@inline _track(::TrackableElementwise, value::AbstractArray, genre) = RealNote.(genre, value, ROOT)
+@inline _track(::Trackable,            value::Real,          genre, parent) = RealNote(genre, value, parent)
+@inline _track(::Trackable,            value::AbstractArray, genre, parent) = ArrayNote(genre, value, parent)
+@inline _track(::TrackableElementwise, value::AbstractArray, genre, parent) = RealNote.(genre, value, parent)
 
 @inline untrack(n::ArrayNote) = n.value
 @inline untrack(n::RealNote) = n.value

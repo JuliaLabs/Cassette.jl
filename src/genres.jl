@@ -17,7 +17,7 @@ end
 
 @defgenre ValueGenre
 
-@inline note_eltype(::ValueGenre, value) = RealNote{ValueGenre,eltype(value),Void}
+@inline note_cache_eltype(::ValueGenre, value) = Void
 @inline note_cache(::ValueGenre, value) = nothing
 @inline promote_genre(::ValueGenre, ::ValueGenre) = ValueGenre()
 

@@ -1,20 +1,3 @@
-###########
-# Untrack #
-###########
-
-struct Untrack{F} <: Function
-    func::F
-end
-
-@inline Untrack(u::Untrack) = u
-
-@inline (u::Untrack{<:Any})(a) = u.func(untrack(a))
-@inline (u::Untrack{<:Any})(a, b) = u.func(untrack(a), untrack(b))
-@inline (u::Untrack{<:Any})(a, b, c) = u.func(untrack(a), untrack(b), untrack(c))
-@inline (u::Untrack{<:Any})(a, b, c, d) = u.func(untrack(a), untrack(b), untrack(c), untrack(d))
-@inline (u::Untrack{<:Any})(a, b, c, d, e) = u.func(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e))
-@inline (u::Untrack{<:Any})(a, b, c, d, e, others...) = u.func(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e), untrack.(others)...)
-
 #############
 # Intercept #
 #############
@@ -27,20 +10,31 @@ end
 
 @inline function (i::Intercept)(input...)
     genre = promote_genre(input...)
-    output = Hook(Play(), genre, i.func)(input...)
-    return handle_record(Hook(Record(), genre, func), output, input)
+    output, cache = Hook(Play(), genre, i.func)(input...)
+    return handle_record(Hook(Record(), genre, func), output, input, cache)
 end
 
 @inline function (i::Intercept)(::Type{T}) where {T}
     genre = promote_genre(T)
-    output = Hook(Play(), genre, i.func)(T)
-    return handle_record(Hook(Record(), genre, func), output, tuple(T))
+    output, cache = Hook(Play(), genre, i.func)(T)
+    return handle_record(Hook(Record(), genre, func), output, tuple(T), cache)
 end
 
-@inline handle_record(h::Hook{Record}, output::NTuple{N}, input::Tuple, args...) where {N} = NTuple{N}(h(o, input, args...) for o in output)
-@inline handle_record(h::Hook{Record}, output, input::Tuple, args...) = call_record(trackability(output), h, output, input, args...)
-@inline handle_record(::TrackabilityTrait, h::Hook{Record}, output, input::Tuple, args...) = h(output, input, args...)
-@inline handle_record(::NotTrackable, h::Hook{Record}, output, input::Tuple, args...) = output
+@inline function handle_record(h::Hook{Record}, output::NTuple{N}, input::Tuple, cache) where {N}
+    return NTuple{N}(h(o, input, cache) for o in output)
+end
+
+@inline function handle_record(h::Hook{Record}, output, input::Tuple, cache)
+    return call_record(trackability(output), h, output, input, cache)
+end
+
+@inline function handle_record(::TrackabilityTrait, h::Hook{Record}, output, input::Tuple, cache)
+    return h(output, input, cache)
+end
+
+@inline function handle_record(::NotTrackable, h::Hook{Record}, output, input::Tuple, cache)
+    return output
+end
 
 #=
 works for the following formats:
@@ -101,28 +95,23 @@ struct Hook{M<:HookMode,G<:AbstractGenre,F} <: Function
     func::F
 end
 
-##############
-# Hook{Play} #
-##############
+#########################
+# Hook{Play,ValueGenre} #
+#########################
 
-@inline (h::Hook{Play})(input...) = Untrack(h.func)(input...)
-@inline (h::Hook{Play})(::Type{T}) where {T} = Untrack(h.func)(T)
+@inline (h::Hook{Play,ValueGenre})(input...) = (Untrack(h.func)(input...), nothing)
+@inline (h::Hook{Play,ValueGenre})(::Type{T}) where {T} = (Untrack(h.func)(T), nothing)
 
 ###########################
 # Hook{Record,ValueGenre} #
 ###########################
 
-@inline function (h::Hook{Record,ValueGenre})(output, input)
-    output_note = track(output, h.genre)
-    output_note.parent = FunctionNote(h.genre, h.func, input)
-    return output_note
-end
-
-@inline (h::Hook{Record,ValueGenre})(output, ::Tuple{<:DataType})   = track(output, h.genre)
-@inline (h::Hook{Record,ValueGenre,typeof(ones)})(output, input)    = track(output, h.genre)
-@inline (h::Hook{Record,ValueGenre,typeof(zeros)})(output, input)   = track(output, h.genre)
-@inline (h::Hook{Record,ValueGenre,typeof(copy)})(output, input)    = track(output, h.genre)
-@inline (h::Hook{Record,ValueGenre,typeof(reshape)})(output, input) = track(output, h.genre)
+@inline (h::Hook{Record,ValueGenre})(output, input, _) = track(output, h.genre, FunctionNote(h.genre, h.func, input, _))
+@inline (h::Hook{Record,ValueGenre})(output, ::Tuple{<:DataType}, _)   = track(output, h.genre)
+@inline (h::Hook{Record,ValueGenre,typeof(ones)})(output, input, _)    = track(output, h.genre)
+@inline (h::Hook{Record,ValueGenre,typeof(zeros)})(output, input, _)   = track(output, h.genre)
+@inline (h::Hook{Record,ValueGenre,typeof(copy)})(output, input, _)    = track(output, h.genre)
+@inline (h::Hook{Record,ValueGenre,typeof(reshape)})(output, input, _) = track(output, h.genre)
 
 ########################
 # Hook{Dub,ValueGenre} #

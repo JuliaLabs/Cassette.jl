@@ -1,3 +1,5 @@
+# __precompile__()
+
 module Cassette
 
 using RealInterface
@@ -7,7 +9,7 @@ using FunctionWrappers
 
 include("genres.jl")
 include("notes.jl")
-include("directives.jl")
+include("hooks.jl")
 include("tapes.jl")
 include("utilities.jl")
 include("operations/reals.jl")
