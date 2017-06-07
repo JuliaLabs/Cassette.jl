@@ -20,22 +20,6 @@ end
     return handle_record(Hook(Record(), genre, func), output, tuple(T), cache)
 end
 
-@inline function handle_record(h::Hook{Record}, output::NTuple{N}, input::Tuple, cache) where {N}
-    return NTuple{N}(h(o, input, cache) for o in output)
-end
-
-@inline function handle_record(h::Hook{Record}, output, input::Tuple, cache)
-    return call_record(trackability(output), h, output, input, cache)
-end
-
-@inline function handle_record(::TrackabilityTrait, h::Hook{Record}, output, input::Tuple, cache)
-    return h(output, input, cache)
-end
-
-@inline function handle_record(::NotTrackable, h::Hook{Record}, output, input::Tuple, cache)
-    return output
-end
-
 #=
 works for the following formats:
 - `@intercept(f)(args...)`
@@ -95,6 +79,26 @@ struct Hook{M<:HookMode,G<:AbstractGenre,F} <: Function
     func::F
 end
 
+#############################################
+# handle_record (used by (::Intercept)(...) #
+#############################################
+
+@inline function handle_record(h::Hook{Record}, output::NTuple{N}, input::Tuple, cache) where {N}
+    return NTuple{N}(h(o, input, cache) for o in output)
+end
+
+@inline function handle_record(h::Hook{Record}, output, input::Tuple, cache)
+    return call_record(trackability(output), h, output, input, cache)
+end
+
+@inline function handle_record(::TrackabilityTrait, h::Hook{Record}, output, input::Tuple, cache)
+    return h(output, input, cache)
+end
+
+@inline function handle_record(::NotTrackable, h::Hook{Record}, output, input::Tuple, cache)
+    return output
+end
+
 #########################
 # Hook{Play,ValueGenre} #
 #########################
@@ -106,7 +110,7 @@ end
 # Hook{Record,ValueGenre} #
 ###########################
 
-@inline (h::Hook{Record,ValueGenre})(output, input, ::Void) = track(output, h.genre, FunctionNote(h.genre, h.func, input, _))
+@inline (h::Hook{Record,ValueGenre})(output, input, ::Void) = track(output, h.genre, FunctionNote(h.genre, h.func, input, nothing))
 @inline (h::Hook{Record,ValueGenre})(output, ::Tuple{<:DataType}, ::Void)   = track(output, h.genre)
 @inline (h::Hook{Record,ValueGenre,typeof(ones)})(output, input, ::Void)    = track(output, h.genre)
 @inline (h::Hook{Record,ValueGenre,typeof(zeros)})(output, input, ::Void)   = track(output, h.genre)
@@ -117,7 +121,7 @@ end
 # Hook{Dub,ValueGenre} #
 ########################
 
-(h::Hook{Dub,ValueGenre}(output, input) = Instruction(h.genre, h.func, input, output, nothing)
+(h::Hook{Dub,ValueGenre})(output, input) = Instruction(h.genre, h.func, input, output, nothing)
 
 ###########################
 # Hook{Replay,ValueGenre} #
