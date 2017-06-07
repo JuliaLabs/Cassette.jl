@@ -1,10 +1,8 @@
-abstract type Directive <: Function end
-
 ###########
 # Untrack #
 ###########
 
-struct Untrack{F} <: Directive
+struct Untrack{F} <: Function
     func::F
 end
 
@@ -21,14 +19,28 @@ end
 # Intercept #
 #############
 
-struct Intercept{F} <: Directive
+struct Intercept{F} <: Function
     func::F
 end
 
 @inline Intercept(i::Intercept) = i
 
-@inline (i::Intercept)(input...) = Hook(Play(), promote_genre(input...), i.func)(input...)
-@inline (i::Intercept)(::Type{T}) where {T} = Hook(Play(), genre(T), i.func)(T)
+@inline function (i::Intercept)(input...)
+    genre = promote_genre(input...)
+    output = Hook(Play(), genre, i.func)(input...)
+    return handle_record(Hook(Record(), genre, func), output, input)
+end
+
+@inline function (i::Intercept)(::Type{T}) where {T}
+    genre = promote_genre(T)
+    output = Hook(Play(), genre, i.func)(T)
+    return handle_record(Hook(Record(), genre, func), output, tuple(T))
+end
+
+@inline handle_record(h::Hook{Record}, output::NTuple{N}, input::Tuple, args...) where {N} = NTuple{N}(h(o, input, args...) for o in output)
+@inline handle_record(h::Hook{Record}, output, input::Tuple, args...) = call_record(trackability(output), h, output, input, args...)
+@inline handle_record(::TrackabilityTrait, h::Hook{Record}, output, input::Tuple, args...) = h(output, input, args...)
+@inline handle_record(::NotTrackable, h::Hook{Record}, output, input::Tuple, args...) = output
 
 #=
 works for the following formats:
@@ -83,7 +95,7 @@ struct Dub    <: HookMode end
 struct Replay <: HookMode end
 struct Rewind <: HookMode end
 
-struct Hook{M<:HookMode,G<:AbstractGenre,F} <: Directive
+struct Hook{M<:HookMode,G<:AbstractGenre,F} <: Function
     mode::M
     genre::G
     func::F
@@ -93,23 +105,8 @@ end
 # Hook{Play} #
 ##############
 
-@inline function (h::Hook{Play})(input...)
-    record = Hook(Record(), h.genre, h.func)
-    output = Untrack(h.func)(input...)
-    return call_record(record, output, input)
-end
-
-# include this method just to force specialization for `DataType` arguments
-@inline function (h::Hook{Play})(::Type{T}) where {T}
-    record = Hook(Record(), h.genre, h.func)
-    output = Untrack(h.func)(T)
-    return call_record(record, output, tuple(T))
-end
-
-@inline call_record(h::Hook{Record}, output::NTuple{N}, input::Tuple, args...) where {N} = NTuple{N}(h(o, input, args...) for o in output)
-@inline call_record(h::Hook{Record}, output, input::Tuple, args...) = call_record(trackability(output), h, output, input, args...)
-@inline call_record(::TrackabilityTrait, h::Hook{Record}, output, input::Tuple, args...) = h(output, input, args...)
-@inline call_record(::NotTrackable, h::Hook{Record}, output, input::Tuple, args...) = output
+@inline (h::Hook{Play})(input...) = Untrack(h.func)(input...)
+@inline (h::Hook{Play})(::Type{T}) where {T} = Untrack(h.func)(T)
 
 ###########################
 # Hook{Record,ValueGenre} #
