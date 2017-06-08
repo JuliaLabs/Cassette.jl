@@ -11,6 +11,8 @@ end
 
 @inline Base.getindex(c::Cache) = c.data
 @inline Base.setindex!(c::Cache, x) = (c.data = x; c)
+@inline Base.eltype(::Cache{C}) where {C} = C
+@inline Base.eltype(::Type{Cache{C}}) where {C} = C
 
 mutable struct Value{V}
     data::V
@@ -18,6 +20,8 @@ end
 
 @inline Base.getindex(v::Value) = v.data
 @inline Base.setindex!(v::Value, x) = (v.data = x; v)
+@inline Base.eltype(::Value{V}) where {V} = V
+@inline Base.eltype(::Type{Value{V}}) where {V} = V
 
 ##############
 # Note Types #
@@ -26,40 +30,45 @@ end
 # FunctionNote #
 #--------------#
 
-struct FunctionNote{G<:AbstractGenre,V,C,P<:Tuple}
-    value::V
-    cache::Cache{C}
+struct FunctionNote{G<:AbstractGenre,F,P<:Tuple,C}
+    func::F
     parent::P
-    FunctionNote{G}(value::V, cache::Cache{C}, parent::P) where {G<:AbstractGenre,V,C,P<:Tuple} = new{G,V,C,P}(value, cache, parent)
-    FunctionNote{G}(value, cache, parent) where {G<:AbstractGenre} = FunctionNote{G}(value, Cache(cache), parent)
+    cache::Cache{C}
+    FunctionNote{G}(func::F, parent::P, cache::Cache{C}) where {G<:AbstractGenre,F,P<:Tuple,C} = new{G,F,P,C}(func, parent, cache)
+    FunctionNote{G}(func, parent) where {G<:AbstractGenre} = FunctionNote{G}(func, parent, VOID_CACHE)
 end
+
+const VOID_CACHE = Cache(nothing)
+
+@inline func(n::FunctionNote) = n.func
 
 # RealNote #
 #----------#
 
-struct RealNote{G<:AbstractGenre,V<:Real,C,P} <: Real
+struct RealNote{G<:AbstractGenre,V<:Real,F,C} <: Real
     value::Value{V}
+    parent::FunctionNote{G,F}
     cache::Cache{C}
-    parent::FunctionNote{G,P}
-    function RealNote(value::V, parent::FunctionNote{G,P}) where {G,V,P}
+    function RealNote(value::V, parent::FunctionNote{G,F}) where {G,V,F}
         cache = note_cache(G(), value)
-        C = typeof(cache)
-        return new{G,V,C,P}(Value(value), Cache(cache), parent)
+        C = eltype(cache)
+        return new{G,V,F,C}(Value(value), parent, cache)
     end
 end
 
 # ArrayNote #
 #-----------#
 
-struct ArrayNote{G<:AbstractGenre,V<:AbstractArray,C,T<:RealNote,N,P} <: AbstractArray{T,N}
+struct ArrayNote{G<:AbstractGenre,V<:AbstractArray,F,C,T<:RealNote,N} <: AbstractArray{T,N}
     value::Value{V}
+    parent::FunctionNote{G,F}
     cache::Cache{C}
-    parent::FunctionNote{G,P}
-    function ArrayNote(value::V, parent::FunctionNote{G,P}) where {G,N,V<:AbstractArray{<:Real,N},P}
+    function ArrayNote(value::V, parent::FunctionNote{G,F}) where {G,N,V<:AbstractArray{<:Real,N},F}
         cache = note_cache(G(), value)
-        C = typeof(cache)
-        T = RealNote{G,eltype(value),note_cache_eltype(G(), value),typeof(Base.getindex)}
-        return new{G,V,C,T,N,P}(Value(value), Cache(cache), parent)
+        C = eltype(cache)
+        TC = note_cache_eltype(G(), value, cache)
+        T = RealNote{G,eltype(value),TC,typeof(Base.getindex)}
+        return new{G,V,F,C,T,N}(Value(value), parent, cache)
     end
 end
 
@@ -134,10 +143,10 @@ root(g::AbstractGenre) = FunctionNote(g, nothing, tuple(), nothing)
 
 _rewind!(f!, n) = (f!(n); isroot(n) || _rewind_ancestors!(f!, parent(n)); nothing)
 
-@generated function _rewind_ancestors!(f!, n::FunctionNote{G,F,I}) where {G<:AbstractGenre,F,I<:Tuple}
+@generated function _rewind_ancestors!(f!, n::FunctionNote{G,F,P}) where {G<:AbstractGenre,F,P<:Tuple}
     rewind_calls = Expr(:block, Any[])
-    for i in 1:nfields(I)
-        push!(rewind_calls.args, :(_rewind!(f!, ancestors[$i]::$(I.parameters[i]))))
+    for i in 1:nfields(P)
+        push!(rewind_calls.args, :(_rewind!(f!, ancestors[$i]::$(P.parameters[i]))))
     end
     return quote
         $(Expr(:meta, :noinline))
@@ -155,21 +164,24 @@ end
 #-----------#
 
 @inline valuetype(x) = typeof(x)
+@inline valuetype(::RealNote{G,V}) where {G,V} = V
+@inline valuetype(::ArrayNote{G,V}) where {G,V} = V
 @inline valuetype(::Type{V}) where {V} = V
-@inline valuetype(::RealNote{<:Any,V}) where {V} = V
-@inline valuetype(::ArrayNote{<:Any,V}) where {V} = V
-@inline valuetype(::Type{RealNote{G,V,C,P}}) where {G,V,C,P} = V
-@inline valuetype(::Type{ArrayNote{G,V,C,T,N,P}}) where {G,V,C,T,N,P} = V
+@inline valuetype(::Type{RealNote{G,V,F,C}}) where {G,V,F,C} = V
+@inline valuetype(::Type{ArrayNote{G,V,F,C,T,N}}) where {G,V,F,C,T,N} = V
+@inline valuetype(::Type{FunctionNote{G,F,P,C}}) where {G,F,P,C} = F
 
 # cachetype #
 #-----------#
 
 @inline cachetype(x) = Void
-@inline cachetype(::DataType) = Void
-@inline cachetype(::RealNote{<:Any,<:Any,C}) where {C} = C
-@inline cachetype(::ArrayNote{<:Any,<:Any,C}) where {C} = C
-@inline cachetype(::Type{RealNote{G,V,C,P}}) where {G,V,C,P} = C
-@inline cachetype(::Type{ArrayNote{G,V,C,T,N,P}}) where {G,V,C,T,N,P} = C
+@inline cachetype(::RealNote{G,V,F,C}) where {G,V,F,C} = C
+@inline cachetype(::ArrayNote{G,V,F,C}) where {G,V,F,C} = C
+@inline cachetype(::FunctionNote{G,F,P,C}) where {G,F,P,C} = C
+@inline valuetype(::Type{V}) where {V} = Void
+@inline cachetype(::Type{RealNote{G,V,F,C}}) where {G,V,F,C} = C
+@inline cachetype(::Type{ArrayNote{G,V,F,C,T,N}}) where {G,V,F,C,T,N} = C
+@inline cachetype(::Type{FunctionNote{G,F,P,C}}) where {G,F,P,C} = C
 
 # value #
 #-------#
@@ -180,7 +192,7 @@ end
 @inline value(x) = _value(istracked(x), x)
 @inline value(n::RealNote) = n.value[]
 @inline value(n::ArrayNote) = n.value[]
-@inline value(n::FunctionNote) = n.value[]
+@inline value(n::FunctionNote) = func(n)
 @inline value(::Type{T}) where {T<:ValueNote} = valuetype(T)
 
 # value! #
@@ -189,7 +201,6 @@ end
 @inline value!(x::AbstractArray, v) = (for i in eachindex(x); value!(x[i], v[i]); end; v)
 @inline value!(n::RealNote, v) = (n.value[] = v)
 @inline value!(n::ArrayNote, v) = (n.value[] = v)
-@inline value!(n::FunctionNote, v) = (n.value[] = v)
 
 # cache #
 #-------#
@@ -217,9 +228,9 @@ end
 @inline genre(::RealNote{G}) = G()
 @inline genre(::ArrayNote{G}) = G()
 @inline genre(::FunctionNote{G}) = G()
-@inline genre(::Type{RealNote{G,V,C,P}}) where {G,V,C,P} = G()
-@inline genre(::Type{ArrayNote{G,V,C,T,N,P}}) where {G,V,C,T,N,P} = G()
-@inline genre(::Type{FunctionNote{G,V,C,T,N,P}}) where {G,V,C,T,N,P} = G()
+@inline genre(::Type{RealNote{G,V,F,C}}) where {G,V,F,C} = G()
+@inline genre(::Type{ArrayNote{G,V,F,C,T,N}}) where {G,V,F,C,T,N} = G()
+@inline genre(::Type{FunctionNote{G,F,P,C}}) where {G,F,P,C} = G()
 
 # parent #
 #--------#
