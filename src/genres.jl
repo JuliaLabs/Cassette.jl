@@ -16,7 +16,7 @@ end
 
 @defgenre ValueGenre
 
-@inline note_cache_eltype(::ValueGenre, value, cache) = Void
+@inline note_cache_eltype(::ValueGenre, cache) = Void
 @inline note_cache(::ValueGenre, value) = VOID_CACHE
 
 #############

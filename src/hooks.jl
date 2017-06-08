@@ -33,14 +33,24 @@ end
 # Hook{Replay,ValueGenre} #
 ###########################
 
-@inline (h::Hook{Replay,ValueGenre})(output::RealNote, input::Tuple) = value!(output, disarm(func(h))(input...))
-@inline (h::Hook{Replay,ValueGenre})(output::ArrayNote, input::Tuple) = copy!(value(output), disarm(func(h))(input...))
+@inline (h::Hook{Replay,ValueGenre})(output::RealNote, input::Tuple, parent) = value!(output, disarm(func(h))(input...))
+@inline (h::Hook{Replay,ValueGenre})(output::ArrayNote, input::Tuple, parent) = copy!(value(output), disarm(func(h))(input...))
 
 ###########################
 # Hook{Rewind,ValueGenre} #
 ###########################
 
 # ValueGenre doesn't support `Rewind`.
+
+#########
+# Cache #
+#########
+
+struct Cache{T}
+    data::T
+end
+
+@inline Base.getindex(cache::Cache) = cache.data
 
 #############
 # Intercept #
@@ -77,7 +87,9 @@ end
     return _call_record_hook(trackability(output), h, input, output, cache...)
 end
 
-@inline _call_record_hook(::TrackabilityTrait, h::Hook{Record}, input::Tuple, output, cache::Cache...) = h(output, input, cache...)
+@inline _call_record_hook(::TrackabilityTrait, h::Hook{Record}, input::Tuple, output, cache::Cache) = h(output, input, cache[])
+
+@inline _call_record_hook(::TrackabilityTrait, h::Hook{Record}, input::Tuple, output) = h(output, input)
 
 @inline _call_record_hook(::NotTrackable, h::Hook{Record}, input::Tuple, output, cache::Cache...) = output
 

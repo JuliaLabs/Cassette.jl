@@ -12,12 +12,12 @@ end
 
 @inline func(d::Disarm) = d.func
 
-@inline (d::Disarm{<:Any})(a) = func(d)(untrack(a))
-@inline (d::Disarm{<:Any})(a, b) = func(d)(untrack(a), untrack(b))
-@inline (d::Disarm{<:Any})(a, b, c) = func(d)(untrack(a), untrack(b), untrack(c))
-@inline (d::Disarm{<:Any})(a, b, c, d) = func(d)(untrack(a), untrack(b), untrack(c), untrack(d))
-@inline (d::Disarm{<:Any})(a, b, c, d, e) = func(d)(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e))
-@inline (d::Disarm{<:Any})(a, b, c, d, e, others...) = func(d)(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e), untrack.(others)...)
+@inline (f::Disarm{<:Any})(a) = func(f)(value(a))
+@inline (f::Disarm{<:Any})(a, b) = func(f)(value(a), value(b))
+@inline (f::Disarm{<:Any})(a, b, c) = func(f)(value(a), value(b), value(c))
+@inline (f::Disarm{<:Any})(a, b, c, d) = func(f)(value(a), value(b), value(c), value(d))
+@inline (f::Disarm{<:Any})(a, b, c, d, e) = func(f)(value(a), value(b), value(c), value(d), value(e))
+@inline (f::Disarm{<:Any})(a, b, c, d, e, others...) = func(f)(value(a), value(b), value(c), value(d), value(e), value.(others)...)
 
 #########################
 # Expression Generation #
@@ -33,7 +33,7 @@ function toexpr(output::ValueNote)
         y = interpolated_variable(x)
         if !(isroot(x))
             p = parent(x)
-            push!(body.args, :($y = $(value(p))($(interpolated_variable.(parent(p)...))))
+            push!(body.args, :($y = $(value(p))($(interpolated_variable.(parent(p)...)))))
         elseif isa(x, ValueNote)
             in(y, args) || push!(args, y)
         end

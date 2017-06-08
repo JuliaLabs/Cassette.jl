@@ -14,7 +14,7 @@ HookWrapper(mode::HookMode, note::ValueNote) = HookWrapper(mode, parent(note), n
 
 @noinline function (w::HookWrapper)()
     h! = Hook(w.mode, genre(w.parent), value(w.parent))
-    h!(w.output, parent(w.parent), cache(w.parent))
+    h!(w.output, parent(w.parent), w.parent)
     return nothing
 end
 
