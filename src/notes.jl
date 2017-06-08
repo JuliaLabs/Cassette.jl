@@ -57,10 +57,11 @@ struct Trackable <: TrackabilityTrait end
 struct NotTrackable <: TrackabilityTrait end
 struct TrackableElementwise <: TrackabilityTrait end
 
-@inline trackability(::Any) = NotTrackable()
-@inline trackability(::Real) = Trackable()
-@inline trackability(::AbstractArray{<:Real}) = Trackable()
-@inline trackability(::AbstractArray) = TrackableElementwise()
+@inline trackability(x) = trackability(typeof(x))
+@inline trackability(::Type{<:Any}) = NotTrackable()
+@inline trackability(::Type{<:Real}) = Trackable()
+@inline trackability(::Type{<:AbstractArray{<:Real}}) = Trackable()
+@inline trackability(::Type{<:AbstractArray}) = TrackableElementwise()
 
 ###################
 # istracked trait #
@@ -73,11 +74,12 @@ struct NotTracked <: IstrackedTrait end
 struct TrackedElementwise <: IstrackedTrait end
 struct MaybeTrackedElementwise <: IstrackedTrait end
 
-@inline istracked(::Any) = NotTracked()
-@inline istracked(::AbstractArray{T}) where {T} = isleaftype(T) ? NotTracked() : MaybeTrackedElementwise()
-@inline istracked(::AbstractArray{<:RealNote}) = TrackedElementwise()
-@inline istracked(::ArrayNote) = Tracked()
-@inline istracked(::RealNote) = Tracked()
+@inline istracked(x) = istracked(typeof(x))
+@inline istracked(::Type{<:Any}) = NotTracked()
+@inline istracked(::Type{<:AbstractArray{T}}) where {T} = isleaftype(T) ? NotTracked() : MaybeTrackedElementwise()
+@inline istracked(::Type{<:AbstractArray{<:RealNote}}) = TrackedElementwise()
+@inline istracked(::Type{<:ArrayNote}) = Tracked()
+@inline istracked(::Type{<:RealNote}) = Tracked()
 
 ###############
 # root/isroot #
@@ -85,14 +87,14 @@ struct MaybeTrackedElementwise <: IstrackedTrait end
 
 root(::G) where {G<:AbstractGenre} = FunctionNote{G}(nothing, tuple())
 
-@inline isroot(::FunctionNote) = false
-@inline isroot(::RealNote) = false
-@inline isroot(::ArrayNote) = false
-
-@inline isroot(::Any) = true
-@inline isroot(::FunctionNote{<:AbstractGenre,Void}) = true
-@inline isroot(::RealNote{<:AbstractGenre,<:Real,<:Any,Void}) = true
-@inline isroot(::ArrayNote{<:AbstractGenre,<:AbstractArray,<:Any,<:RealNote,<:Any,Void}) = true
+@inline isroot(x) = isroot(typeof(x))
+@inline isroot(::Type{<:FunctionNote}) = false
+@inline isroot(::Type{<:RealNote}) = false
+@inline isroot(::Type{<:ArrayNote}) = false
+@inline isroot(::Type{<:Any}) = true
+@inline isroot(::Type{<:FunctionNote{<:AbstractGenre,Void}}) = true
+@inline isroot(::Type{<:RealNote{<:AbstractGenre,<:Real,<:Any,Void}}) = true
+@inline isroot(::Type{<:ArrayNote{<:AbstractGenre,<:AbstractArray,<:Any,<:RealNote,<:Any,Void}}) = true
 
 #########
 # track #
@@ -133,9 +135,7 @@ end
 # valuetype #
 #-----------#
 
-@inline valuetype(x) = typeof(x)
-@inline valuetype(::RealNote{G,V}) where {G,V} = V
-@inline valuetype(::ArrayNote{G,V}) where {G,V} = V
+@inline valuetype(x) = valuetype(typeof(x))
 @inline valuetype(::Type{V}) where {V} = V
 @inline valuetype(::Type{RealNote{G,V,F,C}}) where {G,V,F,C} = V
 @inline valuetype(::Type{ArrayNote{G,V,F,C,T,N}}) where {G,V,F,C,T,N} = V
@@ -144,10 +144,7 @@ end
 # cachetype #
 #-----------#
 
-@inline cachetype(x) = Void
-@inline cachetype(::RealNote{G,V,F,C}) where {G,V,F,C} = C
-@inline cachetype(::ArrayNote{G,V,F,C}) where {G,V,F,C} = C
-@inline cachetype(::FunctionNote{G,F,P,C}) where {G,F,P,C} = C
+@inline cachetype(x) = cachetype(typeof(x))
 @inline cachetype(::Type{V}) where {V} = Void
 @inline cachetype(::Type{RealNote{G,V,F,C}}) where {G,V,F,C} = C
 @inline cachetype(::Type{ArrayNote{G,V,F,C,T,N}}) where {G,V,F,C,T,N} = C
@@ -160,25 +157,20 @@ end
 @inline _value(::NotTracked, x) = x
 
 @inline value(x) = _value(istracked(x), x)
+@inline value(::Type{T}) where {T} = valuetype(T)
 @inline value(n::RealNote) = n.value
 @inline value(n::ArrayNote) = n.value
 @inline value(n::FunctionNote) = n.value
-@inline value(::Type{T}) where {T<:ValueNote} = valuetype(T)
 
 # value! #
 #--------#
 
-@inline value!(x::AbstractArray, v) = (for i in eachindex(x); value!(x[i], v[i]); end; v)
-@inline value!(n::RealNote, v) = (n.value = v)
-@inline value!(n::ArrayNote, v) = (n.value = v)
+@inline value!(n::RealNote, v::Real) = (n.value = v)
+@inline value!(n::ArrayNote, v::AbstractArray) = (n.value = v)
 
 # cache #
 #-------#
 
-@inline _cache(::Union{MaybeTrackedElementwise,TrackedElementwise}, x) = cache.(x)
-@inline _cache(::NotTracked, x) = nothing
-
-@inline cache(x) = _cache(istracked(x), x)
 @inline cache(n::RealNote) = n.cache
 @inline cache(n::ArrayNote) = n.cache
 @inline cache(n::FunctionNote) = n.cache
@@ -186,7 +178,6 @@ end
 # cache! #
 #--------#
 
-@inline cache!(x::AbstractArray, c) = (for i in eachindex(x); cache!(x[i], c[i]); end; c)
 @inline cache!(n::RealNote, c) = (n.cache = c)
 @inline cache!(n::ArrayNote, c) = (n.cache = c)
 @inline cache!(n::FunctionNote, c) = (n.cache = c)
@@ -194,10 +185,8 @@ end
 # genre #
 #-------#
 
-@inline genre(x) = ValueGenre()
-@inline genre(::RealNote{G}) where {G} = G()
-@inline genre(::ArrayNote{G}) where {G} = G()
-@inline genre(::FunctionNote{G}) where {G} = G()
+@inline genre(x) = genre(typeof(x))
+@inline genre(::Type{T}) where {T} = ValueGenre()
 @inline genre(::Type{RealNote{G,V,F,C}}) where {G,V,F,C} = G()
 @inline genre(::Type{ArrayNote{G,V,F,C,T,N}}) where {G,V,F,C,T,N} = G()
 @inline genre(::Type{FunctionNote{G,F,P,C}}) where {G,F,P,C} = G()
