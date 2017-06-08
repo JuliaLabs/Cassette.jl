@@ -58,7 +58,7 @@ struct NotTrackable <: TrackabilityTrait end
 struct TrackableElementwise <: TrackabilityTrait end
 
 @inline trackability(x) = trackability(typeof(x))
-@inline trackability(::Type{<:Any}) = NotTrackable()
+@inline trackability(::DataType) = NotTrackable()
 @inline trackability(::Type{<:Real}) = Trackable()
 @inline trackability(::Type{<:AbstractArray{<:Real}}) = Trackable()
 @inline trackability(::Type{<:AbstractArray}) = TrackableElementwise()
@@ -75,7 +75,7 @@ struct TrackedElementwise <: IstrackedTrait end
 struct MaybeTrackedElementwise <: IstrackedTrait end
 
 @inline istracked(x) = istracked(typeof(x))
-@inline istracked(::Type{<:Any}) = NotTracked()
+@inline istracked(::DataType) = NotTracked()
 @inline istracked(::Type{<:AbstractArray{T}}) where {T} = isleaftype(T) ? NotTracked() : MaybeTrackedElementwise()
 @inline istracked(::Type{<:AbstractArray{<:RealNote}}) = TrackedElementwise()
 @inline istracked(::Type{<:ArrayNote}) = Tracked()
@@ -88,13 +88,13 @@ struct MaybeTrackedElementwise <: IstrackedTrait end
 root(::G) where {G<:AbstractGenre} = FunctionNote{G}(nothing, tuple())
 
 @inline isroot(x) = isroot(typeof(x))
+@inline isroot(::DataType) = true
 @inline isroot(::Type{<:FunctionNote}) = false
 @inline isroot(::Type{<:RealNote}) = false
 @inline isroot(::Type{<:ArrayNote}) = false
-@inline isroot(::Type{<:Any}) = true
 @inline isroot(::Type{<:FunctionNote{<:AbstractGenre,Void}}) = true
-@inline isroot(::Type{<:RealNote{<:AbstractGenre,<:Real,<:Any,Void}}) = true
-@inline isroot(::Type{<:ArrayNote{<:AbstractGenre,<:AbstractArray,<:Any,<:RealNote,<:Any,Void}}) = true
+@inline isroot(::Type{<:RealNote{<:AbstractGenre,<:Real,Void}}) = true
+@inline isroot(::Type{<:ArrayNote{<:AbstractGenre,<:AbstractArray,Void}}) = true
 
 #########
 # track #
