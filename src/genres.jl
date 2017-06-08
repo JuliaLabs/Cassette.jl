@@ -9,7 +9,6 @@ macro defgenre(G)
 end
 
 @inline genre(g::AbstractGenre) = g
-@inline genre(x) = ValueGenre()
 
 ##############
 # ValueGenre #

@@ -1,25 +1,29 @@
-###########
-# Untrack #
-###########
+##########
+# Disarm #
+##########
 
-struct Untrack{F} <: Function
+struct Disarm{F} <: Function
     func::F
 end
 
-@inline Untrack(u::Untrack) = u
+@inline Disarm(d::Disarm) = d
 
-@inline (u::Untrack{<:Any})(a) = u.func(untrack(a))
-@inline (u::Untrack{<:Any})(a, b) = u.func(untrack(a), untrack(b))
-@inline (u::Untrack{<:Any})(a, b, c) = u.func(untrack(a), untrack(b), untrack(c))
-@inline (u::Untrack{<:Any})(a, b, c, d) = u.func(untrack(a), untrack(b), untrack(c), untrack(d))
-@inline (u::Untrack{<:Any})(a, b, c, d, e) = u.func(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e))
-@inline (u::Untrack{<:Any})(a, b, c, d, e, others...) = u.func(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e), untrack.(others)...)
+@inline disarm(f) = Disarm(f)
+
+@inline func(d::Disarm) = d.func
+
+@inline (d::Disarm{<:Any})(a) = func(d)(untrack(a))
+@inline (d::Disarm{<:Any})(a, b) = func(d)(untrack(a), untrack(b))
+@inline (d::Disarm{<:Any})(a, b, c) = func(d)(untrack(a), untrack(b), untrack(c))
+@inline (d::Disarm{<:Any})(a, b, c, d) = func(d)(untrack(a), untrack(b), untrack(c), untrack(d))
+@inline (d::Disarm{<:Any})(a, b, c, d, e) = func(d)(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e))
+@inline (d::Disarm{<:Any})(a, b, c, d, e, others...) = func(d)(untrack(a), untrack(b), untrack(c), untrack(d), untrack(e), untrack.(others)...)
 
 #########################
 # Expression Generation #
 #########################
 
-interpolated_variable(x::ValueNote) = Symbol("x_" * idstring(untrack(x)))
+interpolated_variable(x::ValueNote) = Symbol("x_" * idstring(value(x)))
 interpolated_variable(x) = x
 
 function toexpr(output::ValueNote)
@@ -28,8 +32,8 @@ function toexpr(output::ValueNote)
     rewind!(output) do x
         y = interpolated_variable(x)
         if !(isroot(x))
-            p = x.parent
-            push!(body.args, :($y = $(p.func)($(interpolated_variable.(p.input)...))))
+            p = parent(x)
+            push!(body.args, :($y = $(value(p))($(interpolated_variable.(parent(p)...))))
         elseif isa(x, ValueNote)
             in(y, args) || push!(args, y)
         end

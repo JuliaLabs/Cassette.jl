@@ -16,11 +16,11 @@ Base.getindex(n::ArrayNote, i...) = @intercept(getindex)(n, i...)
 
 Base.setindex!(n::ArrayNote, i...) = error("ArrayNotes do not support setindex!; load RealNotes into a normal Array instead")
 
-Base.size(n::ArrayNote) = size(untrack(n))
+Base.size(n::ArrayNote) = size(value(n))
 
-Base.length(n::ArrayNote) = length(untrack(n))
+Base.length(n::ArrayNote) = length(value(n))
 
-Base.indices(n::ArrayNote) = indices(untrack(n))
+Base.indices(n::ArrayNote) = indices(value(n))
 
 Base.start(n::ArrayNote) = start(n)
 
@@ -28,12 +28,12 @@ Base.next(n::ArrayNote, state) = next(n, state)
 
 Base.done(n::ArrayNote, state) = done(n, state)
 
-Base.IndexStyle(::Type{T}) where {T<:ArrayNote} = IndexStyle(valtype(T))
-Base.IndexStyle(n::ArrayNote) = IndexStyle(untrack(n))
+Base.IndexStyle(::Type{T}) where {T<:ArrayNote} = IndexStyle(valuetype(T))
+Base.IndexStyle(n::ArrayNote) = IndexStyle(value(n))
 
-Base.similar(n::ArrayNote) = similar(untrack(n), eltype(n))
-Base.similar(n::ArrayNote, ::Type{T}) where {T} = similar(untrack(n), T)
-Base.similar(n::ArrayNote, ::Type{T}, dims) where {T} = similar(untrack(n), T, dims)
+Base.similar(n::ArrayNote) = similar(value(n), eltype(n))
+Base.similar(n::ArrayNote, ::Type{T}) where {T} = similar(value(n), T)
+Base.similar(n::ArrayNote, ::Type{T}, dims) where {T} = similar(value(n), T, dims)
 
 ###########################
 # Miscellaneous Functions #
@@ -43,15 +43,15 @@ Base.similar(n::ArrayNote, ::Type{T}, dims) where {T} = similar(untrack(n), T, d
 
 Base.copy(n::ArrayNote) = @intercept(copy)(n)
 
-Base.ones(n::ArrayNote) = track(ones(n.value), genre(n))
-Base.ones(n::ArrayNote, ::Type{T}) where {T} = track(ones(n.value, T), genre(n))
-Base.ones(n::ArrayNote, ::Type{T}, dims::Tuple) where {T} = track(ones(n.value, T, dims), genre(n))
-Base.ones(n::ArrayNote, ::Type{T}, dims...) where {T} = track(ones(n.value, T, dims...), genre(n))
+Base.ones(n::ArrayNote) = track(ones(value(n)), genre(n))
+Base.ones(n::ArrayNote, ::Type{T}) where {T} = track(ones(value(n), T), genre(n))
+Base.ones(n::ArrayNote, ::Type{T}, dims::Tuple) where {T} = track(ones(value(n), T, dims), genre(n))
+Base.ones(n::ArrayNote, ::Type{T}, dims...) where {T} = track(ones(value(n), T, dims...), genre(n))
 
-Base.zeros(n::ArrayNote) = track(zeros(n.value), genre(n))
-Base.zeros(n::ArrayNote, ::Type{T}) where {T} = track(zeros(n.value, T), genre(n))
-Base.zeros(n::ArrayNote, ::Type{T}, dims::Tuple) where {T} = track(zeros(n.value, T, dims), genre(n))
-Base.zeros(n::ArrayNote, ::Type{T}, dims...) where {T} = track(zeros(n.value, T, dims...), genre(n))
+Base.zeros(n::ArrayNote) = track(zeros(value(n)), genre(n))
+Base.zeros(n::ArrayNote, ::Type{T}) where {T} = track(zeros(value(n), T), genre(n))
+Base.zeros(n::ArrayNote, ::Type{T}, dims::Tuple) where {T} = track(zeros(value(n), T, dims), genre(n))
+Base.zeros(n::ArrayNote, ::Type{T}, dims...) where {T} = track(zeros(value(n), T, dims...), genre(n))
 
 Base.reshape(n::ArrayNote, dims::Type{Val{N}}) where {N} = @intercept(reshape)(n, dims)
 Base.reshape(n::ArrayNote, dims::Tuple{Vararg{Int,N}}) where {N} = @intercept(reshape)(n, dims)

@@ -10,11 +10,11 @@ struct HookWrapper{M<:HookMode,F<:FunctionNote,O<:ValueNote} <: Function
     output::O
 end
 
-HookWrapper(mode::HookMode, note::ValueNote) = HookWrapper(mode, note.parent, note)
+HookWrapper(mode::HookMode, note::ValueNote) = HookWrapper(mode, parent(note), note)
 
 @noinline function (w::HookWrapper)()
-    h! = Hook(w.mode, w.parent.genre, w.parent.func)
-    h!(w.output, w.parent.input, w.parent.cache)
+    h! = Hook(w.mode, genre(w.parent), value(w.parent))
+    h!(w.output, parent(w.parent), cache(w.parent))
     return nothing
 end
 

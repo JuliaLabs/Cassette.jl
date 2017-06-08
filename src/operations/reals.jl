@@ -71,16 +71,16 @@ end
 
 @inline Base.float(n::RealNote) = track(float(n), genre(n))
 
-@inline Base.one(::Type{T}) where {T<:RealNote} = track(one(valtype(T)), genre(T))
+@inline Base.one(::Type{T}) where {T<:RealNote} = track(one(valuetype(T)), genre(T))
 
-@inline Base.zero(::Type{T}) where {T<:RealNote} = track(zero(valtype(T)), genre(T))
+@inline Base.zero(::Type{T}) where {T<:RealNote} = track(zero(valuetype(T)), genre(T))
 
 @inline Base.rand(T::Type{<:RealNote}) = @intercept(rand)(T)
 
 @inline Base.rand(rng::AbstractRNG, T::Type{<:RealNote}) = @intercept(rand)(rng, T)
 
 @inline Base.eps(n::RealNote) = @intercept(eps)(n)
-@inline Base.eps(::Type{T}) where {T<:RealNote} = track(eps(valtype(T)), genre(T))
+@inline Base.eps(::Type{T}) where {T<:RealNote} = track(eps(valuetype(T)), genre(T))
 
 @inline Base.floor(n::RealNote) = @intercept(floor)(n)
 @inline Base.floor(T::Type{<:Real}, n::RealNote) = @intercept(floor)(T, n)
@@ -101,7 +101,7 @@ end
 ########################
 
 Base.convert(::Type{RealNote{G,V,C}}, x::Real) where {G<:AbstractGenre,V<:Real,C} = track(V(x), G())
-Base.convert(::Type{RealNote{G,V,C}}, n::RealNote) where {G<:AbstractGenre,V<:Real,C} = track(V(untrack(n)), G())
+Base.convert(::Type{RealNote{G,V,C}}, n::RealNote) where {G<:AbstractGenre,V<:Real,C} = track(V(value(n)), G())
 
 Base.convert(::Type{T}, n::RealNote) where {T<:Real} = error("""
                                                              Attempted to convert a value of type $(typeof(n)) to type $T.
