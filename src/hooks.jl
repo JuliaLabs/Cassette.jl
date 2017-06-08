@@ -11,13 +11,7 @@ end
 @inline function (i::Intercept)(input...)
     genre = promote_genre(input...)
     output, cache = Hook(Play(), genre, i.func)(input...)
-    return handle_record(Hook(Record(), genre, func), output, input, cache)
-end
-
-@inline function (i::Intercept)(::Type{T}) where {T}
-    genre = promote_genre(T)
-    output, cache = Hook(Play(), genre, i.func)(T)
-    return handle_record(Hook(Record(), genre, func), output, tuple(T), cache)
+    return handle_record(Hook(Record(), genre, i.func), output, input, cache)
 end
 
 #=
@@ -69,7 +63,6 @@ abstract type HookMode end
 
 struct Play   <: HookMode end
 struct Record <: HookMode end
-struct Dub    <: HookMode end
 struct Replay <: HookMode end
 struct Rewind <: HookMode end
 
@@ -88,7 +81,7 @@ end
 end
 
 @inline function handle_record(h::Hook{Record}, output, input::Tuple, cache)
-    return call_record(trackability(output), h, output, input, cache)
+    return handle_record(trackability(output), h, output, input, cache)
 end
 
 @inline function handle_record(::TrackabilityTrait, h::Hook{Record}, output, input::Tuple, cache)
@@ -104,24 +97,12 @@ end
 #########################
 
 @inline (h::Hook{Play,ValueGenre})(input...) = (Untrack(h.func)(input...), nothing)
-@inline (h::Hook{Play,ValueGenre})(::Type{T}) where {T} = (Untrack(h.func)(T), nothing)
 
 ###########################
 # Hook{Record,ValueGenre} #
 ###########################
 
 @inline (h::Hook{Record,ValueGenre})(output, input, ::Void) = track(output, h.genre, FunctionNote(h.genre, h.func, input, nothing))
-@inline (h::Hook{Record,ValueGenre})(output, ::Tuple{<:DataType}, ::Void)   = track(output, h.genre)
-@inline (h::Hook{Record,ValueGenre,typeof(ones)})(output, input, ::Void)    = track(output, h.genre)
-@inline (h::Hook{Record,ValueGenre,typeof(zeros)})(output, input, ::Void)   = track(output, h.genre)
-@inline (h::Hook{Record,ValueGenre,typeof(copy)})(output, input, ::Void)    = track(output, h.genre)
-@inline (h::Hook{Record,ValueGenre,typeof(reshape)})(output, input, ::Void) = track(output, h.genre)
-
-########################
-# Hook{Dub,ValueGenre} #
-########################
-
-(h::Hook{Dub,ValueGenre})(output, input) = Instruction(h.genre, h.func, input, output, nothing)
 
 ###########################
 # Hook{Replay,ValueGenre} #

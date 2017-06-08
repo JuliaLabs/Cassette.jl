@@ -25,9 +25,9 @@ interpolated_variable(x) = x
 function toexpr(output::ValueNote)
     body = Expr(:block)
     args = Symbol[]
-    walkback(output) do x, hasparent
+    rewind!(output) do x
         y = interpolated_variable(x)
-        if hasparent
+        if !(isroot(x))
             p = x.parent
             push!(body.args, :($y = $(p.func)($(interpolated_variable.(p.input)...))))
         elseif isa(x, ValueNote)

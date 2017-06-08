@@ -19,7 +19,6 @@ end
 
 @inline note_cache_eltype(::ValueGenre, value) = Void
 @inline note_cache(::ValueGenre, value) = nothing
-@inline promote_genre(::ValueGenre, ::ValueGenre) = ValueGenre()
 
 #############
 # Promotion #
@@ -34,3 +33,5 @@ end
 
 @inline promote_genre(a::AbstractGenre, b::AbstractGenre) = error("promote_genre not defined between $(a) and $(b)")
 @inline promote_genre(g::AbstractGenre) = g
+
+@inline promote_genre(a::G, b::G) where {G<:AbstractGenre} = a

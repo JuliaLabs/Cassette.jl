@@ -12,36 +12,34 @@ struct FunctionNote{G<:AbstractGenre,F,I<:Tuple,C}
     cache::C
 end
 
-const ROOT = FunctionNote(ValueGenre(), nothing, tuple(), nothing)
-
 # RealNote #
 #----------#
 
-mutable struct RealNote{G<:AbstractGenre,V<:Real,C} <: Real
+mutable struct RealNote{G<:AbstractGenre,V<:Real,C,P} <: Real
     genre::G
     value::V
     cache::C
-    parent::FunctionNote
-    function RealNote(genre::G, value::V, parent::FunctionNote) where {G,V}
+    parent::FunctionNote{G,P}
+    function RealNote(genre::G, value::V, parent::FunctionNote{G,P}) where {G,V,P}
         cache = note_cache(genre, value)
         C = typeof(cache)
-        return new{G,V,C}(genre, value, cache, parent)
+        return new{G,V,C,P}(genre, value, cache, parent)
     end
 end
 
 # ArrayNote #
 #-----------#
 
-mutable struct ArrayNote{G<:AbstractGenre,V<:AbstractArray,C,T<:RealNote,N} <: AbstractArray{T,N}
+mutable struct ArrayNote{G<:AbstractGenre,V<:AbstractArray,C,T<:RealNote,N,P} <: AbstractArray{T,N}
     genre::G
     value::V
     cache::C
-    parent::FunctionNote
-    function ArrayNote(genre::G, value::V, parent::FunctionNote) where {G,N,V<:AbstractArray{<:Real,N}}
+    parent::FunctionNote{G,P}
+    function ArrayNote(genre::G, value::V, parent::FunctionNote{G,P}) where {G,N,V<:AbstractArray{<:Real,N},P}
         cache = note_cache(genre, value)
         C = typeof(cache)
-        T = RealNote{G,eltype(value),note_cache_eltype(genre, value)}
-        return new{G,V,C,T,N}(genre, value, cache, parent)
+        T = RealNote{G,eltype(value),note_cache_eltype(genre, value),typeof(Base.getindex)}
+        return new{G,V,C,T,N,P}(genre, value, cache, parent)
     end
 end
 
@@ -81,10 +79,24 @@ struct MaybeTrackedElementwise <: IstrackedTrait end
 @inline istracked(::ArrayNote) = Tracked()
 @inline istracked(::RealNote) = Tracked()
 
+# root/isroot #
+#-------------#
+
+root(g::AbstractGenre) = FunctionNote(g, nothing, tuple(), nothing)
+
+@inline isroot(::FunctionNote) = false
+@inline isroot(::RealNote) = false
+@inline isroot(::ArrayNote) = false
+
+@inline isroot(::Any) = true
+@inline isroot(::FunctionNote{<:AbstractGenre,Void}) = true
+@inline isroot(::RealNote{<:AbstractGenre,<:Real,<:Any,Void}) = true
+@inline isroot(::ArrayNote{<:AbstractGenre,<:AbstractArray,<:Any,<:RealNote,<:Any,Void}) = true
+
 # track/untrack #
 #---------------#
 
-@inline track(value, genre::AbstractGenre = ValueGenre(), parent::FunctionNote = ROOT) = _track(trackability(value), value, genre, parent)
+@inline track(value, genre::AbstractGenre = ValueGenre(), parent::FunctionNote = root(genre)) = _track(trackability(value), value, genre, parent)
 
 @inline _track(::Trackable,            value::Real,          genre, parent) = RealNote(genre, value, parent)
 @inline _track(::Trackable,            value::AbstractArray, genre, parent) = ArrayNote(genre, value, parent)
@@ -101,35 +113,39 @@ struct MaybeTrackedElementwise <: IstrackedTrait end
 # rewind! #
 #---------#
 
-@inline isroot(n::ValueNote) = n.parent === ROOT
+@inline rewind!(f!, n::ValueNote) = _rewind!(f!, n)
 
-rewind!(f, n::ValueNote) = _rewind!(f, n)
+_rewind!(f!, n) = (f!(n); isroot(n) || _rewind_ancestors!(f!, n.parent); nothing)
 
-function _rewind!(f, n)
-    hasparent = isa(n, ValueNote) && !(isroot(n))
-    f(n, hasparent)
-    if hasparent
-        for ancestor in n.parent.input
-            _rewind!(f, ancestor)
-        end
+@generated function _rewind_ancestors!(f!, n::FunctionNote{G,F,I}) where {G<:AbstractGenre,F,I<:Tuple}
+    rewind_calls = Expr(:block, Any[])
+    for i in 1:nfields(I)
+        push!(rewind_calls.args, :(_rewind!(f!, ancestors[$i]::$(I.parameters[i]))))
     end
-    return nothing
+    return quote
+        $(Expr(:meta, :noinline))
+        ancestors = n.input
+        $(rewind_calls)
+        return nothing
+    end
 end
 
 # valtype #
 #---------#
 
 @inline valtype(x) = x
-@inline valtype(x::RealNote{<:Any,V}) where {V} = V
-@inline valtype(x::ArrayNote{<:Any,V}) where {V} = V
-@inline valtype(x::Type{RealNote{G,V,C}}) where {G,V,C} = V
-@inline valtype(x::Type{ArrayNote{G,V,C,T,N}}) where {G,V,C,T,N} = V
+@inline valtype(::RealNote{<:Any,V}) where {V} = V
+@inline valtype(::ArrayNote{<:Any,V}) where {V} = V
+@inline valtype(::Type{RealNote{G,V,C,P}}) where {G,V,C,P} = V
+@inline valtype(::Type{ArrayNote{G,V,C,T,N,P}}) where {G,V,C,T,N,P} = V
 
 # genre #
 #-------#
 
 @inline genre(n::RealNote) = n.genre
 @inline genre(n::ArrayNote) = n.genre
+@inline genre(::Type{RealNote{G,V,C,P}}) where {G,V,C,P} = G()
+@inline genre(::Type{ArrayNote{G,V,C,T,N,P}}) where {G,V,C,T,N,P} = G()
 
 ###################
 # Pretty Printing #
@@ -137,10 +153,10 @@ end
 
 idstring(x) = base(62, object_id(x))
 
-function Base.show(io::IO, n::FunctionNote)
-    return print(io, "FunctionNote<$(n.func)>$(n.input)")
+function Base.show(io::IO, n::FunctionNote{G,F}) where {G,F}
+    return print(io, "FunctionNote{$G,$F}($(n.input), $(n.cache))")
 end
 
-function Base.show(io::IO, n::RealNote)
-    return print(io, "RealNote<$(idstring(n))>($(n.value))")
+function Base.show(io::IO, n::RealNote{G}) where {G}
+    return print(io, "RealNote{$G}<$(idstring(n))>($(n.value), $(n.cache))")
 end

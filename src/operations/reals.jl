@@ -58,6 +58,10 @@ end
 ###########################
 # Miscellaneous Functions #
 ###########################
+# Note that some of these functions are not intercepted; this is because they
+# inherently return type-based constants (which can be treated as root notes),
+# or are equivalent to convert methods, or return output that really shouldn't
+# be tracked.
 
 @inline Base.copy(n::RealNote) = n
 
@@ -65,17 +69,18 @@ end
 
 @inline Base.hash(n::RealNote, hsh::UInt) = hash(n, hsh)
 
-@inline Base.float(n::RealNote) = @intercept(float)(n)
+@inline Base.float(n::RealNote) = track(float(n), genre(n))
 
-@inline Base.one(T::Type{<:RealNote}) = @intercept(one)(T)
+@inline Base.one(::Type{T}) where {T<:RealNote} = track(one(valtype(T)), genre(T))
 
-@inline Base.zero(T::Type{<:RealNote}) = @intercept(zero)(T)
+@inline Base.zero(::Type{T}) where {T<:RealNote} = track(zero(valtype(T)), genre(T))
 
 @inline Base.rand(T::Type{<:RealNote}) = @intercept(rand)(T)
+
 @inline Base.rand(rng::AbstractRNG, T::Type{<:RealNote}) = @intercept(rand)(rng, T)
 
 @inline Base.eps(n::RealNote) = @intercept(eps)(n)
-@inline Base.eps(T::Type{<:RealNote}) = @intercept(eps)(T)
+@inline Base.eps(::Type{T}) where {T<:RealNote} = track(eps(valtype(T)), genre(T))
 
 @inline Base.floor(n::RealNote) = @intercept(floor)(n)
 @inline Base.floor(T::Type{<:Real}, n::RealNote) = @intercept(floor)(T, n)

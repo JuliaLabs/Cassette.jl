@@ -38,18 +38,20 @@ Base.similar(n::ArrayNote, ::Type{T}, dims) where {T} = similar(untrack(n), T, d
 ###########################
 # Miscellaneous Functions #
 ###########################
+# Some of these functions are not intercepted; see similar
+# note in operations/scalars.jl for an explanation.
 
 Base.copy(n::ArrayNote) = @intercept(copy)(n)
 
-Base.ones(n::ArrayNote) = @intercept(ones)(n)
-Base.ones(n::ArrayNote, ::Type{T}) where {T} = @intercept(ones)(n, T)
-Base.ones(n::ArrayNote, ::Type{T}, dims::Tuple) where {T} = @intercept(ones)(n, T, dims)
-Base.ones(n::ArrayNote, ::Type{T}, dims...) where {T} = @intercept(ones)(n, T, dims...)
+Base.ones(n::ArrayNote) = track(ones(n.value), genre(n))
+Base.ones(n::ArrayNote, ::Type{T}) where {T} = track(ones(n.value, T), genre(n))
+Base.ones(n::ArrayNote, ::Type{T}, dims::Tuple) where {T} = track(ones(n.value, T, dims), genre(n))
+Base.ones(n::ArrayNote, ::Type{T}, dims...) where {T} = track(ones(n.value, T, dims...), genre(n))
 
-Base.zeros(n::ArrayNote) = @intercept(zeros)(n)
-Base.zeros(n::ArrayNote, ::Type{T}) where {T} = @intercept(zeros)(n, T)
-Base.zeros(n::ArrayNote, ::Type{T}, dims::Tuple) where {T} = @intercept(zeros)(n, T, dims)
-Base.zeros(n::ArrayNote, ::Type{T}, dims...) where {T} = @intercept(zeros)(n, T, dims...)
+Base.zeros(n::ArrayNote) = track(zeros(n.value), genre(n))
+Base.zeros(n::ArrayNote, ::Type{T}) where {T} = track(zeros(n.value, T), genre(n))
+Base.zeros(n::ArrayNote, ::Type{T}, dims::Tuple) where {T} = track(zeros(n.value, T, dims), genre(n))
+Base.zeros(n::ArrayNote, ::Type{T}, dims...) where {T} = track(zeros(n.value, T, dims...), genre(n))
 
 Base.reshape(n::ArrayNote, dims::Type{Val{N}}) where {N} = @intercept(reshape)(n, dims)
 Base.reshape(n::ArrayNote, dims::Tuple{Vararg{Int,N}}) where {N} = @intercept(reshape)(n, dims)
