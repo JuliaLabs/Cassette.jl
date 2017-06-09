@@ -110,15 +110,64 @@ root(::G) where {G<:AbstractGenre} = FunctionNote{G}(nothing, tuple())
 ###########
 # rewind! #
 ###########
+# TODO: How to handle MaybeTrackedElementwise/TrackedElementwise ancestors?
 
-@inline rewind!(f!, n::ValueNote) = _rewind!(f!, n)
+@inline function rewind!(f!, n::ValueNote, recursive::Bool = false)
+    if recursive
+        recur_rewind!(f!, n)
+    else
+        iter_rewind!(f!, n)
+    end
+    return nothing
+end
 
-_rewind!(f!, n) = (f!(n); isroot(n) || _rewind_ancestors!(f!, parent(n)); nothing)
+# iter_rewind! #
+#--------------#
 
-@generated function _rewind_ancestors!(f!, n::FunctionNote{G,F,P}) where {G<:AbstractGenre,F,P<:Tuple}
+iter_rewind!(f!, n) = nothing
+
+function iter_rewind!(f!, n::ValueNote)
+    queue = Vector{Any}()
+    push!(queue, n)
+    while !(isempty(queue))
+        current = pop!(queue)
+        f!(current)
+        isroot(current) || iter_rewind_ancestors!(queue, parent(current))
+    end
+    return nothing
+end
+
+@generated function iter_rewind_ancestors!(queue, n::FunctionNote{G,F,P}) where {G<:AbstractGenre,F,P<:Tuple}
+    push_calls = Expr(:block, Any[])
+    for i in 1:nfields(P)
+        T = P.parameters[i]
+        if T <: ValueNote
+            push!(push_calls.args, :(push!(queue, ancestors[$i]::$T)))
+        end
+    end
+    return quote
+        $(Expr(:meta, :noinline))
+        ancestors = parent(n)
+        $(push_calls)
+        return nothing
+    end
+end
+
+# recur_rewind! #
+#---------------#
+
+@inline recur_rewind!(f!, n) = nothing
+
+@inline function recur_rewind!(f!, n::ValueNote)
+    f!(n)
+    isroot(n) || recur_rewind_ancestors!(f!, parent(n))
+    return nothing
+end
+
+@generated function recur_rewind_ancestors!(f!, n::FunctionNote{G,F,P}) where {G<:AbstractGenre,F,P<:Tuple}
     rewind_calls = Expr(:block, Any[])
     for i in 1:nfields(P)
-        push!(rewind_calls.args, :(_rewind!(f!, ancestors[$i]::$(P.parameters[i]))))
+        push!(rewind_calls.args, :(recur_rewind!(f!, ancestors[$i]::$(P.parameters[i]))))
     end
     return quote
         $(Expr(:meta, :noinline))

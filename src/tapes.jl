@@ -35,7 +35,7 @@ end
 
 function Tape(output::ValueNote)
     notes = Vector{ValueNote}()
-    rewind!(note -> isroot(note) || push!(notes, note), output)
+    rewind!(note -> isroot(note) || push!(notes, note), output, false)
     return Tape(reverse!(notes))
 end
 
