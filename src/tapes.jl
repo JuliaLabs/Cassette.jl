@@ -4,16 +4,16 @@
 
 const DispatchWrapper = FunctionWrappers.FunctionWrapper{Void,Tuple{}}
 
-struct HookWrapper{M<:HookMode,F<:FunctionNote,O<:ValueNote} <: Function
-    mode::M
-    parent::F
+struct HookWrapper{M<:HookMode,P<:FunctionNote,O<:ValueNote} <: Function
+    parent::P
     output::O
+    HookWrapper{M}(parent::P, output::O) where {M,P,O} = new{M,P,O}(parent, output)
 end
 
-HookWrapper(mode::HookMode, note::ValueNote) = HookWrapper(mode, parent(note), note)
+@inline HookWrapper(mode::M, note::ValueNote) where {M<:HookMode} = HookWrapper{M}(parent(note), note)
 
-@noinline function (w::HookWrapper)()
-    h! = Hook(w.mode, genre(w.parent), value(w.parent))
+@noinline function (w::HookWrapper{M})() where {M}
+    h! = Hook(genre(w.parent), M(), value(w.parent))
     h!(w.output, parent(w.parent), w.parent)
     return nothing
 end
@@ -27,8 +27,8 @@ struct Tape
     forward::Vector{DispatchWrapper}
     reverse::Vector{DispatchWrapper}
     function Tape(notes::Vector{ValueNote})
-        forward = [DispatchWrapper(HookWrapper(Replay(), notes[i])) for i in 1:length(notes)]
-        reverse = [DispatchWrapper(HookWrapper(Rewind(), notes[i])) for i in length(notes):-1:1]
+        forward = [DispatchWrapper(HookWrapper{Replay}(notes[i])) for i in 1:length(notes)]
+        reverse = [DispatchWrapper(HookWrapper{Rewind}(notes[i])) for i in length(notes):-1:1]
         return new(notes, forward, reverse)
     end
 end

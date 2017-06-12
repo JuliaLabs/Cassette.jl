@@ -9,35 +9,36 @@ struct Record <: HookMode end
 struct Replay <: HookMode end
 struct Rewind <: HookMode end
 
-struct Hook{M<:HookMode,G<:AbstractGenre,F} <: Function
-    mode::M
-    genre::G
+struct Hook{G<:AbstractGenre,M<:HookMode,F} <: Function
     func::F
+    Hook{G,M}(func::F) where {G,M,F} = new{G,M,F}(mode, func)
 end
+
+@inline Hook(genre::G, mode::M, func) where {G<:AbstractGenre,M<:HookMode} = Hook{G,M}(func)
 
 @inline func(f::Hook) = f.func
 
 #########################
-# Hook{Play,ValueGenre} #
+# Hook{ValueGenre,Play} #
 #########################
 
-@inline (h::Hook{Play,ValueGenre})(input...) = disarm(func(h))(input...)
+@inline (h::Hook{ValueGenre,Play})(input...) = disarm(func(h))(input...)
 
 ###########################
-# Hook{Record,ValueGenre} #
+# Hook{ValueGenre,Record} #
 ###########################
 
-@inline (h::Hook{Record,ValueGenre})(output, input) = track(output, FunctionNote{ValueGenre}(func(h), input))
+@inline (h::Hook{ValueGenre,Record})(output, input) = track(output, FunctionNote{ValueGenre}(func(h), input))
 
 ###########################
-# Hook{Replay,ValueGenre} #
+# Hook{ValueGenre,Replay} #
 ###########################
 
-@inline (h::Hook{Replay,ValueGenre})(output::RealNote, input::Tuple, parent) = value!(output, disarm(func(h))(input...))
-@inline (h::Hook{Replay,ValueGenre})(output::ArrayNote, input::Tuple, parent) = copy!(value(output), disarm(func(h))(input...))
+@inline (h::Hook{ValueGenre,Replay})(output::RealNote, input::Tuple, parent) = value!(output, disarm(func(h))(input...))
+@inline (h::Hook{ValueGenre,Replay})(output::ArrayNote, input::Tuple, parent) = copy!(value(output), disarm(func(h))(input...))
 
 ###########################
-# Hook{Rewind,ValueGenre} #
+# Hook{ValueGenre,Rewind} #
 ###########################
 
 # ValueGenre doesn't support `Rewind`.
@@ -66,32 +67,32 @@ end
 
 @inline function (i::Intercept)(input...)
     genre = promote_genre(input...)
-    results = Hook(Play(), genre, func(i))(input...)
+    results = Hook(genre, Play(), func(i))(input...)
     return init_and_call_record_hook(genre, func(i), input, results)
 end
 
 @inline function init_and_call_record_hook(genre::AbstractGenre, f::F, input::Tuple, results::Tuple{O,C}) where {F,O,C<:Cache}
     output::O, cache::C = results
-    return call_record_hook(Hook(Record(), genre, f), input, output, cache)
+    return call_record_hook(Hook(genre, Record(), f), input, output, cache)
 end
 
 @inline function init_and_call_record_hook(genre::AbstractGenre, f::F, input::Tuple, output) where {F}
-    return call_record_hook(Hook(Record(), genre, f), input, output)
+    return call_record_hook(Hook(genre, Record(), f), input, output)
 end
 
-@inline function call_record_hook(h::Hook{Record}, input::Tuple, output::NTuple{N,Any}, cache::Cache...) where {N}
+@inline function call_record_hook(h::Hook, input::Tuple, output::NTuple{N,Any}, cache::Cache...) where {N}
     return NTuple{N}(call_record_hook(h, input, o, cache...) for o in output)
 end
 
-@inline function call_record_hook(h::Hook{Record}, input::Tuple, output, cache::Cache...)
+@inline function call_record_hook(h::Hook, input::Tuple, output, cache::Cache...)
     return _call_record_hook(trackability(output), h, input, output, cache...)
 end
 
-@inline _call_record_hook(::TrackabilityTrait, h::Hook{Record}, input::Tuple, output, cache::Cache) = h(output, input, cache[])
+@inline _call_record_hook(::TrackabilityTrait, h::Hook, input::Tuple, output, cache::Cache) = h(output, input, cache[])
 
-@inline _call_record_hook(::TrackabilityTrait, h::Hook{Record}, input::Tuple, output) = h(output, input)
+@inline _call_record_hook(::TrackabilityTrait, h::Hook, input::Tuple, output) = h(output, input)
 
-@inline _call_record_hook(::NotTrackable, h::Hook{Record}, input::Tuple, output, cache::Cache...) = output
+@inline _call_record_hook(::NotTrackable, h::Hook, input::Tuple, output, cache::Cache...) = output
 
 #=
 works for the following formats:
