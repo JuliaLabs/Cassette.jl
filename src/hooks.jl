@@ -11,7 +11,7 @@ struct Rewind <: HookMode end
 
 struct Hook{G<:AbstractGenre,M<:HookMode,F} <: Function
     func::F
-    Hook{G,M}(func::F) where {G,M,F} = new{G,M,F}(mode, func)
+    Hook{G,M}(func::F) where {G,M,F} = new{G,M,F}(func)
 end
 
 @inline Hook(genre::G, mode::M, func) where {G<:AbstractGenre,M<:HookMode} = Hook{G,M}(func)
