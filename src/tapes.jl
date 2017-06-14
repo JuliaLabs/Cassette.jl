@@ -7,8 +7,10 @@ const DispatchWrapper = FunctionWrappers.FunctionWrapper{Void,Tuple{}}
 struct HookWrapper{M<:HookMode,P<:FunctionNote,O<:ValueNote} <: Function
     parent::P
     output::O
-    HookWrapper{M}(parent::P, output::O) where {M,P,O} = new{M,P,O}(parent, output)
-    HookWrapper{M}(note::ValueNote) where {M} = HookWrapper{M}(parent(note), note)
+    function HookWrapper{M}(output::O) where {M<:HookMode,O<:ValueNote}
+        p = parent(output)
+        return new{M,typeof(p),O}(p, output)
+    end
 end
 
 @inline HookWrapper(mode::M, note::ValueNote) where {M<:HookMode} = HookWrapper{M}(note)
