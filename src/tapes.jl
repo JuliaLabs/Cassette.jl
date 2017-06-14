@@ -7,10 +7,20 @@ const DispatchWrapper = FunctionWrappers.FunctionWrapper{Void,Tuple{}}
 struct HookWrapper{M<:HookMode,P<:FunctionNote,O<:ValueNote} <: Function
     parent::P
     output::O
-    function HookWrapper{M}(output::O) where {M<:HookMode,O<:ValueNote}
-        p = parent(output)
-        return new{M,typeof(p),O}(p, output)
-    end
+    HookWrapper{M}(note::ValueNote) where {M} = HookWrapper{M}(parent(note), note)
+    HookWrapper{M}(parent::P, output::O) where {M,P,O} = new{M,P,O}(parent, output)
+    #=
+    I'd rather have this method as the sole inner constructor in order enforce
+    `parent(hw.output) === hw.parent`. However, implementing it that way causes
+    performance problems (e.g. 2x slowdown) for `rewind!`. I've no idea why -
+    this constructor doesn't get called during `rewind!`. My only guess is that
+    this constructor somehow screws up the dispatch precomputation performed by
+    FunctionWrappers.
+    =#
+    # function HookWrapper{M}(output::O) where {M<:HookMode,O<:ValueNote}
+    #     p = parent(output)
+    #     return new{M,typeof(p),O}(p, output)
+    # end
 end
 
 @inline HookWrapper(mode::M, note::ValueNote) where {M<:HookMode} = HookWrapper{M}(note)
