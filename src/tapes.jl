@@ -8,9 +8,10 @@ struct HookWrapper{M<:HookMode,P<:FunctionNote,O<:ValueNote} <: Function
     parent::P
     output::O
     HookWrapper{M}(parent::P, output::O) where {M,P,O} = new{M,P,O}(parent, output)
+    HookWrapper{M}(note::ValueNote) where {M} = HookWrapper{M}(parent(note), note)
 end
 
-@inline HookWrapper(mode::M, note::ValueNote) where {M<:HookMode} = HookWrapper{M}(parent(note), note)
+@inline HookWrapper(mode::M, note::ValueNote) where {M<:HookMode} = HookWrapper{M}(note)
 
 @noinline function (w::HookWrapper{M})() where {M}
     h! = Hook(genre(w.parent), M(), value(w.parent))
