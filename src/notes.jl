@@ -45,7 +45,7 @@ end
 # ValueNote #
 #-----------#
 
-const ValueNote = Union{RealNote,ArrayNote}
+const ValueNote{G} = Union{RealNote{G},ArrayNote{G}}
 
 ######################
 # trackability trait #

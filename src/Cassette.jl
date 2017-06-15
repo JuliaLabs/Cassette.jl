@@ -7,7 +7,7 @@ using FunctionWrappers
 
 include("genres.jl")
 include("notes.jl")
-include("hooks.jl")
+include("directives.jl")
 include("tapes.jl")
 include("utilities.jl")
 include("operations/reals.jl")
