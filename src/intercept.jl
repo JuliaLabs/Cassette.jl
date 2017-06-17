@@ -8,22 +8,22 @@ end
 
 @inline Base.getindex(cache::Cache) = cache.data
 
-#############
-# Intercept #
-#############
+###########
+# Process #
+###########
 
-struct Intercept{F} <: Function
+struct Process{F} <: Function
     func::F
 end
 
-@inline Intercept(i::Intercept) = i
+@inline Process(p::Process) = p
 
-@inline func(i::Intercept) = i.func
+@inline func(p::Process) = p.func
 
-@inline function (i::Intercept)(input...)
+@inline function (p::Process)(input...)
     G = typeof(promote_genre(input...))
-    results = Play{G}(func(i))(input...)
-    return process_record(Record{G}(func(i)), input, results)
+    results = Play{G}(func(p))(input...)
+    return process_record(Record{G}(func(p)), input, results)
 end
 
 @inline process_record(r::Record, input::Tuple, results::Tuple{O,C}) where {O,C<:Cache} = _process_record(r, input, results[1]::O, results[2]::C)
@@ -35,57 +35,42 @@ end
 @inline _process_record(::TrackabilityTrait, r::Record, input::Tuple, output) = r(output, input)
 @inline _process_record(::NotTrackable, r::Record, input::Tuple, output, cache::Cache...) = output
 
-##############
-# @intercept #
-##############
+#############
+# Intercept #
+#############
 
-const AMBIGUOUS_INTERCEPT_TYPES = vcat(REAL_TYPES, ARRAY_TYPES)
-
-macro intercept(def)
-    @assert isa(def, Expr) "malformed expression for @intercept"
-    @assert def.head == :call
-    func = def.args[1]
-    args = def.args[2:end]
-    @assert all(isa(x, Symbol) for x in args) "argument names must be Symbols (not Expressions)"
-    @assert (isa(func, Expr) && (func.head == :.) &&
-             length(func.args) == 2) "function name must be fully qualified (e.g. `@intercept Base.sin(x)`, not `@intercept sin(x)`)"
-    methods = Expr(:block)
-    T = :($ValueNote)
-    typed_args_list = dispatch_permutations(args, T, AMBIGUOUS_INTERCEPT_TYPES)
-    for typed_args in typed_args_list
-        push!(methods.args, :(@inline $(func)($(typed_args...)) = $(Intercept)($(func))($(args...))))
-    end
-    return esc(methods)
+struct Intercept{f,w} <: Function
+    Intercept{f}() where {f} = new{f,ccall(:jl_get_world_counter, UInt, ())}()
 end
 
-function dispatch_permutations(args, T, nonTs)
-    arg_perms = Vector{Any}()
-    # Count upwards in binary, essentially using each number as a bitmask to determine
-    # which arguments should be `::T` for that permutation.
-    for i in 1:((2^length(args)) - 1)
-        proto = Any[]
-        nonT_inds = Int[]
-        for j in 1:length(args)
-            if Bool((i >> (j - 1)) & 1)
-                push!(proto, :($(args[j])::$(T)))
-            else
-                push!(proto, args[j])
-                push!(nonT_inds, j)
-            end
-        end
-        if isempty(nonT_inds)
-            push!(arg_perms, proto)
+intercept_ast!(code_info::CodeInfo) = intercept_ast!(deepcopy(code_info.code[2]), code_info.slotnames)
+
+intercept_ast!(ast, slotnames) = ast, slotnames
+
+function intercept_ast!(ast::Expr, slotnames)
+    if ast.head == :call
+        ast.args[1] = Expr(:call, Cassette.Process, ast.args[1])
+        child_indices = 2:length(ast.args)
+    else
+        child_indices = 1:length(ast.args)
+    end
+    for i in child_indices
+        child = ast.args[i]
+        if isa(child, SlotNumber)
+            ast.args[i] = slotnames[child.id]
         else
-            nonTs_iter = Iterators.product((nonTs for _ in 1:length(nonT_inds))...)
-            for current_nonTs in nonTs_iter
-                arg_perm = copy(proto)
-                for k in 1:length(current_nonTs)
-                    arg_ind = nonT_inds[k]
-                    arg_perm[arg_ind] = :($(proto[arg_ind])::$(current_nonTs[k]))
-                end
-                push!(arg_perms, arg_perm)
-            end
+            intercept_ast!(child, slotnames)
         end
     end
-    return arg_perms
+    return ast, slotnames
+end
+
+@generated function (i::Intercept{f})(args...) where f
+    ast, slotnames = intercept_ast!(first(code_lowered(f, args)))
+    arg_assigment = Expr(:(=), Expr(:tuple, slotnames[2:end]...), :args)
+    return quote
+        $(Expr(:meta, :inline))
+        $(arg_assigment)
+        $ast
+    end
 end

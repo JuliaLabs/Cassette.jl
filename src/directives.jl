@@ -27,20 +27,20 @@ end
 # Play{ValueGenre} #
 ####################
 
-@inline (p::Play{ValueGenre})(input...) = disarm(func(p))(input...)
+@inline (p::Play{ValueGenre})(input...) = func(p)(input...)
 
 ######################
 # Record{ValueGenre} #
 ######################
 
-@inline (r::Record{ValueGenre})(output, input) = track(output, FunctionNote{ValueGenre}(func(r), input))
+@inline (r::Record{ValueGenre})(output, input) = output #track(output, FunctionNote{ValueGenre}(func(r), input))
 
 ######################
 # Replay{ValueGenre} #
 ######################
 
-@inline (r::Replay{ValueGenre})(output::RealNote, input::Tuple, parent) = value!(output, disarm(func(r))(input...))
-@inline (r::Replay{ValueGenre})(output::ArrayNote, input::Tuple, parent) = copy!(value(output), disarm(func(r))(input...))
+# @inline (r::Replay{ValueGenre})(output::RealNote, input::Tuple, parent) = value!(output, disarm(func(r))(input...))
+# @inline (r::Replay{ValueGenre})(output::ArrayNote, input::Tuple, parent) = copy!(value(output), disarm(func(r))(input...))
 
 ######################
 # Rewind{ValueGenre} #

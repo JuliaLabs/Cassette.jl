@@ -1,24 +1,3 @@
-##########
-# Disarm #
-##########
-
-struct Disarm{F} <: Function
-    func::F
-end
-
-@inline Disarm(d::Disarm) = d
-
-@inline disarm(f) = Disarm(f)
-
-@inline func(d::Disarm) = d.func
-
-@inline (f::Disarm{<:Any})(a) = func(f)(value(a))
-@inline (f::Disarm{<:Any})(a, b) = func(f)(value(a), value(b))
-@inline (f::Disarm{<:Any})(a, b, c) = func(f)(value(a), value(b), value(c))
-@inline (f::Disarm{<:Any})(a, b, c, d) = func(f)(value(a), value(b), value(c), value(d))
-@inline (f::Disarm{<:Any})(a, b, c, d, e) = func(f)(value(a), value(b), value(c), value(d), value(e))
-@inline (f::Disarm{<:Any})(a, b, c, d, e, others...) = func(f)(value(a), value(b), value(c), value(d), value(e), value.(others)...)
-
 #########################
 # Expression Generation #
 #########################
