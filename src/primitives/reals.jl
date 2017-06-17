@@ -1,58 +1,21 @@
-###########################
-# External `<:Real` Types #
-###########################
-
-const REAL_TYPES = [:Bool, :Integer, :Rational, :BigFloat, :BigInt,
-                    :AbstractFloat, :Real]
-
 ########
 # Math #
 ########
 
-for f in vcat(RealInterface.UNARY_MATH, RealInterface.UNARY_ARITHMETIC)
-    @eval @inline Base.$(f)(x::RealNote) = @intercept($f)(x)
+for f in vcat(RealInterface.UNARY_PREDICATES, RealInterface.UNARY_MATH, RealInterface.UNARY_ARITHMETIC)
+    @eval @intercept Base.$(f)(x)
 end
 
-for f in vcat(RealInterface.BINARY_MATH, RealInterface.BINARY_ARITHMETIC)
-    @eval @inline Base.$(f)(a::RealNote, b::RealNote) = @intercept($f)(a, b)
-    for R in REAL_TYPES
-        @eval begin
-            @inline Base.$(f)(a::RealNote, b::$R) = @intercept($f)(a, b)
-            @inline Base.$(f)(a::$R, b::RealNote) = @intercept($f)(a, b)
-        end
-    end
+for f in vcat(RealInterface.BINARY_PREDICATES, RealInterface.BINARY_MATH, RealInterface.BINARY_ARITHMETIC)
+    @eval @intercept Base.$(f)(x, y)
 end
 
 for f in RealInterface.UNARY_SPECIAL_MATH
-    @eval @inline SpecialFunctions.$(f)(x::RealNote) = @intercept($f)(x)
+    @eval @intercept SpecialFunctions.$(f)(x)
 end
 
 for f in RealInterface.BINARY_SPECIAL_MATH
-    @eval @inline SpecialFunctions.$(f)(a::RealNote, b::RealNote) = @intercept($f)(a, b)
-    for R in REAL_TYPES
-        @eval begin
-            @inline SpecialFunctions.$(f)(a::RealNote, b::$R) = @intercept($f)(a, b)
-            @inline SpecialFunctions.$(f)(a::$R, b::RealNote) = @intercept($f)(a, b)
-        end
-    end
-end
-
-##############
-# Predicates #
-##############
-
-for f in RealInterface.UNARY_PREDICATES
-    @eval @inline Base.$(f)(x::RealNote) = @intercept($(f))(x)
-end
-
-for f in RealInterface.BINARY_PREDICATES
-    @eval @inline Base.$(f)(a::RealNote, b::RealNote) = @intercept($(f))(a, b)
-    for R in REAL_TYPES
-        @eval begin
-            @inline Base.$(f)(a::$R, b::RealNote) = @intercept($(f))(a, b)
-            @inline Base.$(f)(a::RealNote, b::$R) = @intercept($(f))(a, b)
-        end
-    end
+    @eval @intercept SpecialFunctions.$(f)(x, y)
 end
 
 ###########################
@@ -75,26 +38,26 @@ end
 
 @inline Base.zero(::Type{T}) where {T<:RealNote} = track(zero(valuetype(T)), genre(T))
 
-@inline Base.rand(T::Type{<:RealNote}) = @intercept(rand)(T)
+@inline Base.rand(::Type{T}) where {T<:RealNote} = Intercept(rand)(T)
 
-@inline Base.rand(rng::AbstractRNG, T::Type{<:RealNote}) = @intercept(rand)(rng, T)
+@inline Base.rand(rng::AbstractRNG, ::Type{T}) where {T<:RealNote} = Intercept(rand)(rng, T)
 
-@inline Base.eps(n::RealNote) = @intercept(eps)(n)
+@inline Base.eps(n::RealNote) = Intercept(eps)(n)
 @inline Base.eps(::Type{T}) where {T<:RealNote} = track(eps(valuetype(T)), genre(T))
 
-@inline Base.floor(n::RealNote) = @intercept(floor)(n)
-@inline Base.floor(T::Type{<:Real}, n::RealNote) = @intercept(floor)(T, n)
+@inline Base.floor(n::RealNote) = Intercept(floor)(n)
+@inline Base.floor(::Type{T}, n::RealNote) where {T<:RealNote} = Intercept(floor)(T, n)
 
-@inline Base.ceil(n::RealNote) = @intercept(ceil)(n)
-@inline Base.ceil(T::Type{<:Real}, n::RealNote) =  @intercept(ceil)(T, n)
+@inline Base.ceil(n::RealNote) = Intercept(ceil)(n)
+@inline Base.ceil(::Type{T}, n::RealNote) where {T<:RealNote} =  Intercept(ceil)(T, n)
 
-@inline Base.trunc(n::RealNote) = @intercept(trunc)(n)
-@inline Base.trunc(T::Type{<:Real}, n::RealNote) = @intercept(trunc)(T, n)
+@inline Base.trunc(n::RealNote) = Intercept(trunc)(n)
+@inline Base.trunc(::Type{T}, n::RealNote) where {T<:RealNote} = Intercept(trunc)(T, n)
 
-@inline Base.round(n::RealNote) = @intercept(round)(n)
-@inline Base.round(T::Type{<:Real}, n::RealNote) = @intercept(round)(T, n)
+@inline Base.round(n::RealNote) = Intercept(round)(n)
+@inline Base.round(::Type{T}, n::RealNote) where {T<:RealNote} = Intercept(round)(T, n)
 
-@inline Base.rtoldefault(T::Type{<:RealNote}) = @intercept(rtoldefault)(T)
+@inline Base.rtoldefault(::Type{T}) where {T<:RealNote} = Intercept(rtoldefault)(T)
 
 ########################
 # Conversion/Promotion #
