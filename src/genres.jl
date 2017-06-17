@@ -16,17 +16,11 @@ end
 
 @defgenre VoidGenre
 
-@inline note_cache_eltype(::VoidGenre, cache) = Void
-@inline note_cache(::VoidGenre, value) = nothing
-
 ##############
 # ValueGenre #
 ##############
 
 @defgenre ValueGenre
-
-@inline note_cache_eltype(::ValueGenre, cache) = Void
-@inline note_cache(::ValueGenre, value) = nothing
 
 #############
 # Promotion #
