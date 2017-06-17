@@ -10,6 +10,15 @@ end
 
 @inline genre(g::AbstractGenre) = g
 
+#############
+# VoidGenre #
+#############
+
+@defgenre VoidGenre
+
+@inline note_cache_eltype(::VoidGenre, cache) = Void
+@inline note_cache(::VoidGenre, value) = nothing
+
 ##############
 # ValueGenre #
 ##############
@@ -22,6 +31,7 @@ end
 #############
 # Promotion #
 #############
+# TODO: Leverage normal promotion rules for this
 
 @inline promote_genre(a::A) where {A} = genre(a)
 @inline promote_genre(a::A, b::B) where {A,B} = promote_genre(genre(a), genre(b))
@@ -34,3 +44,6 @@ end
 @inline promote_genre(g::AbstractGenre) = g
 
 @inline promote_genre(a::G, b::G) where {G<:AbstractGenre} = a
+
+@inline promote_genre(a::ValueGenre, b::VoidGenre) = a
+@inline promote_genre(a::VoidGenre, b::ValueGenre) = b

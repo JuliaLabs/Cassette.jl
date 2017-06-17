@@ -23,27 +23,15 @@ end
 @defdirective Replay
 @defdirective Rewind
 
-####################
-# Play{ValueGenre} #
-####################
+##############
+# ValueGenre #
+##############
 
-@inline (p::Play{ValueGenre})(input...) = func(p)(input...)
+# TODO
 
-######################
-# Record{ValueGenre} #
-######################
+#############
+# VoidGenre #
+#############
 
-@inline (r::Record{ValueGenre})(output, input) = output #track(output, FunctionNote{ValueGenre}(func(r), input))
-
-######################
-# Replay{ValueGenre} #
-######################
-
-# @inline (r::Replay{ValueGenre})(output::RealNote, input::Tuple, parent) = value!(output, disarm(func(r))(input...))
-# @inline (r::Replay{ValueGenre})(output::ArrayNote, input::Tuple, parent) = copy!(value(output), disarm(func(r))(input...))
-
-######################
-# Rewind{ValueGenre} #
-######################
-
-# ValueGenre doesn't support `Rewind`.
+@inline (p::Play{VoidGenre})(input...) = func(p)(input...)
+@inline (r::Record{VoidGenre})(output, args...) = output
