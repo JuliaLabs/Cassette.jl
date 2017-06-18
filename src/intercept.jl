@@ -13,8 +13,8 @@ end
 ###########
 
 struct Process{G<:AbstractGenre,F} <: Function
-    func::F
-    @inline Process{G}(func::F) where {G,F} = new{G,F}(func)
+    func::SpecializedFunction{F}
+    @inline Process{G}(func::F) where {G,F} = new{G,F}(SpecializedFunction(func))
     @inline Process{G}(p::Process) where {G} = p
 end
 
@@ -23,9 +23,22 @@ end
 @inline genre(p::Process) = genre(typeof(p))
 @inline genre(::Type{Process{G,F}}) where {G,F} = G()
 
-@inline function (p::Process{G})(input...) where {G}
-    results = Play{G}(func(p))(input...)
-    return process_record(Record{G}(func(p)), input, results)
+@generated function (p::Process{G})(input...) where {G}
+    typed_input = Expr(:tuple)
+    for i in 1:nfields(input)
+        if input[i] <: DataType
+            type_arg = TypeArgument{input[i].parameters[1]}()
+            push!(typed_input.args, type_arg)
+        else
+            push!(typed_input.args, :(input[$i]::$(input[i])))
+        end
+    end
+    return quote
+        $(Expr(:meta, :inline))
+        typed_input = $typed_input
+        results = Play{G}(func(p))(typed_input...)
+        return process_record(Record{G}(func(p)), typed_input, results)
+    end
 end
 
 @inline process_record(r::Record, input::Tuple, results::Tuple{O,C}) where {O,C<:Cache} = _process_record(r, input, results[1]::O, results[2]::C)
@@ -49,7 +62,7 @@ function intercept_ast!(genre, f, types)
     method = Sugar.LazyMethod((f, types))
     ast = Sugar.replace_slots(method, Sugar.sugared(f, types, code_lowered))
     slot_names = Sugar.slotnames(method)[2:Sugar.method_nargs(method)]
-    intercept_ast_calls!(genre, ast)
+    intercept_ast_calls!(ast, genre)
     return ast, slot_names
 end
 
@@ -71,14 +84,15 @@ end
 
 # TODO: check world age against i's world-age, if changed, then create a
 # new Intercept with the newer world age and call that one.
-@generated function (i::Intercept{G,f})(args...) where {G,f}
-    ast, slotnames = intercept_ast!(G(), f, args)
-    if length(args) == 0
+@generated function (::Intercept{G,f})(__args__...) where {G,f}
+    ast, slotnames = intercept_ast!(G(), f, __args__)
+    println(ast)
+    if length(__args__) == 0
         arg_assigment = nothing
-    elseif length(args) == 1
-        arg_assigment = Expr(:(=), slotnames[2], :(args[1]::$(args[1])))
+    elseif length(__args__) == 1
+        arg_assigment = Expr(:(=), slotnames[], :(__args__[1]::$(__args__[1])))
     else
-        arg_assigment = Expr(:(=), Expr(:tuple, slotnames[2:end]...), :args)
+        arg_assigment = Expr(:(=), Expr(:tuple, slotnames...), :__args__)
     end
     return quote
         $(Expr(:meta, :inline))
