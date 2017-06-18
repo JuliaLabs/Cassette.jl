@@ -45,9 +45,15 @@ struct Intercept{G<:AbstractGenre,f,w} <: Function
     Intercept{G,f}() where {G,f} = new{G,f,ccall(:jl_get_world_counter, UInt, ())}()
 end
 
-intercept_ast!(genre, code_info::CodeInfo) = intercept_ast!(genre, deepcopy(Expr(:block, code_info.code...)), code_info.slotnames, Symbol[])
+function intercept_ast!(genre, f, types)
+    method = Sugar.LazyMethod((f, types))
+    ast = Sugar.replace_slots(method, Sugar.sugared(f, types, code_lowered))
+    slot_names = Sugar.slotnames(method)[2:Sugar.method_nargs(method)]
+    intercept_ast_calls!(genre, ast)
+    return ast, slot_names
+end
 
-function intercept_ast!(genre, ast::Expr, slotnames, ssanames)
+function intercept_ast_calls!(ast::Expr, genre)
     if ast.head == :call
         ast.args[1] = Expr(:call, :($(Cassette.Process){$(typeof(genre))}), ast.args[1])
         child_indices = 2:length(ast.args)
@@ -56,28 +62,17 @@ function intercept_ast!(genre, ast::Expr, slotnames, ssanames)
     end
     for i in child_indices
         child = ast.args[i]
-        if isa(child, SlotNumber)
-            ast.args[i] = slotnames[child.id]
-        elseif isa(child, SSAValue)
-            ssa_index = child.id + 1
-            if length(ssanames) >= ssa_index
-                ast.args[i] = ssanames[ssa_index]
-            else
-                name = gensym(ssa_index)
-                push!(ssanames, name)
-                ast.args[i] = name
-            end
-        elseif isa(child, Expr)
-            intercept_ast!(genre, child, slotnames, ssanames)
+        if isa(child, Expr)
+            intercept_ast_calls!(child, genre)
         end
     end
-    return ast, slotnames
+    return ast
 end
 
 # TODO: check world age against i's world-age, if changed, then create a
 # new Intercept with the newer world age and call that one.
 @generated function (i::Intercept{G,f})(args...) where {G,f}
-    ast, slotnames = intercept_ast!(G(), first(code_lowered(f, args)))
+    ast, slotnames = intercept_ast!(G(), f, args)
     if length(args) == 0
         arg_assigment = nothing
     elseif length(args) == 1
