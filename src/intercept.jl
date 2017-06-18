@@ -86,7 +86,6 @@ end
 # new Intercept with the newer world age and call that one.
 @generated function (::Intercept{G,f})(__args__...) where {G,f}
     ast, slotnames = intercept_ast!(G(), f, __args__)
-    println(ast)
     if length(__args__) == 0
         arg_assigment = nothing
     elseif length(__args__) == 1
