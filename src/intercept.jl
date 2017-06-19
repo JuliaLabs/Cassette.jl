@@ -9,21 +9,21 @@ end
 @inline Base.getindex(cache::Cache) = cache.data
 
 ###########
-# Process #
+# Primitive #
 ###########
 
-struct Process{G<:AbstractGenre,F} <: Function
+struct Primitive{G<:AbstractGenre,F} <: Function
     func::SpecializedFunction{F}
-    @inline Process{G}(func::F) where {G,F} = new{G,F}(SpecializedFunction(func))
-    @inline Process{G}(p::Process) where {G} = p
+    @inline Primitive{G}(func::F) where {G,F} = new{G,F}(SpecializedFunction(func))
+    @inline Primitive{G}(p::Primitive) where {G} = p
 end
 
-@inline func(p::Process) = p.func
+@inline func(p::Primitive) = p.func
 
-@inline genre(p::Process) = genre(typeof(p))
-@inline genre(::Type{Process{G,F}}) where {G,F} = G()
+@inline genre(p::Primitive) = genre(typeof(p))
+@inline genre(::Type{Primitive{G,F}}) where {G,F} = G()
 
-@generated function (p::Process{G})(input...) where {G}
+@generated function (p::Primitive{G})(input...) where {G}
     typed_input = Expr(:tuple)
     for i in 1:nfields(input)
         if input[i] <: DataType
@@ -68,7 +68,7 @@ end
 
 function intercept_ast_calls!(ast::Expr, genre)
     if ast.head == :call
-        ast.args[1] = Expr(:call, :($(Cassette.Process){$(typeof(genre))}), ast.args[1])
+        ast.args[1] = Expr(:call, :($(Cassette.Primitive){$(typeof(genre))}), ast.args[1])
         child_indices = 2:length(ast.args)
     else
         child_indices = 1:length(ast.args)

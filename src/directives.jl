@@ -31,8 +31,8 @@ abstract type Directive{G<:AbstractGenre,F} end
 macro defdirective(D)
     return esc(quote
         struct $D{G<:$AbstractGenre,F} <: $Directive{G,F}
-            func::SpecializedFunction{F}
-            @inline $D{G}(func::SpecializedFunction{F}) where {G<:$AbstractGenre,F}  = new{G,F}(func)
+            func::$SpecializedFunction{F}
+            @inline $D{G}(func::$SpecializedFunction{F}) where {G<:$AbstractGenre,F}  = new{G,F}(func)
         end
     end)
 end
