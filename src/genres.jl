@@ -36,7 +36,7 @@ end
 
 @inline Base.promote_rule(::Type{ValueGenre}, ::Type{VoidGenre}) = ValueGenre
 
-@inline promote_genre(a::A, b::B) where {A<:AbstractGenre,B<:AbstractGenre} = promote_type(A, B)()
+@inline promote_genre(::A, ::B) where {A<:AbstractGenre,B<:AbstractGenre} = promote_type(A, B)()
 
 promote_genre(a::A) where {A} = genre(a)
 promote_genre(a::A, b::B) where {A,B} = promote_genre(genre(a), genre(b))
