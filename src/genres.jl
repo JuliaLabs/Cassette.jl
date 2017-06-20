@@ -8,8 +8,6 @@ macro defgenre(G)
     return esc(:(struct $G <: $(AbstractGenre) end))
 end
 
-@inline genre(g::AbstractGenre) = g
-
 #############
 # VoidGenre #
 #############
@@ -21,6 +19,16 @@ end
 ##############
 
 @defgenre ValueGenre
+
+#########
+# genre #
+#########
+
+@inline genre(g::AbstractGenre) = g
+
+@inline genre(x) = genre(typeof(x))
+
+@inline genre(::DataType) = ValueGenre()
 
 #############
 # Promotion #

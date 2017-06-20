@@ -39,7 +39,6 @@ end
 
 @inline func(d::Directive) = d.func
 
-@inline genre(d::Directive{G}) where {G} = G()
 @inline genre(::Type{Directive{G,F}}) where {G,F} = G()
 
 @defdirective Play

@@ -5,7 +5,7 @@
 # ProcessPrimitive #
 #------------------#
 
-struct ProcessPrimitive{G<:AbstractGenre,F} <: Function
+struct ProcessPrimitive{G<:AbstractGenre,F} <: Directive{G,F}
     func::SpecializedFunction{F}
     @inline ProcessPrimitive{G}(func::SpecializedFunction{F}) where {G,F} = new{G,F}(func)
     @inline ProcessPrimitive{G}(p::ProcessPrimitive) where {G} = p
@@ -17,9 +17,6 @@ end
 end
 
 @inline func(p::ProcessPrimitive) = p.func
-
-@inline genre(p::ProcessPrimitive) = genre(typeof(p))
-@inline genre(::Type{ProcessPrimitive{G,F}}) where {G,F} = G()
 
 # Cache #
 #-------#
@@ -53,7 +50,7 @@ end
 # Intercept #
 #############
 
-struct Intercept{G<:AbstractGenre,F,w} <: Function
+struct Intercept{G<:AbstractGenre,F,w} <: Directive{G,F}
     func::SpecializedFunction{F}
     @inline Intercept{G,F,w}(func::SpecializedFunction{F}) where {G,F,w} = new{G,F,w}(func)
     @inline Intercept{G,F,w}(func::F) where {G,F,w} = Intercept{G,F,w}(SpecializedFunction(func))
@@ -85,7 +82,7 @@ end
 struct Primitive end
 struct NotPrimitive end
 
-struct InterceptAs{G<:AbstractGenre,F}
+struct InterceptAs{G<:AbstractGenre,F} <: Directive{G,F}
     func::SpecializedFunction{F}
     @inline InterceptAs{G}(func::SpecializedFunction{F}) where {G,F} = new{G,F}(func)
 end
@@ -161,7 +158,7 @@ end
 
 trace_world_counter() = ccall(:jl_get_world_counter, UInt, ())
 
-struct Trace{G<:AbstractGenre,F,w} <: Function
+struct Trace{G<:AbstractGenre,F,w} <: Directive{G,F}
     func::SpecializedFunction{F}
     @inline Trace{G,F,w}(func::SpecializedFunction{F}) where {G,F,w} = new{G,F,w}(func)
     @inline Trace{G,F,w}(func::F) where {G,F,w} = Trace{G,F,w}(SpecializedFunction(func))
