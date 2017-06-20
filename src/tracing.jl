@@ -58,7 +58,6 @@ struct Intercept{G<:AbstractGenre,F,w} <: Function
     @inline Intercept{G,F,w}(func::SpecializedFunction{F}) where {G,F,w} = new{G,F,w}(func)
     @inline Intercept{G,F,w}(func::F) where {G,F,w} = Intercept{G,F,w}(SpecializedFunction(func))
     @inline Intercept{G}(func::F) where {G,F} = Intercept{G,F,trace_world_counter()}(func)
-
 end
 
 @generated function (i::Intercept{G,F})(input...) where {G,F}
