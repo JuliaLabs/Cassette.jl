@@ -95,7 +95,14 @@ end
 #-------------------#
 
 @inline perform_intercept(::Primitive, i::Intercept{G}, args...) where {G} = ProcessPrimitive{G}(func(i))(args...)
-@inline perform_intercept(::NotPrimitive, i::Intercept{G,F,w}, args...) where {G,F,w} = Trace{G,F,w}(func(i))(args...)
+
+@generated function perform_intercept(::NotPrimitive, i::Intercept{G,F,w}, args...) where {G,F,w}
+    if F.name.module == Core
+        return :($(Expr(:meta, :inline)); perform_intercept(Primitive(), i, args...))
+    else
+        return :($(Expr(:meta, :inline)); Trace{G,F,w}(func(i))(args...))
+    end
+end
 
 #########
 # Trace #
