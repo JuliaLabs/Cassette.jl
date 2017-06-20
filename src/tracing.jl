@@ -165,6 +165,9 @@ struct Trace{G<:AbstractGenre,F,w} <: Directive{G,F}
     @inline Trace{G}(func::F) where {G,F} = Trace{G,F,trace_world_counter()}(func)
 end
 
+# TODO: Just make a single n-ary version of `Trace(...)`. The difficulty here comes from
+# matching the generator's splatted tuple argument with the "pre-splatted" arguments
+# represented as numbered slots in the generated CodeInfo.
 for N in 1:15
     vars = [Symbol("x_$i") for i in 1:N]
     @eval begin
