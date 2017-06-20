@@ -23,10 +23,10 @@ Base.show(io::IO, f::Disarm) = print(io, typeof(f), "()")
 # SpecializedFunction #
 #######################
 
-struct TypeArgument{T} end
+struct TypeArg{T} end
 
 @inline unwrap(x) = x
-@inline unwrap(::TypeArgument{T}) where {T} = T
+@inline unwrap(::TypeArg{T}) where {T} = T
 
 struct SpecializedFunction{F} <: Function
     func::F

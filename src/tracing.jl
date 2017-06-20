@@ -61,7 +61,7 @@ end
     typed_input = Expr(:tuple)
     for i in 1:nfields(input)
         if input[i] <: Type && length(input[i].parameters) == 1
-            type_arg = TypeArgument{input[i].parameters[1]}()
+            type_arg = TypeArg{input[i].parameters[1]}()
             push!(typed_input.args, type_arg)
         else
             push!(typed_input.args, :(input[$i]::$(input[i])))
