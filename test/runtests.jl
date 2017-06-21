@@ -1,5 +1,6 @@
 using Cassette
 using Base.Test
+using BenchmarkTools
 
 ########################
 # temporary smoke test #
@@ -15,6 +16,9 @@ function rosenbrock(x)
     return result
 end
 
+# test ValueGenre (correctness) #
+#-------------------------------#
+
 f = Cassette.Trace{Cassette.ValueGenre}(rosenbrock)
 
 x = rand(1000)
@@ -29,3 +33,17 @@ x = rand(1000)
 foreach(Cassette.value!, xv, x)
 Cassette.replay!(t)
 @test Cassette.value(yv) == rosenbrock(x)
+
+# test VoidGenre (performance) #
+#------------------------------#
+
+f = Cassette.Trace{Cassette.VoidGenre}(rosenbrock)
+
+x = rand(1000)
+
+trial1 = @benchmark $f($x) evals=10 samples=1000
+trial2 = @benchmark rosenbrock($x) evals=10 samples=1000
+
+@test BenchmarkTools.allocs(trial1) == BenchmarkTools.allocs(trial2)
+@test BenchmarkTools.memory(trial1) == BenchmarkTools.memory(trial2)
+@test isinvariant(judge(minimum(trial1), minimum(trial2); time_tolerance=0.03))
