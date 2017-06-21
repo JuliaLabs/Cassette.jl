@@ -1,29 +1,11 @@
-#######################
-# SpecializedFunction #
-#######################
+###########
+# TypeArg #
+###########
 
 struct TypeArg{T} end
 
-@inline unwrap(x) = x
-@inline unwrap(::TypeArg{T}) where {T} = T
-@inline unwrap(::Type{TypeArg{T}}) where {T} = T
-
-struct SpecializedFunction{F} <: Function
-    func::F
-end
-
-@inline SpecializedFunction(f::SpecializedFunction) = f
-
-@inline func(f::SpecializedFunction) = f.func
-
-@inline (f::SpecializedFunction{<:Any})(a) = func(f)(unwrap(a))
-@inline (f::SpecializedFunction{<:Any})(a, b) = func(f)(unwrap(a), unwrap(b))
-@inline (f::SpecializedFunction{<:Any})(a, b, c) = func(f)(unwrap(a), unwrap(b), unwrap(c))
-@inline (f::SpecializedFunction{<:Any})(a, b, c, d) = func(f)(unwrap(a), unwrap(b), unwrap(c), unwrap(d))
-@inline (f::SpecializedFunction{<:Any})(a, b, c, d, e) = func(f)(unwrap(a), unwrap(b), unwrap(c), unwrap(d), unwrap(e))
-@inline (f::SpecializedFunction{<:Any})(a, b, c, d, e, args...) = func(f)(unwrap(a), unwrap(b), unwrap(c), unwrap(d), unwrap(e), unwrap.(args)...)
-
-Base.show(io::IO, f::SpecializedFunction) = print(io, typeof(f), "()")
+@inline value(::TypeArg{T}) where {T} = value(T)
+@inline value(::Type{TypeArg{T}}) where {T} = value(T)
 
 ##########
 # Disarm #
@@ -32,8 +14,6 @@ Base.show(io::IO, f::SpecializedFunction) = print(io, typeof(f), "()")
 struct Disarm{F} <: Function
     func::F
 end
-
-@inline Disarm(f::SpecializedFunction) = SpecializedFunction(Disarm(func(f)))
 
 @inline Disarm(f::Disarm) = f
 
@@ -57,8 +37,8 @@ abstract type Directive{G<:AbstractGenre,F} end
 macro defdirective(D)
     return esc(quote
         struct $D{G<:$AbstractGenre,F} <: $Directive{G,F}
-            func::$SpecializedFunction{F}
-            @inline $D{G}(func::$SpecializedFunction{F}) where {G<:$AbstractGenre,F}  = new{G,F}(func)
+            func::F
+            @inline $D{G}(func::F) where {G<:$AbstractGenre,F}  = new{G,F}(func)
         end
     end)
 end
@@ -77,6 +57,8 @@ end
 ##############
 
 @inline (p::Play{ValueGenre})(input...) = Disarm(func(p))(input...)
+
+@inline (r::Replay{ValueGenre})(output, input, parent) = value!(output, Disarm(func(r))(input...))
 
 @inline (r::Record{ValueGenre})(output::Union{Real,AbstractArray}, input) = ValueNote(output, FunctionNote{ValueGenre}(func(r), input))
 @inline (r::Record{ValueGenre})(output::Bool, input) = output

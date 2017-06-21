@@ -6,8 +6,8 @@
 #------------------#
 
 struct ProcessPrimitive{G<:AbstractGenre,F} <: Directive{G,F}
-    func::SpecializedFunction{F}
-    @inline ProcessPrimitive{G}(func::SpecializedFunction{F}) where {G,F} = new{G,F}(func)
+    func::F
+    @inline ProcessPrimitive{G}(func::F) where {G,F} = new{G,F}(func)
 end
 
 @inline function (p::ProcessPrimitive{G,F})(input...) where {G,F}
@@ -50,9 +50,8 @@ end
 #############
 
 struct Intercept{G<:AbstractGenre,F,w} <: Directive{G,F}
-    func::SpecializedFunction{F}
-    @inline Intercept{G,F,w}(func::SpecializedFunction{F}) where {G,F,w} = new{G,F,w}(func)
-    @inline Intercept{G,F,w}(func::F) where {G,F,w} = Intercept{G,F,w}(SpecializedFunction(func))
+    func::F
+    @inline Intercept{G,F,w}(func::F) where {G,F,w} = new{G,F,w}(func)
     @inline Intercept{G}(func::F) where {G,F} = Intercept{G,F,trace_world_counter()}(func)
 end
 
@@ -82,8 +81,8 @@ struct Primitive end
 struct NotPrimitive end
 
 struct InterceptAs{G<:AbstractGenre,F} <: Directive{G,F}
-    func::SpecializedFunction{F}
-    @inline InterceptAs{G}(func::SpecializedFunction{F}) where {G,F} = new{G,F}(func)
+    func::F
+    @inline InterceptAs{G}(func::F) where {G,F} = new{G,F}(func)
 end
 
 @inline (i::InterceptAs)(args...) = Primitive()
@@ -165,9 +164,8 @@ end
 trace_world_counter() = ccall(:jl_get_world_counter, UInt, ())
 
 struct Trace{G<:AbstractGenre,F,w} <: Directive{G,F}
-    func::SpecializedFunction{F}
-    @inline Trace{G,F,w}(func::SpecializedFunction{F}) where {G,F,w} = new{G,F,w}(func)
-    @inline Trace{G,F,w}(func::F) where {G,F,w} = Trace{G,F,w}(SpecializedFunction(func))
+    func::F
+    @inline Trace{G,F,w}(func::F) where {G,F,w} = new{G,F,w}(func)
     @inline Trace{G}(func::F) where {G,F} = Trace{G,F,trace_world_counter()}(func)
 end
 
@@ -176,7 +174,7 @@ end
 # represented as numbered slots in the generated CodeInfo.
 
 @generated function (::Trace{G,F,w})(x) where {G,F,w}
-    return intercepted_code_info(Tuple{F,value(unwrap(x))}, G, w)
+    return intercepted_code_info(Tuple{F,value(x)}, G, w)
 end
 
 for N in 2:15
@@ -184,7 +182,7 @@ for N in 2:15
     @eval begin
         @generated function (::Trace{G,F,w})($(vars...)) where {G,F,w}
             args = $(vars...)
-            return intercepted_code_info(Tuple{F,value.(unwrap.(args))...}, G, w)
+            return intercepted_code_info(Tuple{F,value.(args)...}, G, w)
         end
     end
 end

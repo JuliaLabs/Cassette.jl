@@ -5,11 +5,10 @@
 abstract type AbstractNote{G<:AbstractGenre} end
 
 mutable struct FunctionNote{G<:AbstractGenre,V,P<:Tuple,C} <: AbstractNote{G}
-    value::SpecializedFunction{V}
+    value::V
     parent::P
     cache::C
-    FunctionNote{G}(value::SpecializedFunction{V}, parent::P, cache::C = nothing) where {G,V,P,C} = new{G,V,P,C}(value, parent, cache)
-    FunctionNote{G}(value::V, parent::P, cache::C = nothing) where {G,V,P,C} = FunctionNote{G}(SpecializedFunction(value), parent, cache)
+    FunctionNote{G}(value::V, parent::P, cache::C = nothing) where {G,V,P,C} = new{G,V,P,C}(value, parent, cache)
 end
 
 mutable struct ValueNote{G<:AbstractGenre,V,P,C} <: AbstractNote{G}
@@ -146,7 +145,9 @@ end
 # Expr Generation #
 ###################
 
-interpolated_variable(x::ValueNote) = Symbol("x_" * idstring(value(x)))
+idstring(x) = base(62, object_id(x))
+
+interpolated_variable(x::ValueNote) = Symbol("x_" * idstring(x))
 interpolated_variable(x) = x
 
 function toexpr(output::ValueNote)
@@ -170,10 +171,8 @@ end
 # Pretty Printing #
 ###################
 
-idstring(x) = base(62, object_id(x))
-
 function Base.show(io::IO, n::FunctionNote{G,V}) where {G,V}
-    return print(io, "FunctionNote{$G,$V}($(parent(n)), $(cache(n))")
+    return print(io, "FunctionNote{$G,$V}($(parent(n)), $(cache(n)))")
 end
 
 function Base.show(io::IO, n::ValueNote{G}) where {G}
