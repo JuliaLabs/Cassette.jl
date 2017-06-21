@@ -175,11 +175,17 @@ end
 # TODO: Just make a single n-ary version of `Trace(...)`. The difficulty here comes from
 # matching the generator's splatted tuple argument with the "pre-splatted" arguments
 # represented as numbered slots in the generated CodeInfo.
-for N in 1:15
+
+@generated function (::Trace{G,F,w})(x) where {G,F,w}
+    return intercepted_code_info(Tuple{F,unwrap(x)}, G, w)
+end
+
+for N in 2:15
     vars = [Symbol("x_$i") for i in 1:N]
     @eval begin
         @generated function (::Trace{G,F,w})($(vars...)) where {G,F,w}
-            return intercepted_code_info(Tuple{F,$(vars...)}, G, w)
+            args = $(vars...)
+            return intercepted_code_info(Tuple{F,unwrap.(args)...}, G, w)
         end
     end
 end

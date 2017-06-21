@@ -27,6 +27,7 @@ struct TypeArg{T} end
 
 @inline unwrap(x) = x
 @inline unwrap(::TypeArg{T}) where {T} = T
+@inline unwrap(::Type{TypeArg{T}}) where {T} = T
 
 struct SpecializedFunction{F} <: Function
     func::F
