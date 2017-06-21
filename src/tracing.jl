@@ -94,17 +94,14 @@ end
 
 @inline perform_intercept(::Primitive, i::Intercept{G}, args...) where {G} = ProcessPrimitive{G}(func(i))(args...)
 
-@generated function perform_intercept(::NotPrimitive, i::Intercept{G,F,w}, args...) where {G,F,w}
-    if F.name.module == Core
-        return :($(Expr(:meta, :inline)); perform_intercept(Primitive(), i, args...))
-    else
-        return :($(Expr(:meta, :inline)); Trace{G,F,w}(func(i))(args...))
-    end
-end
+@inline perform_intercept(::NotPrimitive, i::Intercept{G,F,w}, args...) where {G,F,w} = Trace{G,F,w}(func(i))(args...)
 
 #########
 # Trace #
 #########
+
+# tracing utilities #
+#-------------------#
 
 #=
 Historically, `code_lowered(f, types)` requires `f` to be the function instance. That
@@ -112,10 +109,10 @@ interface is just a holdover from the days where `typeof(f) === Function`; nowad
 function type + argument type signature is a unique identifier of a method. Thus, we can do
 the following, which can be called (kind of unsafely) from a generated function.
 =#
-function code_lowered_by_type_sig(::Type{T}) where {T<:Tuple}
-    minfo = Base._methods_by_ftype(T, -1, typemax(UInt))[]
-    return minfo[2], Base.uncompressed_ast(minfo[3])
-end
+
+methods_by_type_sig(::Type{T}) where {T<:Tuple} = Base._methods_by_ftype(T, -1, typemax(UInt))
+
+code_info_from_method_info(method_info) = (Base.uncompressed_ast(method_info[3]), method_info[2])
 
 function wrap_subcalls_with_intercept!(lines::Vector, ::Type{G}, w) where {G<:AbstractGenre}
     for line in lines
@@ -154,14 +151,16 @@ function replace_static_parameters!(lines::Vector, static_params)
     end
 end
 
-function intercepted_code_info(::Type{T}, ::Type{G}, w) where {T<:Tuple,G<:AbstractGenre}
-    static_params, cinfo = code_lowered_by_type_sig(T)
-    wrap_subcalls_with_intercept!(cinfo.code, G, w)
-    replace_static_parameters!(cinfo.code, static_params)
-    return cinfo
+function intercepted_code_info!(code_info::CodeInfo, static_params, ::Type{G}, w) where {G<:AbstractGenre}
+    wrap_subcalls_with_intercept!(code_info.code, G, w)
+    replace_static_parameters!(code_info.code, static_params)
+    return code_info
 end
 
 trace_world_counter() = ccall(:jl_get_world_counter, UInt, ())
+
+# Trace Type #
+#------------#
 
 struct Trace{G<:AbstractGenre,F,w} <: Directive{G,F}
     func::F
@@ -169,20 +168,33 @@ struct Trace{G<:AbstractGenre,F,w} <: Directive{G,F}
     @inline Trace{G}(func::F) where {G,F} = Trace{G,F,trace_world_counter()}(func)
 end
 
+@inline func(t::Trace) = t.func
+
 # TODO: Just make a single n-ary version of `Trace(...)`. The difficulty here comes from
 # matching the generator's splatted tuple argument with the "pre-splatted" arguments
 # represented as numbered slots in the generated CodeInfo.
 
-@generated function (::Trace{G,F,w})(x) where {G,F,w}
-    return intercepted_code_info(Tuple{F,value(x)}, G, w)
+function _generated_trace_body(::Type{Trace{G,F,w}}, varsyms, argtypes...) where {G,F,w}
+    method_list = methods_by_type_sig(Tuple{F,value.(argtypes)...})
+    if isempty(method_list)
+        # assumes that `t` and `G` are static parameters
+        # of the generator who called this function!!!
+        return quote
+            $(Expr(:meta, :inline))
+            ProcessPrimitive{G}(func(t))($(varsyms...))
+        end
+    else
+        code_info, static_params = code_info_from_method_info(method_list[])
+        return intercepted_code_info!(code_info, static_params, G, w)
+    end
 end
 
-for N in 2:15
+for N in 1:15
     vars = [Symbol("x_$i") for i in 1:N]
+    quoted_vars = Expr(:tuple, [Expr(:quote, v) for v in vars]...)
     @eval begin
-        @generated function (::Trace{G,F,w})($(vars...)) where {G,F,w}
-            args = $(vars...)
-            return intercepted_code_info(Tuple{F,value.(args)...}, G, w)
+        @generated function (t::Trace{G,F,w})($(vars...)) where {G,F,w}
+            return _generated_trace_body(Trace{G,F,w}, $(quoted_vars), $(vars...))
         end
     end
 end
