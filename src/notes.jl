@@ -176,5 +176,6 @@ function Base.show(io::IO, n::FunctionNote{G,V}) where {G,V}
 end
 
 function Base.show(io::IO, n::ValueNote{G}) where {G}
-    return print(io, "ValueNote{$G}<$(idstring(n))>($(value(n)), $(cache(n)))")
+    rootmsg = isroot(n) ? ";ROOT" : ""
+    return print(io, "ValueNote{$G}<$(idstring(n))$(rootmsg)>($(value(n)), $(cache(n)))")
 end
