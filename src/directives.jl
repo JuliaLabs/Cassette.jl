@@ -1,24 +1,3 @@
-##########
-# Disarm #
-##########
-
-struct Disarm{F} <: Function
-    func::F
-end
-
-@inline Disarm(f::Disarm) = f
-
-@inline func(f::Disarm) = f.func
-
-@inline (f::Disarm{<:Any})(a) = func(f)(value(a))
-@inline (f::Disarm{<:Any})(a, b) = func(f)(value(a), value(b))
-@inline (f::Disarm{<:Any})(a, b, c) = func(f)(value(a), value(b), value(c))
-@inline (f::Disarm{<:Any})(a, b, c, d) = func(f)(value(a), value(b), value(c), value(d))
-@inline (f::Disarm{<:Any})(a, b, c, d, e) = func(f)(value(a), value(b), value(c), value(d), value(e))
-@inline (f::Disarm{<:Any})(a, b, c, d, e, args...) = func(f)(value(a), value(b), value(c), value(d), value(e), value.(args)...)
-
-Base.show(io::IO, f::Disarm) = print(io, typeof(f), "()")
-
 #######################
 # SpecializedFunction #
 #######################
@@ -45,6 +24,29 @@ end
 @inline (f::SpecializedFunction{<:Any})(a, b, c, d, e, args...) = func(f)(unwrap(a), unwrap(b), unwrap(c), unwrap(d), unwrap(e), unwrap.(args)...)
 
 Base.show(io::IO, f::SpecializedFunction) = print(io, typeof(f), "()")
+
+##########
+# Disarm #
+##########
+
+struct Disarm{F} <: Function
+    func::F
+end
+
+@inline Disarm(f::SpecializedFunction) = SpecializedFunction(Disarm(func(f)))
+
+@inline Disarm(f::Disarm) = f
+
+@inline func(f::Disarm) = f.func
+
+@inline (f::Disarm{<:Any})(a) = func(f)(value(a))
+@inline (f::Disarm{<:Any})(a, b) = func(f)(value(a), value(b))
+@inline (f::Disarm{<:Any})(a, b, c) = func(f)(value(a), value(b), value(c))
+@inline (f::Disarm{<:Any})(a, b, c, d) = func(f)(value(a), value(b), value(c), value(d))
+@inline (f::Disarm{<:Any})(a, b, c, d, e) = func(f)(value(a), value(b), value(c), value(d), value(e))
+@inline (f::Disarm{<:Any})(a, b, c, d, e, args...) = func(f)(value(a), value(b), value(c), value(d), value(e), value.(args)...)
+
+Base.show(io::IO, f::Disarm) = print(io, typeof(f), "()")
 
 ##############
 # Directives #

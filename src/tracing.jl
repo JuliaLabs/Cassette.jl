@@ -8,7 +8,6 @@
 struct ProcessPrimitive{G<:AbstractGenre,F} <: Directive{G,F}
     func::SpecializedFunction{F}
     @inline ProcessPrimitive{G}(func::SpecializedFunction{F}) where {G,F} = new{G,F}(func)
-    @inline ProcessPrimitive{G}(p::ProcessPrimitive) where {G} = p
 end
 
 @inline function (p::ProcessPrimitive{G,F})(input...) where {G,F}
@@ -177,7 +176,7 @@ end
 # represented as numbered slots in the generated CodeInfo.
 
 @generated function (::Trace{G,F,w})(x) where {G,F,w}
-    return intercepted_code_info(Tuple{F,unwrap(x)}, G, w)
+    return intercepted_code_info(Tuple{F,value(unwrap(x))}, G, w)
 end
 
 for N in 2:15
@@ -185,7 +184,7 @@ for N in 2:15
     @eval begin
         @generated function (::Trace{G,F,w})($(vars...)) where {G,F,w}
             args = $(vars...)
-            return intercepted_code_info(Tuple{F,unwrap.(args)...}, G, w)
+            return intercepted_code_info(Tuple{F,value.(unwrap.(args))...}, G, w)
         end
     end
 end
