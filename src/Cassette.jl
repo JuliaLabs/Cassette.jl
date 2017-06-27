@@ -15,6 +15,9 @@ include("genres.jl")
 include("directives.jl")
 include("notes.jl")
 include("tapes.jl")
+
+# Include `tracing.jl` after basically everything else, since the
+# @generated functions within are sensitive to code load order.
 include("tracing.jl")
 
 include("genres/VoidGenre.jl")

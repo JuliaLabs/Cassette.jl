@@ -106,9 +106,11 @@ end
 
 function _generated_trace_body(::Type{Trace{G,F,w}}, varsyms, argtypes...) where {G,F,w}
     method_list = methods_by_type_sig(Tuple{F,value.(argtypes)...})
+    # TODO: This isn't a good enough fallback, apparently - see the MethodError
+    # in the current VoidGenre smoke test. Might be a TypeArg related bug?
     if isempty(method_list)
-        # assumes that `t` and `G` are static parameters
-        # of the generator who called this function!!!
+        # This fallback assumes that `t` and `G` are static
+        # parameters of the generator that calls this function
         return quote
             $(Expr(:meta, :inline))
             Play{G}(unwrap(t))($(varsyms...))

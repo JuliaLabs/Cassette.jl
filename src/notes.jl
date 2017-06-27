@@ -1,6 +1,7 @@
 ########
 # Note #
 ########
+# TODO: Define only one `Note` struct
 
 abstract type AbstractNote{G<:AbstractGenre} end
 
