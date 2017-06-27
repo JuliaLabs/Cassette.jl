@@ -8,22 +8,6 @@ macro defgenre(G)
     return esc(:(struct $G <: $(AbstractGenre) end))
 end
 
-#############
-# VoidGenre #
-#############
-
-@defgenre VoidGenre
-
-##############
-# ValueGenre #
-##############
-
-@defgenre ValueGenre
-
-#########
-# genre #
-#########
-
 @inline genre(x) = genre(typeof(x))
 
 @inline genre(::DataType) = VoidGenre()
@@ -33,8 +17,6 @@ end
 #############
 # Promotion #
 #############
-
-@inline Base.promote_rule(::Type{ValueGenre}, ::Type{VoidGenre}) = ValueGenre
 
 @inline promote_genre(::A, ::B) where {A<:AbstractGenre,B<:AbstractGenre} = promote_type(A, B)()
 

@@ -25,6 +25,9 @@ ValueNote(value, parent::FunctionNote{G}, cache...) where {G} = ValueNote{G}(val
 # Properties #
 ##############
 
+@inline unwrap(n::AbstractNote) = value(n)
+@inline unwrap(::Type{T}) where {T<:AbstractNote} = valuetype(T)
+
 # getters #
 #---------#
 
