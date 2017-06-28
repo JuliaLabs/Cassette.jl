@@ -23,9 +23,9 @@ f = Cassette.Trace{Cassette.ValueGenre}(rosenbrock)
 
 x = rand(1000)
 
-xv = Cassette.ValueNote{Cassette.ValueGenre}.(x)
+xv = Cassette.Note{Cassette.ValueGenre}.(x, nothing)
 yv = f(xv)
-@test isa(yv, Cassette.ValueNote)
+@test isa(yv, Cassette.Note)
 @test Cassette.value(yv) == rosenbrock(x)
 t = Cassette.Tape(yv)
 
@@ -47,3 +47,9 @@ trial2 = @benchmark rosenbrock($x) evals=10 samples=1000
 @test BenchmarkTools.allocs(trial1) == BenchmarkTools.allocs(trial2)
 @test BenchmarkTools.memory(trial1) == BenchmarkTools.memory(trial2)
 @test isinvariant(judge(minimum(trial1), minimum(trial2); time_tolerance=0.03))
+
+###################
+# known segfaults #
+###################
+
+# Cassette.debug_trace(eltype, DataType)

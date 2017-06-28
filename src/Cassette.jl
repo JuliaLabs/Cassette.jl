@@ -5,7 +5,7 @@ module Cassette
 using FunctionWrappers
 
 #=
-Cassette contains a lot of functor-esque types which wrapping callables/values in order
+Cassette contains a lot of functor-esque types which wrap callables/values in order
 to hijack/record normal Julia function execution via multiple dispatch. All of these
 wrapper types implement `unwrap`, whose default no-op behavior is defined here.
 =#
@@ -16,8 +16,8 @@ include("directives.jl")
 include("notes.jl")
 include("tapes.jl")
 
-# Include `tracing.jl` after basically everything else, since the
-# @generated functions within are sensitive to code load order.
+# include `tracing.jl` after basically everything else, since the
+# `@generated` functions within are sensitive to code load order.
 include("tracing.jl")
 
 include("genres/VoidGenre.jl")

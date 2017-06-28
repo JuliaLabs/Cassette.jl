@@ -1,86 +1,51 @@
 ########
 # Note #
 ########
-# TODO: Define only one `Note` struct
 
-abstract type AbstractNote{G<:AbstractGenre} end
+struct Root end
 
-mutable struct FunctionNote{G<:AbstractGenre,V,P<:Tuple,C} <: AbstractNote{G}
+mutable struct Note{G<:AbstractGenre,V,C,P}
     value::V
+    cache::C
     parent::P
-    cache::C
-    FunctionNote{G}(value::V, parent::P, cache::C = nothing) where {G,V,P,C} = new{G,V,P,C}(value, parent, cache)
+    @inline Note{G}(value::V, cache::C, parent::Root) where {G,V,C} = new{G,V,C,Root}(value, cache, parent)
+    @inline Note{G}(value::V, cache::C, parent::Note) where {G,V,C} = new{G,V,C,Note}(value, cache, parent)
+    @inline Note{G}(value::V, cache::C, parent::P) where {G,V,C,P<:Tuple} = new{G,V,C,P}(value, cache, parent)
+    @inline Note{G}(value, cache) where {G} = Note{G}(value, cache, Root())
 end
 
-mutable struct ValueNote{G<:AbstractGenre,V,P,C} <: AbstractNote{G}
-    value::V
-    parent::FunctionNote{G,P}
-    cache::C
-    ValueNote{G}(value::V, parent::FunctionNote{G,P}, cache::C = nothing)  where {G,V,P,C} = new{G,V,P,C}(value, parent, cache)
-    ValueNote{G}(value::V, cache::C = nothing) where {G,V,C} = ValueNote{G}(value, FunctionNote{G}(nothing, tuple(), nothing), cache)
-end
+#############
+# Interface #
+#############
 
-ValueNote(value, parent::FunctionNote{G}, cache...) where {G} = ValueNote{G}(value, parent, cache...)
+@inline unwrap(n::Note) = value(n)
+@inline unwrap(::Type{N}) where {N<:Note} = value(N)
 
-##############
-# Properties #
-##############
+@inline genre(::Type{N}) where {G,N<:Note{G}} = G()
 
-@inline unwrap(n::AbstractNote) = value(n)
-@inline unwrap(::Type{T}) where {T<:AbstractNote} = valuetype(T)
+@inline value(note::Note) = note.value
+@inline value(::Type{N}) where {G,V,N<:Note{G,V}} = V
+@inline value!(note::Note, v) = (note.value = v)
 
-# getters #
-#---------#
+@inline cache(note::Note) = note.cache
+@inline cache(::Type{N}) where {G,V,C,N<:Note{G,V,C}} = C
+@inline cache!(note::Note, c) = (note.cache = c)
 
-@inline value(x) = x
-@inline value(note::ValueNote) = note.value
-@inline value(note::FunctionNote) = note.value
-@inline value(::Type{T}) where {T} = valuetype(T)
-
-@inline parent(note::ValueNote) = note.parent
-@inline parent(note::FunctionNote) = note.parent
-
-@inline cache(note::ValueNote) = note.cache
-@inline cache(note::FunctionNote) = note.cache
-
-@inline genre(::Type{AbstractNote{G}}) where {G} = G()
-@inline genre(::Type{ValueNote{G,V,P,C}}) where {G,V,P,C} = G()
-@inline genre(::Type{FunctionNote{G,V,P,C}}) where {G,V,P,C} = G()
-
-@inline valuetype(x) = valuetype(typeof(x))
-@inline valuetype(::Type{V}) where {V} = V
-@inline valuetype(::Type{ValueNote{G,V,P,C}}) where {G,V,P,C} = V
-@inline valuetype(::Type{FunctionNote{G,V,P,C}}) where {G,V,P,C} = V
-
-@inline cachetype(x) = cachetype(typeof(x))
-@inline cachetype(::Type{V}) where {V} = Void
-@inline cachetype(::Type{ValueNote{G,V,P,C}}) where {G,V,P,C} = C
-@inline cachetype(::Type{FunctionNote{G,V,P,C}}) where {G,V,P,C} = C
-
-# setters #
-#---------#
-
-@inline value!(note::ValueNote, v) = (note.value = v)
-
-@inline cache!(note::ValueNote, c) = (note.cache = c)
-@inline cache!(note::FunctionNote, c) = (note.cache = c)
-
-##########
-# isroot #
-##########
+@inline parent(note::Note) = note.parent
+@inline parent(::Type{N}) where {G,V,C,P,N<:Note{G,V,C,P}} = P
+@inline parent!(note::Note, p) = (note.parent = p)
 
 @inline isroot(x) = isroot(typeof(x))
 @inline isroot(::DataType) = true
-@inline isroot(::Type{<:AbstractNote}) = false
-@inline isroot(::Type{<:FunctionNote{<:AbstractGenre,Void}}) = true
-@inline isroot(::Type{<:ValueNote{<:AbstractGenre,<:Any,Void}}) = true
+@inline isroot(::Type{<:Note}) = false
+@inline isroot(::Type{N}) where {G<:AbstractGenre,V,C,N<:Note{G,V,C,Root}} = true
 
 ###########
 # rewind! #
 ###########
-# TODO: How to handle elementwise ValueNote ancestors?
+# TODO: How to handle elementwise Note ancestors?
 
-@inline function rewind!(f!, n::ValueNote, recursive::Bool = false)
+@inline function rewind!(f!, n::Note, recursive::Bool = false)
     if recursive
         recur_rewind!(f!, n)
     else
@@ -94,8 +59,8 @@ end
 
 iter_rewind!(f!, n) = nothing
 
-function iter_rewind!(f!, n::ValueNote)
-    queue = Vector{Any}()
+function iter_rewind!(f!, n::Note)
+    queue = Vector{Note}()
     push!(queue, n)
     while !(isempty(queue))
         current = pop!(queue)
@@ -105,11 +70,11 @@ function iter_rewind!(f!, n::ValueNote)
     return nothing
 end
 
-@generated function iter_rewind_ancestors!(queue, n::FunctionNote{G,V,P}) where {G<:AbstractGenre,V,P<:Tuple}
+@generated function iter_rewind_ancestors!(queue, n::Note{G,V,C,P}) where {G,V,C,P<:Tuple}
     push_calls = Expr(:block, Any[])
     for i in 1:nfields(P)
         T = P.parameters[i]
-        if T <: ValueNote
+        if T <: Note
             push!(push_calls.args, :(push!(queue, ancestors[$i]::$T)))
         end
     end
@@ -126,13 +91,13 @@ end
 
 @inline recur_rewind!(f!, n) = nothing
 
-@inline function recur_rewind!(f!, n::ValueNote)
+@inline function recur_rewind!(f!, n::Note)
     f!(n)
     isroot(n) || recur_rewind_ancestors!(f!, parent(n))
     return nothing
 end
 
-@generated function recur_rewind_ancestors!(f!, n::FunctionNote{G,V,P}) where {G<:AbstractGenre,V,P<:Tuple}
+@generated function recur_rewind_ancestors!(f!, n::Note{G,V,C,P}) where {G,V,C,P<:Tuple}
     rewind_calls = Expr(:block, Any[])
     for i in 1:nfields(P)
         push!(rewind_calls.args, :(recur_rewind!(f!, ancestors[$i]::$(P.parameters[i]))))
@@ -151,10 +116,10 @@ end
 
 idstring(x) = base(62, object_id(x))
 
-interpolated_variable(x::ValueNote) = Symbol("x_" * idstring(x))
+interpolated_variable(x::Note) = Symbol("x_" * idstring(x))
 interpolated_variable(x) = x
 
-function toexpr(output::ValueNote)
+function toexpr(output::Note)
     body = Expr(:block)
     args = Symbol[]
     rewind!(output) do x
@@ -162,7 +127,7 @@ function toexpr(output::ValueNote)
         if !(isroot(x))
             p = parent(x)
             push!(body.args, :($y = $(value(p))($(interpolated_variable.(parent(p))))))
-        elseif isa(x, ValueNote)
+        elseif isa(x, Note)
             in(y, args) || push!(args, y)
         end
     end
@@ -175,11 +140,13 @@ end
 # Pretty Printing #
 ###################
 
-function Base.show(io::IO, n::FunctionNote{G,V}) where {G,V}
-    return print(io, "FunctionNote{$G,$V}($(parent(n)), $(cache(n)))")
-end
-
-function Base.show(io::IO, n::ValueNote{G}) where {G}
-    rootmsg = isroot(n) ? ";ROOT" : ""
-    return print(io, "ValueNote{$G}<$(idstring(n))$(rootmsg)>($(value(n)), $(cache(n)))")
+function Base.show(io::IO, n::Note{G,V,C,P}) where {G,V,C,P}
+    if P <: Note
+        parent_str = "Note(...)"
+    elseif P <: Tuple
+        parent_str = "(...)"
+    elseif P <: Root
+        parent_str = "Root"
+    end
+    return print(io, "Note{$G}<$(idstring(n))>($(value(n)), $(cache(n)), $parent_str)")
 end

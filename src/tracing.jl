@@ -8,7 +8,7 @@ end
 
 @inline unwrap(t::TraceCall) = t.callable
 
-@inline (t::TraceCall{G})(input...) where {G} = typedcall(perform_tracecall, t, input...)
+@inline (t::TraceCall{G})(input...) where {G} = perform_tracecall(behavior(t, input...), t, input...)
 
 # TraceBehavior trait #
 #---------------------#
@@ -21,10 +21,17 @@ struct TraceBehavior{G<:AbstractGenre,F} end
 
 @inline TraceBehavior(::TraceCall{G,F}) where {G,F} = TraceBehavior{G,F}()
 
+@generated function behavior(t::TraceCall{G,F}, input...) where {G,F}
+    if F.name.module === Core
+        return :($(Expr(:meta, :inline)); Intercept())
+    else
+        return :($(Expr(:meta, :inline)); TraceBehavior(t)(input...))
+    end
+end
+
 # perform_tracecall #
 #-------------------#
 
-@inline perform_tracecall(t::TraceCall, input...) = perform_tracecall(TraceBehavior(t)(input...), t, input...)
 @inline perform_tracecall(::Skip, t::TraceCall, input...) = unwrapcall(t, input...)
 @inline perform_tracecall(::Intercept, t::TraceCall{G}, input...) where {G} = Play{G}(unwrap(t))(input...)
 @inline perform_tracecall(::Recurse, t::TraceCall{G,F,w}, input...) where {G,F,w} = Trace{G,F,w}(unwrap(t))(input...)
@@ -100,33 +107,47 @@ end
 
 @inline unwrap(t::Trace) = t.callable
 
+@inline (t::Trace)(input...) = typedcall(exec_trace, t, input...)
+
+debug_trace(f, input...) = Trace{VoidGenre,typeof(f),typemin(UInt)}(f)(input...)
+
+function println_trace_debug(::Type{Trace{G,F,w}}, expr, argtypes) where {G,F,w}
+    println("-----------------------------------------------------------")
+    println("Debug Info For Trace{$G,$F}")
+    println("Argument Types: ", argtypes)
+    println(expr)
+    println("-----------------------------------------------------------")
+end
+
 # TODO: Just make a single n-ary version of `Trace(...)`. The difficulty here comes from
 # matching the generator's splatted tuple argument with the "pre-splatted" arguments
 # represented as numbered slots in the generated CodeInfo.
 
 function _generated_trace_body(::Type{Trace{G,F,w}}, varsyms, argtypes...) where {G,F,w}
-    method_list = methods_by_type_sig(Tuple{F,value.(argtypes)...})
-    # TODO: This isn't a good enough fallback, apparently - see the MethodError
-    # in the current VoidGenre smoke test. Might be a TypeArg related bug?
-    if isempty(method_list)
-        # This fallback assumes that `t` and `G` are static
-        # parameters of the generator that calls this function
+    method_list = methods_by_type_sig(Tuple{F,unwrap.(argtypes)...})
+    if length(method_list) != 1
+        # assumes that `t` and `G` are valid variables in caller scope
         return quote
             $(Expr(:meta, :inline))
             Play{G}(unwrap(t))($(varsyms...))
         end
     else
         code_info, static_params = code_info_from_method_info(method_list[])
+        for i in 1:length(varsyms)
+            code_info.slotnames[i+1] = varsyms[i]
+        end
         return intercepted_code_info!(code_info, static_params, G, w)
     end
 end
 
-for N in 1:15
+for N in 0:15
     vars = [Symbol("x_$i") for i in 1:N]
     quoted_vars = Expr(:tuple, [Expr(:quote, v) for v in vars]...)
     @eval begin
-        @generated function (t::Trace{G,F,w})($(vars...)) where {G,F,w}
-            return _generated_trace_body(Trace{G,F,w}, $(quoted_vars), $(vars...))
+        @generated function exec_trace(t::Trace{G,F,w}, $(vars...)) where {G,F,w}
+            expr = _generated_trace_body(t, $(quoted_vars), $(vars...))
+            w === typemin(UInt) && println_trace_debug(t, expr, [$(vars...)])
+            return expr
         end
     end
 end
