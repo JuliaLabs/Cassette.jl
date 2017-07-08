@@ -16,16 +16,16 @@ function rosenbrock(x)
     return result
 end
 
-# test ValueGenre (correctness) #
+# test ValueContext (correctness) #
 #-------------------------------#
 
-f = Cassette.Trace{Cassette.ValueGenre}(rosenbrock)
+f = Cassette.Trace{Cassette.ValueContext}(rosenbrock)
 
 x = rand(1000)
 
-xv = Cassette.Note{Cassette.ValueGenre}.(x, nothing)
+xv = Cassette.Node{Cassette.ValueContext}.(x, nothing)
 yv = f(xv)
-@test isa(yv, Cassette.Note)
+@test isa(yv, Cassette.Node)
 @test Cassette.value(yv) == rosenbrock(x)
 t = Cassette.Tape(yv)
 
@@ -34,10 +34,10 @@ foreach(Cassette.value!, xv, x)
 Cassette.replay!(t)
 @test Cassette.value(yv) == rosenbrock(x)
 
-# test VoidGenre (performance) #
+# test VoidContext (performance) #
 #------------------------------#
 
-f = Cassette.Trace{Cassette.VoidGenre}(rosenbrock)
+f = Cassette.Trace{Cassette.VoidContext}(rosenbrock)
 
 x = rand(1000)
 
