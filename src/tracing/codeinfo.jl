@@ -22,7 +22,12 @@ end
 
 methods_from_type_signature(::Type{S}, world = typemax(UInt)) where {S<:Tuple} = Base._methods_by_ftype(S, -1, world)
 
-code_info_from_method_info(method_info) = replace_static_parameters!(Base.uncompressed_ast(method_info[3]), method_info[2])
+function code_info_from_method_info(method_info)
+    code_info = Base.uncompressed_ast(method_info[3])
+    static_params = method_info[2]
+    replace_static_parameters!(code_info, static_params)
+    return code_info
+end
 
 ################################
 # Static Parameter Replacement #

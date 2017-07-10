@@ -1,5 +1,9 @@
 abstract type AbstractContext{V,L,C} end
 
+# This allows `DataType` arguments to be passed around within
+# contexts without incurring an inference specialization penalty.
+struct TypeArg{T} end
+
 # TODO: Need more unique tag; still vulnerable to context confusion, e.g. basic pertubation
 # confusion examples would still fail with only the level tag below
 macro defcontext(C)
@@ -8,10 +12,10 @@ macro defcontext(C)
             value::V
         end
         Base.@inline $C(value::V) where {V} = $C{V,1}(value)
-        Base.@inline $C(value::Type{T}) where {T} = $C{Type{T},1}(T)
         Base.@inline $C(value::$Cassette.AbstractContext) = $Cassette.construct_nested_context($C, value)
         Base.@inline $Cassette.box(c::$C, value) = $C(value)
-        Base.@inline $Cassette.box(c::$C, ::Type{T}) where {T} = $C(T)
+        Base.@inline $Cassette.box(c::$C, ::Type{T}) where {T} = $C($TypeArg{T}())
+        Base.@inline $Cassette.box(c::$C{<:Any,L}, x::$C{<:Any,L}) where {L} = x
     end)
 end
 
@@ -26,13 +30,13 @@ end
 
 @inline unbox(x) = x
 @inline unbox(c::AbstractContext) = c.value
-@inline unbox(::Type{C}) where {V,C<:AbstractContext{V}} = V
+@inline unbox(::AbstractContext{TypeArg{T}}) where {T} = T
 
-@inline contextual_unbox(c, ::AbstractContext) = c
-@inline contextual_unbox(c::AbstractContext{<:Any,L,C}, ::AbstractContext{<:Any,L,C}) where {L,C} = unbox(c)
+@inline unbox(c::AbstractContext, x) = x
+@inline unbox(c::AbstractContext{<:Any,L,C}, x::AbstractContext{<:Any,L,C}) where {L,C} = unbox(x)
 
-@generated function unboxcall(f, args...)
-    call = Expr(:call, :(unbox(f)), [:(contextual_unbox(args[$i], f)) for i in 1:nfields(args)]...)
+@generated function unboxcall(f::F, args...) where {F}
+    call = Expr(:call, :(unbox(f)), [:(unbox(f, args[$i])) for i in 1:nfields(args)]...)
     return quote
         $(Expr(:meta, :inline))
         $call
