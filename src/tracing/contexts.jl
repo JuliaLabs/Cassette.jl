@@ -35,8 +35,8 @@ end
 @inline unbox(c::AbstractContext, x) = x
 @inline unbox(c::AbstractContext{<:Any,L,C}, x::AbstractContext{<:Any,L,C}) where {L,C} = unbox(x)
 
-@generated function unboxcall(f::F, args...) where {F}
-    call = Expr(:call, :(unbox(f)), [:(unbox(f, args[$i])) for i in 1:nfields(args)]...)
+@generated function unboxcall(c::AbstractContext, f, args...)
+    call = Expr(:call, :f, [:(unbox(c, args[$i])) for i in 1:nfields(args)]...)
     return quote
         $(Expr(:meta, :inline))
         $call
