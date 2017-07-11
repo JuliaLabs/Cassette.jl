@@ -47,6 +47,8 @@ end
 
 @inline unbox(t::Trace) = t.callable
 
+# this method prevents type constructors from being intercepted
+@inline intercept(t::Trace, f::Union{UnionAll,DataType}) = f
 @inline intercept(t::Trace, f) = Intercept(box(unbox(t), f))
 
 function trace_body(code_info, fname::Symbol, argnames::Vector{Symbol})
