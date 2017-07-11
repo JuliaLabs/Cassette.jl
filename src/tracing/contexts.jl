@@ -4,8 +4,6 @@ abstract type AbstractContext{V,L,C} end
 # contexts without incurring an inference specialization penalty.
 struct TypeArg{T} end
 
-# TODO: Need more unique tag; still vulnerable to context confusion, e.g. basic pertubation
-# confusion examples would still fail with only the level tag below
 macro defcontext(C)
     return esc(quote
         struct $C{V,L} <: $Cassette.AbstractContext{V,L,$(Expr(:quote, C))}
@@ -35,10 +33,4 @@ end
 @inline unbox(c::AbstractContext, x) = x
 @inline unbox(c::AbstractContext{<:Any,L,C}, x::AbstractContext{<:Any,L,C}) where {L,C} = unbox(x)
 
-@generated function unboxcall(c::AbstractContext, f, args...)
-    call = Expr(:call, :f, [:(unbox(c, args[$i])) for i in 1:nfields(args)]...)
-    return quote
-        $(Expr(:meta, :inline))
-        $call
-    end
-end
+@inline unboxcall(c::AbstractContext, f, args...) = call(x -> unbox(c, x), f , args...)

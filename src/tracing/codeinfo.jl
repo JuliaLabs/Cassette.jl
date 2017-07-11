@@ -9,8 +9,6 @@ function type + argument type signature is a unique identifier of a method. Thus
 the following, which can be called from a generated function.
 =#
 
-getworld() = ccall(:jl_get_world_counter, UInt, ())
-
 function code_info_from_type_signature(::Type{S}, world = typemax(UInt)) where {S<:Tuple}
     methods = methods_from_type_signature(S, world)
     if length(methods) != 1
