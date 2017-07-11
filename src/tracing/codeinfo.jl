@@ -63,7 +63,9 @@ end
 
 function replace_calls!(f, ast::Expr)
     if ast.head == :call && (ast.args[1] != GlobalRef(Core, :apply_type))
-        ast.args[1] = f(ast.args[1])
+        callable = ast.args[1]
+        isa(callable, Expr) && replace_calls!(f, callable)
+        ast.args[1] = f(callable)
         child_indices = 2:length(ast.args)
     else
         child_indices = 1:length(ast.args)
