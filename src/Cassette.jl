@@ -2,8 +2,6 @@ __precompile__(false)
 
 module Cassette
 
-using FunctionWrappers
-
 const MAX_ARGS = 15
 
 @generated function call(g, f, args...)

@@ -1,78 +1,97 @@
-#############
-# Intercept #
-#############
+###############
+# Intercepted #
+###############
 
-struct Intercept{C<:AbstractContext}
-    callable::C
+struct Intercepted{C<:AbstractContext,force_primitive}
+    context::C
+    flag::Val{force_primitive}
 end
 
-@inline unbox(i::Intercept) = i.callable
+@inline unbox(i::Intercepted) = i.context
 
-@inline perform(action::Val{:process}, c::AbstractContext, input...) = unboxcall(c, c, input...)
-@inline perform(action::Val{:trace},   c::AbstractContext, input...) = unboxcall(c, Trace(c), input...)
-@inline perform(action::Val{:skip},    c::AbstractContext, input...) = unboxcall(c, unbox(c), input...)
-
-@generated function (i::Intercept)(input...)
-    boxed_input = [:(box(c, input[$i]::$(input[i]))) for i in 1:nfields(input)]
-    return quote
-        $(Expr(:meta, :inline))
-        c = unbox(i)
-        perform(action(c, input...), c, $(boxed_input...))
-    end
-end
-
-struct InterceptAction{C<:AbstractContext}
-    callable::C
-end
-
-@inline unbox(i::InterceptAction) = i.callable
-
-(::InterceptAction)(input...) = Val{:skip}()
-
-@generated function action(i::AbstractContext{F}, input...) where {F}
-    if F.name.module === Core
-        return :($(Expr(:meta, :inline)); Val{:skip}())
-    else
-        return :($(Expr(:meta, :inline)); InterceptAction(c)(input...))
-    end
-end
-
-#########
-# trace #
-#########
-
-struct Trace{C<:AbstractContext}
-    callable::C
-end
-
-@inline unbox(t::Trace) = t.callable
-
-# this method prevents type constructors from being intercepted
-@inline intercept(t::Trace, f::Union{UnionAll,DataType}) = f
-@inline intercept(t::Trace, f) = Intercept(box(unbox(t), f))
-
-function trace_body(code_info, fname::Symbol, argnames::Vector{Symbol})
-    if isa(code_info, CodeInfo)
-        for i in 1:length(argnames)
-            code_info.slotnames[i+1] = argnames[i]
+@generated function (i::Intercepted{C,force_primitive})(input...) where {F,C<:AbstractContext{F},force_primitive}
+    if force_primitive || (F.name.module == Core)
+        return quote
+            $(Expr(:meta, :inline))
+            return execute_intercepted(Val{true}(), unbox(i), input...)
         end
-        replace_calls!(call -> :($(Cassette.intercept)($(SlotNumber(1)), $call)), code_info)
+    else
+        return quote
+            $(Expr(:meta, :inline))
+            c = unbox(i)
+            isprimitive = IsPrimitive(c)(input...)
+            execute_intercepted(isprimitive, c, input...)
+        end
+    end
+end
+
+struct IsPrimitive{C<:AbstractContext}
+    context::C
+end
+
+@inline (::IsPrimitive{<:AbstractContext})(input...) = Val{false}()
+
+@inline unbox(i::IsPrimitive) = i.context
+
+@inline execute_intercepted(isprimitive::Val{true},  c::AbstractContext, input...) = c(input...)
+@inline execute_intercepted(isprimitive::Val{false}, c::AbstractContext, input...) = Trace(c)(input...)
+
+#########
+# Trace #
+#########
+
+struct Trace{C<:AbstractContext,debug}
+    context::C
+    flag::Val{debug}
+end
+
+Trace(ctx::AbstractContext, flag = Val{false}()) = Trace(ctx, flag)
+
+@inline unbox(t::Trace) = t.context
+
+@inline intercept_call(t::Trace, f) = Intercepted(box(unbox(t), f), Val{false}())
+
+@inline intercept_primitive(t::Trace) = Intercepted(unbox(t), Val{true}())
+
+function trace_body!(code_info, f_name::Symbol, arg_names::Vector)
+    if isa(code_info, CodeInfo)
+        replace_calls!(call -> :($(Cassette.intercept_call)($(SlotNumber(0)), $call)), code_info)
+        replace_slotnumbers!(code_info) do sn
+            if sn.id == 1
+                return :($(Cassette.unbox)($sn))
+            elseif sn.id == 0
+                return SlotNumber(1)
+            else
+                return sn
+            end
+        end
         return code_info
     else
         return quote
             $(Expr(:meta, :inline))
-            $(Cassette.unboxcall)($(fname), $(argnames...))
+            $(Cassette.intercept_primitive)($f_name)($(arg_names...))
         end
     end
 end
 
+@inline fully_unboxed_type(::Type{C}) where {V0,C<:AbstractContext{V0}} = V0
+@inline fully_unboxed_type(::Type{T}) where {T} = T
+
 for N in 1:MAX_ARGS
-    args = [Symbol("_$i") for i in 2:(N+1)]
+    args = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
     expr = quote
-        @generated function (t::Trace{C})($(args...)) where {F,C<:AbstractContext{F}}
-            code_info = code_info_from_type_signature(Tuple{F,$(args...)})
-            expr = trace_body(code_info, :t, $args)
-            return expr
+        @generated function (t::Trace{C,debug})($(args...)) where {F,C<:AbstractContext{F},debug}
+            signature = Tuple{F,map(fully_unboxed_type, ($(args...),))...}
+            debug && println("--------------------------------------------------------------")
+            debug && println("SIGNATURE:")
+            debug && println(signature)
+            code_info = code_info_from_type_signature(signature, $args)
+            debug && println("CODE INFO:")
+            debug && println(code_info)
+            body = trace_body!(code_info, :t, $args)
+            debug && println("TRACE BODY:")
+            debug && println(body)
+            return body
         end
     end
     @eval $expr
