@@ -49,6 +49,9 @@ end
 
 @inline box() = error("this stub only exists to be extended by Cassette.@defcontext")
 
+# TODO: `is`, `isa`, `typeassert`, etc. also need arguments unboxed, so we need to
+# add an `unbox` method which extracts `V0` from `Type{C} where C <: AbstractContext`.
+
 @inline unbox(x) = x
 @inline unbox(c::AbstractContext) = c.value
 

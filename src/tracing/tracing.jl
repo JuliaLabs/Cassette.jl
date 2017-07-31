@@ -53,6 +53,7 @@ Trace(ctx::AbstractContext, flag = Val{false}()) = Trace(ctx, flag)
 
 @inline intercept_primitive(t::Trace) = Intercepted(unbox(t), Val{true}())
 
+
 function trace_body!(code_info, f_name::Symbol, arg_names::Vector)
     if isa(code_info, CodeInfo)
         replace_calls!(call -> :($(Cassette.intercept_call)($(SlotNumber(0)), $call)), code_info)
@@ -82,15 +83,8 @@ for N in 1:MAX_ARGS
     expr = quote
         @generated function (t::Trace{C,debug})($(args...)) where {F,C<:AbstractContext{F},debug}
             signature = Tuple{F,map(fully_unboxed_type, ($(args...),))...}
-            debug && println("--------------------------------------------------------------")
-            debug && println("SIGNATURE:")
-            debug && println(signature)
             code_info = code_info_from_type_signature(signature, $args)
-            debug && println("CODE INFO:")
-            debug && println(code_info)
             body = trace_body!(code_info, :t, $args)
-            debug && println("TRACE BODY:")
-            debug && println(body)
             return body
         end
     end
