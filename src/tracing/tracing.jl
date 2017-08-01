@@ -7,20 +7,18 @@ struct Intercepted{C<:AbstractContext,force_primitive}
     flag::Val{force_primitive}
 end
 
-@inline unbox(i::Intercepted) = i.context
-
-@generated function (i::Intercepted{C,force_primitive})(input...) where {F,C<:AbstractContext{F},force_primitive}
+@generated function (i::Intercepted{C,force_primitive})(input...) where {F0,F,C<:AbstractContext{F0,F},force_primitive}
     if force_primitive || (F.name.module == Core)
         return quote
             $(Expr(:meta, :inline))
-            return execute_intercepted(Val{true}(), unbox(i), input...)
+            return execute_intercepted(Val{true}(), i.context, input...)
         end
     else
         return quote
             $(Expr(:meta, :inline))
             c = unbox(i)
-            isprimitive = IsPrimitive(c)(input...)
-            execute_intercepted(isprimitive, c, input...)
+            isprimitive = IsPrimitive(i.context)(input...)
+            execute_intercepted(isprimitive, i.context, input...)
         end
     end
 end
@@ -40,18 +38,13 @@ end
 # Trace #
 #########
 
-struct Trace{C<:AbstractContext,debug}
+struct Trace{C<:AbstractContext}
     context::C
-    flag::Val{debug}
 end
 
-Trace(ctx::AbstractContext, flag = Val{false}()) = Trace(ctx, flag)
+@inline intercept_call(t::Trace, f) = Intercepted(box(t.context, f), Val{false}())
 
-@inline unbox(t::Trace) = t.context
-
-@inline intercept_call(t::Trace, f) = Intercepted(box(unbox(t), f), Val{false}())
-
-@inline intercept_primitive(t::Trace) = Intercepted(unbox(t), Val{true}())
+@inline intercept_primitive(t::Trace) = Intercepted(t.context, Val{true}())
 
 function trace_body!(code_info, f_name::Symbol, arg_names::Vector)
     if isa(code_info, CodeInfo)
@@ -74,14 +67,12 @@ function trace_body!(code_info, f_name::Symbol, arg_names::Vector)
     end
 end
 
-@inline fully_unboxed_type(::Type{C}) where {V0,C<:AbstractContext{V0}} = V0
-@inline fully_unboxed_type(::Type{T}) where {T} = T
-
 for N in 1:MAX_ARGS
     args = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
     expr = quote
-        @generated function (t::Trace{C,debug})($(args...)) where {F,C<:AbstractContext{F},debug}
-            signature = Tuple{F,map(fully_unboxed_type, ($(args...),))...}
+        @generated function (t::Trace{C})($(args...)) where {F0,F,C<:AbstractContext{F0,F}}
+            arg_types = map(unbox, ($(args...),))
+            signature = Tuple{F,arg_types...}
             code_info = code_info_from_type_signature(signature, $args)
             body = trace_body!(code_info, :t, $args)
             return body

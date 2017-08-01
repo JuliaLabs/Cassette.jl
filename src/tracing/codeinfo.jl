@@ -28,13 +28,10 @@ function code_info_from_method_info(method_info, arg_names::Vector, world::UInt 
         method_instance = Core.Inference.code_for_method(method, type_signature, raw_static_params, world, false)
         code_info = Core.Inference.get_staged(method_instance)
     else
-        if isa(method.source, Vector{UInt8})
-            code_info = ccall(:jl_uncompress_ast, Any, (Any, Any), method, method.source)
+        if isa(method.source, CodeInfo)
+            code_info = copy_code_info(method.source)
         else
-            code_info = ccall(:jl_copy_code_info, Ref{CodeInfo}, (Any,), method.source)
-            code_info.code = Base.Core.Inference.copy_exprargs(code_info.code)
-            code_info.slotnames = copy(code_info.slotnames)
-            code_info.slotflags = copy(code_info.slotflags)
+            code_info = Base.uncompressed_ast(method)
         end
     end
 
@@ -73,6 +70,14 @@ function code_info_from_method_info(method_info, arg_names::Vector, world::UInt 
         Base.Core.Inference.substitute!(body, 0, Any[], type_signature, Any[static_params...], 0)
     end
     return code_info
+end
+
+function copy_code_info(old_code_info::CodeInfo)
+    new_code_info = ccall(:jl_copy_code_info, Ref{CodeInfo}, (Any,), old_code_info)
+    new_code_info.code = Base.Core.Inference.copy_exprargs(old_code_info.code)
+    new_code_info.slotnames = copy(old_code_info.slotnames)
+    new_code_info.slotflags = copy(old_code_info.slotflags)
+    return new_code_info
 end
 
 ###################################
