@@ -15,31 +15,36 @@ function code_info_from_type_signature(::Type{S}, arg_names::Vector, world::UInt
     if length(methods) != 1
         return nothing
     else
-        return code_info_from_method_info(first(methods), arg_names)
+        return code_info_from_method_info(first(methods), arg_names, world)
     end
 end
 
-function code_info_from_method_info(method_info, arg_names::Vector)
-    typesig, static_params, method = method_info
-    Core.Inference.code_for_method(method, typesig, static_params, typemax(UInt), false)
+function code_info_from_method_info(method_info, arg_names::Vector, world::UInt = typemax(UInt))
+    type_signature, raw_static_params, method = method_info
 
     # extract CodeInfo from method
-    if isa(method.source, Vector{UInt8})
-        code_info = ccall(:jl_uncompress_ast, Any, (Any, Any), method, method.source)
+    local code_info::CodeInfo
+    if isdefined(method, :generator)
+        method_instance = Core.Inference.code_for_method(method, type_signature, raw_static_params, world, false)
+        code_info = Core.Inference.get_staged(method_instance)
     else
-        code_info = ccall(:jl_copy_code_info, Ref{CodeInfo}, (Any,), method.source)
-        code_info.code = Base.Core.Inference.copy_exprargs(code_info.code)
-        code_info.slotnames = copy(code_info.slotnames)
-        code_info.slotflags = copy(code_info.slotflags)
+        if isa(method.source, Vector{UInt8})
+            code_info = ccall(:jl_uncompress_ast, Any, (Any, Any), method, method.source)
+        else
+            code_info = ccall(:jl_copy_code_info, Ref{CodeInfo}, (Any,), method.source)
+            code_info.code = Base.Core.Inference.copy_exprargs(code_info.code)
+            code_info.slotnames = copy(code_info.slotnames)
+            code_info.slotflags = copy(code_info.slotflags)
+        end
     end
 
     # prepare static parameters for substitution
-    static_params_vals = Any[]
-    for sp in static_params
-        if isa(sp, Symbol) || isa(sp, SSAValue) || isa(sp, Slot)
-            push!(static_params_vals, QuoteNode(sp))
+    static_params = Any[]
+    for param in raw_static_params
+        if isa(param, Symbol) || isa(param, SSAValue) || isa(param, Slot)
+            push!(static_params, QuoteNode(param))
         else
-            push!(static_params_vals, sp)
+            push!(static_params, param)
         end
     end
 
@@ -59,13 +64,13 @@ function code_info_from_method_info(method_info, arg_names::Vector)
         append!(new_slotflags, code_info.slotflags[(nargs + 1):end])
         offset = new_nargs - nargs
         vararg_tuple = Expr(:call, GlobalRef(Core, :tuple), [SlotNumber(i) for i in nargs:new_nargs]...)
-        argexprs = Any[SlotNumber(i) for i in 1:(method.nargs - 1)]
-        push!(argexprs, vararg_tuple)
-        Base.Core.Inference.substitute!(body, new_nargs, argexprs, typesig, Any[static_params_vals...], offset)
+        new_slots = Any[SlotNumber(i) for i in 1:(method.nargs - 1)]
+        push!(new_slots, vararg_tuple)
+        Base.Core.Inference.substitute!(body, new_nargs, new_slots, type_signature, Any[static_params...], offset)
         code_info.slotnames = new_slotnames
         code_info.slotflags = new_slotflags
     else
-        Base.Core.Inference.substitute!(body, 0, Any[], typesig, Any[static_params_vals...], 0)
+        Base.Core.Inference.substitute!(body, 0, Any[], type_signature, Any[static_params...], 0)
     end
     return code_info
 end

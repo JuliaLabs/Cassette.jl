@@ -53,7 +53,6 @@ Trace(ctx::AbstractContext, flag = Val{false}()) = Trace(ctx, flag)
 
 @inline intercept_primitive(t::Trace) = Intercepted(unbox(t), Val{true}())
 
-
 function trace_body!(code_info, f_name::Symbol, arg_names::Vector)
     if isa(code_info, CodeInfo)
         replace_calls!(call -> :($(Cassette.intercept_call)($(SlotNumber(0)), $call)), code_info)
