@@ -2,37 +2,25 @@
 # CodeInfo Lookup #
 ###################
 
-#=
-Historically, `code_lowered(f, types)` requires `f` to be the function instance. That
-interface is just a holdover from the days where `typeof(f) === Function`; nowadays, the
-function type + argument type signature is a unique identifier of a method. Thus, we can do
-the following, which can be called from a generated function.
-=#
-methods_from_type_signature(::Type{S}, world::UInt = typemax(UInt)) where {S<:Tuple} = Base._methods_by_ftype(S, -1, world)
-
-function code_info_from_type_signature(::Type{S}, arg_names::Vector, world::UInt = typemax(UInt)) where {S<:Tuple}
-    methods = methods_from_type_signature(S, world)
-    if length(methods) != 1
-        return nothing
-    else
-        return code_info_from_method_info(first(methods), arg_names, world)
+function lookup_code_info(::Type{S}, arg_names::Vector,
+                          debug::Bool = false,
+                          world::UInt = typemax(UInt)) where {S<:Tuple}
+    if debug
+        println("-----------------------------------")
+        println("TYPE SIGNATURE: ", S)
     end
-end
 
-function code_info_from_method_info(method_info, arg_names::Vector, world::UInt = typemax(UInt))
-    type_signature, raw_static_params, method = method_info
+    # retrieve initial Method + CodeInfo
+    methods = Base._methods_by_ftype(S, -1, world)
+    length(methods) == 1 || return nothing
+    type_signature, raw_static_params, method = first(methods)
+    method_instance = Core.Inference.code_for_method(method, type_signature, raw_static_params, world, false)
+    code_info = Core.Inference.retrieve_code_info(method_instance)
+    isa(code_info, CodeInfo) || return nothing
 
-    # extract CodeInfo from method
-    local code_info::CodeInfo
-    if isdefined(method, :generator)
-        method_instance = Core.Inference.code_for_method(method, type_signature, raw_static_params, world, false)
-        code_info = Core.Inference.get_staged(method_instance)
-    else
-        if isa(method.source, CodeInfo)
-            code_info = copy_code_info(method.source)
-        else
-            code_info = Base.uncompressed_ast(method)
-        end
+    if debug
+        println("METHOD: ", method)
+        println("OLD CODEINFO: ", code_info)
     end
 
     # prepare static parameters for substitution
@@ -63,21 +51,16 @@ function code_info_from_method_info(method_info, arg_names::Vector, world::UInt 
         vararg_tuple = Expr(:call, GlobalRef(Core, :tuple), [SlotNumber(i) for i in nargs:new_nargs]...)
         new_slots = Any[SlotNumber(i) for i in 1:(method.nargs - 1)]
         push!(new_slots, vararg_tuple)
-        Base.Core.Inference.substitute!(body, new_nargs, new_slots, type_signature, Any[static_params...], offset)
+        Base.Core.Inference.substitute!(body, new_nargs, new_slots, type_signature, static_params, offset)
         code_info.slotnames = new_slotnames
         code_info.slotflags = new_slotflags
     else
-        Base.Core.Inference.substitute!(body, 0, Any[], type_signature, Any[static_params...], 0)
+        Base.Core.Inference.substitute!(body, 0, Any[], type_signature, static_params, 0)
     end
-    return code_info
-end
 
-function copy_code_info(old_code_info::CodeInfo)
-    new_code_info = ccall(:jl_copy_code_info, Ref{CodeInfo}, (Any,), old_code_info)
-    new_code_info.code = Base.Core.Inference.copy_exprargs(old_code_info.code)
-    new_code_info.slotnames = copy(old_code_info.slotnames)
-    new_code_info.slotflags = copy(old_code_info.slotflags)
-    return new_code_info
+    debug && println("NEW CODEINFO: $code_info")
+
+    return code_info
 end
 
 ###################################

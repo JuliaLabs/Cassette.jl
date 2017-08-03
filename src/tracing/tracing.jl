@@ -7,8 +7,10 @@ struct Intercepted{C<:AbstractContext,force_primitive}
     flag::Val{force_primitive}
 end
 
+@inline is_default_primitive(::Type{F}) where {F} = (F.name.module == Core) || (F <: Core.Builtin)
+
 @generated function (i::Intercepted{C,force_primitive})(input...) where {F0,F,C<:AbstractContext{F0,F},force_primitive}
-    if force_primitive || (F.name.module == Core)
+    if force_primitive || is_default_primitive(F)
         return quote
             $(Expr(:meta, :inline))
             return execute_intercepted(Val{true}(), i.context, input...)
@@ -38,17 +40,26 @@ end
 # Trace #
 #########
 
-struct Trace{C<:AbstractContext}
+struct Trace{C<:AbstractContext,debug}
     context::C
+    flag::Val{debug}
 end
 
-@inline intercept_call(t::Trace, f) = Intercepted(box(t.context, f), Val{false}())
+Trace(context) = Trace(context, Val{false}())
 
-@inline intercept_primitive(t::Trace) = Intercepted(t.context, Val{true}())
+@inline intercept(t::Trace, f) = box(t.context, f) #Intercepted(box(t.context, f), Val{false}())
 
-function trace_body!(code_info, f_name::Symbol, arg_names::Vector)
+@inline intercept(t::Trace) = t.context #Intercepted(t.context, Val{true}())
+
+function intercept_calls!(code_info, f_name::Symbol, arg_names::Vector, debug::Bool = false)
     if isa(code_info, CodeInfo)
-        replace_calls!(call -> :($(Cassette.intercept_call)($(SlotNumber(0)), $call)), code_info)
+        replace_calls!(code_info) do call
+            if !(isa(call, SlotNumber) && call.id == 1)
+                return :($(Cassette.intercept)($(SlotNumber(0)), $call))
+            else
+                return call
+            end
+        end
         replace_slotnumbers!(code_info) do sn
             if sn.id == 1
                 return :($(Cassette.unbox)($sn))
@@ -58,23 +69,26 @@ function trace_body!(code_info, f_name::Symbol, arg_names::Vector)
                 return sn
             end
         end
+        debug && println("AFTER CALL INTERCEPTION: ", code_info)
         return code_info
     else
-        return quote
+        expr = quote
             $(Expr(:meta, :inline))
-            $(Cassette.intercept_primitive)($f_name)($(arg_names...))
+            $(Cassette.intercept)($f_name)($(arg_names...))
         end
+        debug && println("AFTER CALL INTERCEPTION: ", expr)
+        return expr
     end
 end
 
 for N in 1:MAX_ARGS
     args = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
     expr = quote
-        @generated function (t::Trace{C})($(args...)) where {F0,F,C<:AbstractContext{F0,F}}
+        @generated function (t::Trace{C,debug})($(args...)) where {F0,F,C<:AbstractContext{F0,F},debug}
             arg_types = map(unbox, ($(args...),))
             signature = Tuple{F,arg_types...}
-            code_info = code_info_from_type_signature(signature, $args)
-            body = trace_body!(code_info, :t, $args)
+            code_info = lookup_code_info(signature, $args, debug)
+            body = intercept_calls!(code_info, :t, $args, debug)
             return body
         end
     end
