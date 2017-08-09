@@ -27,23 +27,23 @@ end
 ################################
 
 abstract type AbstractContext{T,F} end
-abstract type AbstractMeta{T,V} end
+abstract type AbstractMeta{T,V,U} end
 
-macro context(Ctx, Meta)
-    return esc(quote
+macro context(Ctx, Meta = nothing)
+    expr = Expr(:block)
+    push!(expr.args, quote
         struct $Ctx{F,T} <: $Cassette.AbstractContext{T,F}
             func::F
             tag::$Cassette.Tag{T}
-            @inline function $Ctx(func::F) where {F}
-                tag = $Tag(func, Val($(Expr(:quote, Ctx))))
-                return new{F,tagtype(tag)}(func, tag)
-            end
-            @inline function $Ctx(::AbstractContext)
-                error("cannot nest contexts directly; they must be separated via a Trace barrier")
-            end
+            @inline $Ctx(func::F, tag::$Cassette.Tag{T}) where {F,T} = new{F,T}(func, tag)
+            @inline $Ctx(func::$Cassette.AbstractContext, tag::$Cassette.Tag{T}) where {T} = error("cannot nest contexts without a Trace barrier")
         end
-        struct $Meta{V0,M,T,V} <: $Cassette.AbstractMeta{T,V}
-            value::V
+        @inline $Ctx(f) = $Ctx(f, $Cassette.Tag(f, Val($(Expr(:quote, Ctx)))))
+        @inline $Cassette.box(ctx::$Ctx, f) = $Ctx(f, ctx.tag)
+    end)
+    Meta !== nothing && push!(expr.args, quote
+        struct $Meta{V,M,T,U} <: $Cassette.AbstractMeta{T,V,U}
+            value::U
             meta::M
             tag::Tag{T}
             @inline function $Meta(ctx::$Ctx{C,T}, value::V, meta::M = nothing) where {C,T,V,M}
@@ -52,20 +52,24 @@ macro context(Ctx, Meta)
             @inline function $Meta(ctx::$Ctx{C,T}, value::Type{V}, meta::M = nothing) where {C,T,V,M}
                 new{Type{V},M,T,Type{V}}(value, meta, ctx.tag)
             end
-            @inline function $Meta(ctx::$Ctx{C,T}, value::Meta{V0}, meta::M = nothing) where {C,T,V0,V,M}
-                new{V0,M,T,typeof(value)}(value, meta, ctx.tag)
+            @inline function $Meta(ctx::$Ctx{C,T}, value::$Cassette.AbstractMeta{T,V}, meta::M = nothing) where {C,T,V,M}
+                new{V,M,T,typeof(value)}(value, meta, ctx.tag)
             end
         end
     end)
+    return esc(expr)
 end
+
+@inline box() = error("this stub only exists to be extended by Cassette.@context")
 
 @inline unbox(x) = x
 @inline unbox(ctx::AbstractContext) = ctx.func
 @inline unbox(::Type{C}) where {F,C<:AbstractContext{<:Any,F}} = F
 
 @inline unbox(::AbstractContext, x) = x
+@inline unbox(::Type{C},         x) where {C<:AbstractContext} = x
 @inline unbox(::AbstractContext{T}, m::AbstractMeta{T}) where {T} = m.value
-@inline unbox(::Type{C}, ::Type{M}) where {T,V,C<:AbstractContext{T},M<:AbstractMeta{T,V}} = V
+@inline unbox(::Type{C}, ::Type{M}) where {T,V,U,C<:AbstractContext{T},M<:AbstractMeta{T,V,U}} = U
 
 @inline metacall(f, ::AbstractContext, m) = m
 @inline metacall(f, ::AbstractContext{T}, m::AbstractMeta{T}) where {T} = f(m.value, m.meta)

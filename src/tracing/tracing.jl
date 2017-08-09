@@ -63,10 +63,7 @@ end
 
 @inline (::IsPrimitive{<:AbstractContext})(input...) = Val(false)
 
-@inline unbox(i::IsPrimitive) = i.context
-
-@inline execute_intercepted(isprimitive::Val{true},  c::AbstractContext, input...) = c(input...)
-@inline execute_intercepted(isprimitive::Val{false}, c::AbstractContext, input...) = Trace(c)(input...)
+@inline is_default_primitive(::Type{F}) where {F} = (F.name.module == Core) || (F <: Core.Builtin)
 
 ###############
 # Intercepted #
@@ -81,21 +78,21 @@ end
 
 @inline Intercepted(t::Trace) = Intercepted(t.context, Val(true))
 
-@inline is_default_primitive(::Type{F}) where {F} = (F.name.module == Core) || (F <: Core.Builtin)
+@inline execute(isprimitive::Val{true},  ctx::AbstractContext, input...) = ctx(input...)
+
+@inline execute(isprimitive::Val{false}, ctx::AbstractContext, input...) = Trace(ctx)(input...)
 
 @generated function (i::Intercepted{C,force_primitive})(input...) where {C<:AbstractContext,force_primitive}
     F = unbox(C)
     if force_primitive || is_default_primitive(F)
         return quote
             $(Expr(:meta, :inline))
-            return execute_intercepted(Val(true), i.context, input...)
+            return execute(Val(true), i.context, input...)
         end
     else
         return quote
             $(Expr(:meta, :inline))
-            c = unbox(i)
-            isprimitive = IsPrimitive(i.context)(input...)
-            execute_intercepted(isprimitive, i.context, input...)
+            execute(IsPrimitive(i.context)(input...), i.context, input...)
         end
     end
 end
