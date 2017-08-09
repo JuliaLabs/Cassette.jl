@@ -2,6 +2,27 @@
 # CodeInfo Lookup #
 ###################
 
+# function lookup_code_info(::Type{S}, args, debug::Bool = false, world::UInt = typemax(UInt)) where {S}
+#     methods = Base._methods_by_ftype(S, -1, world)
+#     length(methods) == 1 || return nothing
+#     type_signature, raw_static_params, method = first(methods)
+#     method_instance = Core.Inference.code_for_method(method, type_signature, raw_static_params, world, false)
+#     # infstate = Core.Inference.InferenceState(method_instance, true, false, Core.Inference.InferenceParams(world))
+#     # Core.Inference.inlining_pass!(infstate)
+#     infstate = Core.Inference.typeinf_frame(method_instance, true, true, Core.Inference.InferenceParams(world))
+#     code_info = infstate.src
+#     code_info.ssavaluetypes = length(code_info.ssavaluetypes)
+#     # for i in eachindex(code_info.slottypes)
+#     #     if Core.Inference.isType(code_info.slottypes[i])
+#     #         code_info.slottypes[i] = Any
+#     #     end
+#     # end
+#     # infstate = Core.Inference.typeinf_frame(method_instance, true, true, Core.Inference.InferenceParams(world))
+#     # push!(infstate.src.code, infstate)
+#     # push!(code_info.code, :(Expr(:meta, :skiptypeinf)))
+#     return code_info
+# end
+
 function lookup_code_info(::Type{S}, arg_names::Vector,
                           debug::Bool = false,
                           world::UInt = typemax(UInt)) where {S<:Tuple}
