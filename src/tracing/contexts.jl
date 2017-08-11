@@ -60,7 +60,8 @@ macro context(Ctx, Meta = nothing)
     return esc(expr)
 end
 
-@inline box() = error("this stub only exists to be extended by Cassette.@context")
+# this stub only exists to be extended by Cassette.@context
+function box end
 
 @inline unbox(x) = x
 @inline unbox(ctx::AbstractContext) = ctx.func
