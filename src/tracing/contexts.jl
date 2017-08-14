@@ -45,7 +45,7 @@ macro context(Ctx, Meta = nothing)
         struct $Meta{V,M,T,U} <: $Cassette.AbstractMeta{T,V,U}
             value::U
             meta::M
-            tag::Tag{T}
+            tag::$Cassette.Tag{T}
             @inline function $Meta(ctx::$Ctx{C,T}, value::V, meta::M = nothing) where {C,T,V,M}
                 new{V,M,T,V}(value, meta, ctx.tag)
             end
