@@ -5,17 +5,18 @@
 function lookup_code_info(::Type{S}, arg_names::Vector,
                           debug::Bool = false,
                           world::UInt = typemax(UInt)) where {S<:Tuple}
-    return lookup_code_info0(S, arg_names, debug, world)
+    if debug
+        println("-----------------------------------")
+        println("ENCOUNTERED TYPE SIGNATURE: ", S)
+    end
+    method, code_info = lookup_code_info0(S, arg_names, world)
+    debug && println("LOOKED UP METHOD: ", method)
+    debug && println("LOOKED UP CODEINFO: ", code_info)
+    return code_info
 end
 
 function lookup_code_info0(::Type{S}, arg_names::Vector,
-                           debug::Bool = false,
                            world::UInt = typemax(UInt)) where {S<:Tuple}
-    if debug
-        println("-----------------------------------")
-        println("TYPE SIGNATURE: ", S)
-    end
-
     # retrieve initial Method + CodeInfo
     methods = Base._methods_by_ftype(S, -1, world)
     length(methods) == 1 || return nothing
@@ -23,11 +24,6 @@ function lookup_code_info0(::Type{S}, arg_names::Vector,
     method_instance = Core.Inference.code_for_method(method, type_signature, raw_static_params, world, false)
     code_info = Core.Inference.retrieve_code_info(method_instance)
     isa(code_info, CodeInfo) || return nothing
-
-    if debug
-        println("METHOD: ", method)
-        println("OLD CODEINFO: ", code_info)
-    end
 
     # prepare static parameters for substitution
     static_params = Any[]
@@ -64,9 +60,7 @@ function lookup_code_info0(::Type{S}, arg_names::Vector,
         Base.Core.Inference.substitute!(body, 0, Any[], type_signature, static_params, 0)
     end
 
-    debug && println("NEW CODEINFO: $code_info")
-
-    return code_info
+    return method, code_info
 end
 
 function lookup_method_instance(::Type{S}, world::UInt = typemax(UInt)) where {S}
@@ -81,7 +75,7 @@ function lookup_code_info1(::Type{S}, world::UInt = typemax(UInt)) where {S}
     infstate = Core.Inference.typeinf_frame(method_instance, true, true, Core.Inference.InferenceParams(world))
     code_info = infstate.src
     code_info.ssavaluetypes = length(code_info.ssavaluetypes)
-    return code_info
+    return method_instance.def, code_info
 end
 
 function lookup_code_info2(::Type{S}, world::UInt = typemax(UInt)) where {S}
@@ -90,7 +84,7 @@ function lookup_code_info2(::Type{S}, world::UInt = typemax(UInt)) where {S}
     Core.Inference.inlining_pass!(infstate)
     code_info = infstate.src
     code_info.ssavaluetypes = length(code_info.ssavaluetypes)
-    return code_info
+    return method_instance.def, code_info
 end
 
 ###################################

@@ -27,14 +27,14 @@ function intercept_calls!(code_info, f_name::Symbol, arg_names::Vector, debug::B
                 return sn
             end
         end
-        debug && println("AFTER CALL INTERCEPTION: ", code_info)
+        debug && println("INTERCEPTED CODEINFO: ", code_info)
         return code_info
     else
         expr = quote
             $(Expr(:meta, :inline))
             $(Cassette.Intercepted)($f_name)($(arg_names...))
         end
-        debug && println("AFTER CALL INTERCEPTION: ", expr)
+        debug && println("INTERCEPTED CODEINFO: ", expr)
         return expr
     end
 end
