@@ -9,31 +9,23 @@ function lookup_code_info(::Type{S}, arg_names::Vector,
         println("-----------------------------------")
         println("ENCOUNTERED TYPE SIGNATURE: ", S)
     end
-    method, code_info = lookup_code_info0(S, arg_names, world)
+    method, code_info = lookup_code_info(S, arg_names, world)
     debug && println("LOOKED UP METHOD: ", method)
     debug && println("LOOKED UP CODEINFO: ", code_info)
     return code_info
 end
 
-function lookup_code_info0(::Type{S}, arg_names::Vector,
-                           world::UInt = typemax(UInt)) where {S<:Tuple}
+function lookup_code_info(::Type{S}, arg_names::Vector,
+                          world::UInt = typemax(UInt)) where {S<:Tuple}
     # retrieve initial Method + CodeInfo
     methods = Base._methods_by_ftype(S, -1, world)
     length(methods) == 1 || return nothing
     type_signature, raw_static_params, method = first(methods)
     method_instance = Core.Inference.code_for_method(method, type_signature, raw_static_params, world, false)
+    method_signature = method.sig
+    static_params = Any[raw_static_params...]
     code_info = Core.Inference.retrieve_code_info(method_instance)
     isa(code_info, CodeInfo) || return nothing
-
-    # prepare static parameters for substitution
-    static_params = Any[]
-    for param in raw_static_params
-        if isa(param, Symbol) || isa(param, SSAValue) || isa(param, Slot)
-            push!(static_params, QuoteNode(param))
-        else
-            push!(static_params, param)
-        end
-    end
 
     # substitute static parameters/varargs
     body = Expr(:block)
@@ -53,39 +45,17 @@ function lookup_code_info0(::Type{S}, arg_names::Vector,
         vararg_tuple = Expr(:call, GlobalRef(Core, :tuple), [SlotNumber(i) for i in nargs:new_nargs]...)
         new_slots = Any[SlotNumber(i) for i in 1:(method.nargs - 1)]
         push!(new_slots, vararg_tuple)
-        Base.Core.Inference.substitute!(body, new_nargs, new_slots, type_signature, static_params, offset)
+        Base.Core.Inference.substitute!(body, new_nargs, new_slots, method_signature, static_params, offset)
         code_info.slotnames = new_slotnames
         code_info.slotflags = new_slotflags
     else
-        Base.Core.Inference.substitute!(body, 0, Any[], type_signature, static_params, 0)
+        Base.Core.Inference.substitute!(body, 0, Any[], method_signature, static_params, 0)
     end
 
     return method, code_info
 end
 
-function lookup_method_instance(::Type{S}, world::UInt = typemax(UInt)) where {S}
-    methods = Base._methods_by_ftype(S, -1, world)
-    length(methods) == 1 || return nothing
-    type_signature, raw_static_params, method = first(methods)
-    return Core.Inference.code_for_method(method, type_signature, raw_static_params, world, false)
-end
-
-function lookup_code_info1(::Type{S}, world::UInt = typemax(UInt)) where {S}
-    method_instance = lookup_method_instance(S, world)
-    infstate = Core.Inference.typeinf_frame(method_instance, true, true, Core.Inference.InferenceParams(world))
-    code_info = infstate.src
-    code_info.ssavaluetypes = length(code_info.ssavaluetypes)
-    return method_instance.def, code_info
-end
-
-function lookup_code_info2(::Type{S}, world::UInt = typemax(UInt)) where {S}
-    method_instance = lookup_method_instance(S, world)
-    infstate = Core.Inference.InferenceState(method_instance, true, false, Core.Inference.InferenceParams(world))
-    Core.Inference.inlining_pass!(infstate)
-    code_info = infstate.src
-    code_info.ssavaluetypes = length(code_info.ssavaluetypes)
-    return method_instance.def, code_info
-end
+# current_world_age() = ccall(:jl_get_tls_world_age, UInt, ())
 
 ###################################
 # Subexpression Match Replacement #

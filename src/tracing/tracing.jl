@@ -44,7 +44,7 @@ for N in 1:MAX_ARGS
     expr = quote
         @generated function (t::Trace{C,d})($(args...)) where {C<:AbstractContext,d}
             arg_types = map(T -> unwrap(C, T), ($(args...),))
-            # code_info = lookup_code_info(unwrap(C).instance, arg_types, debug)
+            # code_info = lookup_code_info(unwrap(C).instance, arg_types, d)
             code_info = lookup_code_info(Tuple{unwrap(C),arg_types...}, $args, d)
             body = intercept_calls!(code_info, :t, $args, d)
             return body
