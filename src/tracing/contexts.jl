@@ -26,8 +26,8 @@ end
 # AbstractContext/AbstractMeta #
 ################################
 
-abstract type AbstractContext{T,F} end
-abstract type AbstractMeta{T,V,U} end
+abstract type AbstractContext{F,T} end
+abstract type AbstractMeta{V,M,T,U} end
 
 macro context(Ctx, Meta = nothing)
     expr = Expr(:block)
