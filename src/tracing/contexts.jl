@@ -32,17 +32,17 @@ abstract type AbstractMeta{T,V,U} end
 macro context(Ctx, Meta = nothing)
     expr = Expr(:block)
     push!(expr.args, quote
-        struct $Ctx{F,T} <: $Cassette.AbstractContext{T,F}
+        struct $Ctx{F,T} <: $Cassette.AbstractContext{F,T}
             func::F
             tag::$Cassette.Tag{T}
             @inline $Ctx(func::F, tag::$Cassette.Tag{T}) where {F,T} = new{F,T}(func, tag)
             @inline $Ctx(func::$Cassette.AbstractContext, tag::$Cassette.Tag{T}) where {T} = error("cannot nest contexts without a Trace barrier")
         end
         @inline $Ctx(f) = $Ctx(f, $Cassette.Tag(f, Val($(Expr(:quote, Ctx)))))
-        @inline $Cassette.box(ctx::$Ctx, f) = $Ctx(f, ctx.tag)
+        @inline $Cassette.wrap(ctx::$Ctx, f) = $Ctx(f, ctx.tag)
     end)
     Meta !== nothing && push!(expr.args, quote
-        struct $Meta{V,M,T,U} <: $Cassette.AbstractMeta{T,V,U}
+        struct $Meta{V,M,T,U} <: $Cassette.AbstractMeta{V,M,T,U}
             value::U
             meta::M
             tag::$Cassette.Tag{T}
@@ -52,7 +52,7 @@ macro context(Ctx, Meta = nothing)
             @inline function $Meta(ctx::$Ctx{C,T}, value::Type{V}, meta::M = nothing) where {C,T,V,M}
                 new{Type{V},M,T,Type{V}}(value, meta, ctx.tag)
             end
-            @inline function $Meta(ctx::$Ctx{C,T}, value::$Cassette.AbstractMeta{T,V}, meta::M = nothing) where {C,T,V,M}
+            @inline function $Meta(ctx::$Ctx{C,T}, value::$Cassette.AbstractMeta{V,M,T}, meta::M = nothing) where {C,V,M,T}
                 new{V,M,T,typeof(value)}(value, meta, ctx.tag)
             end
         end
@@ -61,18 +61,23 @@ macro context(Ctx, Meta = nothing)
 end
 
 # this stub only exists to be extended by Cassette.@context
-function box end
+function wrap end
 
-@inline unbox(x) = x
-@inline unbox(ctx::AbstractContext) = ctx.func
-@inline unbox(::Type{C}) where {F,C<:AbstractContext{<:Any,F}} = F
+@inline unwrap(x) = x
+@inline unwrap(ctx::AbstractContext) = ctx.func
+@inline unwrap(::Type{C}) where {F,C<:AbstractContext{<:Any,F}} = F
 
-@inline unbox(::AbstractContext, x) = x
-@inline unbox(::Type{C},         x) where {C<:AbstractContext} = x
-@inline unbox(::AbstractContext{T}, m::AbstractMeta{T}) where {T} = m.value
-@inline unbox(::Type{C}, ::Type{M}) where {T,V,U,C<:AbstractContext{T},M<:AbstractMeta{T,V,U}} = U
+@inline unwrap(::AbstractContext, x) = x
+@inline unwrap(::Type{C},         x) where {C<:AbstractContext} = x
+@inline unwrap(::AbstractContext{<:Any,T}, m::AbstractMeta{<:Any,<:Any,T}) where {T} = m.value
+@inline unwrap(::Type{C}, ::Type{M}) where {F,V,M,T,U,C<:AbstractContext{F,T},M<:AbstractMeta{V,M,T,U}} = U
 
-@inline metacall(f, ::AbstractContext, m) = m
-@inline metacall(f, ::AbstractContext{T}, m::AbstractMeta{T}) where {T} = f(m.value, m.meta)
+@inline unwrapcall(ctx::AbstractContext, args...) = mapcall(x -> unwrap(ctx, x), unwrap(ctx), args...)
 
-@inline unboxcall(ctx::AbstractContext, args...) = call(x -> unbox(ctx, x), unbox(ctx), args...)
+@inline contextcall(f, ctx::AbstractContext, arg) = unwrap(ctx)(arg)
+@inline contextcall(f, ctx::AbstractContext{T}, arg::AbstractMeta{T}) where {T} = f(arg.value, arg.meta)
+
+@inline hascontext(::AbstractContext, ::Any) = false
+@inline hascontext(::Type{<:AbstractContext}, ::Any) = false
+@inline hascontext(::AbstractContext{<:Any,T}, ::AbstractMeta{<:Any,<:Any,T}) where {T} = true
+@inline hascontext(::Type{C}, ::Type{M}) where {F,V,M,T,U,C<:AbstractContext{F,T},M<:AbstractMeta{V,M,T,U}} = true

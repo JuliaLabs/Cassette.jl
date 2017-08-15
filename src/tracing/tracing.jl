@@ -20,7 +20,7 @@ function intercept_calls!(code_info, f_name::Symbol, arg_names::Vector, debug::B
         end
         replace_slotnumbers!(code_info) do sn
             if sn.id == 1
-                return :($(Cassette.unbox)($sn))
+                return :($(Cassette.unwrap)($sn))
             elseif sn.id == 0
                 return SlotNumber(1)
             else
@@ -43,9 +43,8 @@ for N in 1:MAX_ARGS
     args = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
     expr = quote
         @generated function (t::Trace{C,debug})($(args...)) where {C<:AbstractContext,debug}
-            arg_types = map(T -> unbox(C, T), ($(args...),))
-            signature = Tuple{unbox(C),arg_types...}
-            code_info = lookup_code_info(signature, $args, debug)
+            arg_types = map(T -> unwrap(C, T), ($(args...),))
+            code_info = code_lowered(unwrap(C).instance, arg_types, debug)
             body = intercept_calls!(code_info, :t, $args, debug)
             return body
         end
@@ -74,7 +73,7 @@ struct Intercepted{C<:AbstractContext,force_primitive}
     flag::Val{force_primitive}
 end
 
-@inline Intercepted(t::Trace, f) = Intercepted(box(t.context, f), Val(false))
+@inline Intercepted(t::Trace, f) = Intercepted(wrap(t.context, f), Val(false))
 
 @inline Intercepted(t::Trace) = Intercepted(t.context, Val(true))
 
@@ -83,7 +82,7 @@ end
 @inline execute(isprimitive::Val{false}, ctx::AbstractContext, input...) = Trace(ctx)(input...)
 
 @generated function (i::Intercepted{C,force_primitive})(input...) where {C<:AbstractContext,force_primitive}
-    F = unbox(C)
+    F = unwrap(C)
     if force_primitive || is_default_primitive(F)
         return quote
             $(Expr(:meta, :inline))
