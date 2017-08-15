@@ -65,12 +65,12 @@ function wrap end
 
 @inline unwrap(x) = x
 @inline unwrap(ctx::AbstractContext) = ctx.func
-@inline unwrap(::Type{C}) where {F,C<:AbstractContext{<:Any,F}} = F
+@inline unwrap(::Type{C}) where {F,C<:AbstractContext{F}} = F
 
 @inline unwrap(::AbstractContext, x) = x
 @inline unwrap(::Type{C},         x) where {C<:AbstractContext} = x
 @inline unwrap(::AbstractContext{<:Any,T}, m::AbstractMeta{<:Any,<:Any,T}) where {T} = m.value
-@inline unwrap(::Type{C}, ::Type{M}) where {F,V,M,T,U,C<:AbstractContext{F,T},M<:AbstractMeta{V,M,T,U}} = U
+@inline unwrap(::Type{C}, ::Type{M}) where {F,V,VM,T,U,C<:AbstractContext{F,T},M<:AbstractMeta{V,VM,T,U}} = U
 
 @inline unwrapcall(ctx::AbstractContext, args...) = mapcall(x -> unwrap(ctx, x), unwrap(ctx), args...)
 
@@ -80,4 +80,4 @@ function wrap end
 @inline hascontext(::AbstractContext, ::Any) = false
 @inline hascontext(::Type{<:AbstractContext}, ::Any) = false
 @inline hascontext(::AbstractContext{<:Any,T}, ::AbstractMeta{<:Any,<:Any,T}) where {T} = true
-@inline hascontext(::Type{C}, ::Type{M}) where {F,V,M,T,U,C<:AbstractContext{F,T},M<:AbstractMeta{V,M,T,U}} = true
+@inline hascontext(::Type{C}, ::Type{M}) where {F,V,VM,T,U,C<:AbstractContext{F,T},M<:AbstractMeta{V,VM,T,U}} = true

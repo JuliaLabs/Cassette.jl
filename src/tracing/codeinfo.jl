@@ -2,30 +2,15 @@
 # CodeInfo Lookup #
 ###################
 
-# function lookup_code_info(::Type{S}, args, debug::Bool = false, world::UInt = typemax(UInt)) where {S}
-#     methods = Base._methods_by_ftype(S, -1, world)
-#     length(methods) == 1 || return nothing
-#     type_signature, raw_static_params, method = first(methods)
-#     method_instance = Core.Inference.code_for_method(method, type_signature, raw_static_params, world, false)
-#     # infstate = Core.Inference.InferenceState(method_instance, true, false, Core.Inference.InferenceParams(world))
-#     # Core.Inference.inlining_pass!(infstate)
-#     infstate = Core.Inference.typeinf_frame(method_instance, true, true, Core.Inference.InferenceParams(world))
-#     code_info = infstate.src
-#     code_info.ssavaluetypes = length(code_info.ssavaluetypes)
-#     # for i in eachindex(code_info.slottypes)
-#     #     if Core.Inference.isType(code_info.slottypes[i])
-#     #         code_info.slottypes[i] = Any
-#     #     end
-#     # end
-#     # infstate = Core.Inference.typeinf_frame(method_instance, true, true, Core.Inference.InferenceParams(world))
-#     # push!(infstate.src.code, infstate)
-#     # push!(code_info.code, :(Expr(:meta, :skiptypeinf)))
-#     return code_info
-# end
-
 function lookup_code_info(::Type{S}, arg_names::Vector,
                           debug::Bool = false,
                           world::UInt = typemax(UInt)) where {S<:Tuple}
+    return lookup_code_info0(S, arg_names, debug, world)
+end
+
+function lookup_code_info0(::Type{S}, arg_names::Vector,
+                           debug::Bool = false,
+                           world::UInt = typemax(UInt)) where {S<:Tuple}
     if debug
         println("-----------------------------------")
         println("TYPE SIGNATURE: ", S)
@@ -81,6 +66,30 @@ function lookup_code_info(::Type{S}, arg_names::Vector,
 
     debug && println("NEW CODEINFO: $code_info")
 
+    return code_info
+end
+
+function lookup_method_instance(::Type{S}, world::UInt = typemax(UInt)) where {S}
+    methods = Base._methods_by_ftype(S, -1, world)
+    length(methods) == 1 || return nothing
+    type_signature, raw_static_params, method = first(methods)
+    return Core.Inference.code_for_method(method, type_signature, raw_static_params, world, false)
+end
+
+function lookup_code_info1(::Type{S}, world::UInt = typemax(UInt)) where {S}
+    method_instance = lookup_method_instance(S, world)
+    infstate = Core.Inference.typeinf_frame(method_instance, true, true, Core.Inference.InferenceParams(world))
+    code_info = infstate.src
+    code_info.ssavaluetypes = length(code_info.ssavaluetypes)
+    return code_info
+end
+
+function lookup_code_info2(::Type{S}, world::UInt = typemax(UInt)) where {S}
+    method_instance = lookup_method_instance(S, world)
+    infstate = Core.Inference.InferenceState(method_instance, true, false, Core.Inference.InferenceParams(world))
+    Core.Inference.inlining_pass!(infstate)
+    code_info = infstate.src
+    code_info.ssavaluetypes = length(code_info.ssavaluetypes)
     return code_info
 end
 
