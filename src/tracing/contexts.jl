@@ -68,7 +68,7 @@ end
 # @context #
 ############
 
-const DEFINED_CONTEXTS = Dict{Symbol,Symbol}()
+const DEFINED_CONTEXTS = Dict{Symbol,Union{Void,Symbol}}()
 
 macro context(Ctx, CtxArg = nothing)
     expr = Expr(:block)
