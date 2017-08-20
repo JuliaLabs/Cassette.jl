@@ -13,7 +13,7 @@ function intercept_calls!(code_info, f_name::Symbol, arg_names::Vector, debug::B
     if isa(code_info, CodeInfo)
         replace_calls!(code_info) do call
             if !(isa(call, SlotNumber) && call.id == 1)
-                return :($(Cassette.Intercepted)($(SlotNumber(0)), $call))
+                return :($(Cassette.Intercept)($(SlotNumber(0)), $call))
             else
                 return call
             end
@@ -32,7 +32,7 @@ function intercept_calls!(code_info, f_name::Symbol, arg_names::Vector, debug::B
     else
         expr = quote
             $(Expr(:meta, :inline))
-            $(Cassette.Intercepted)($f_name)($(arg_names...))
+            $(Cassette.Intercept)($f_name)($(arg_names...))
         end
         debug && println("INTERCEPTED CODEINFO: ", expr)
         return expr
@@ -61,29 +61,29 @@ struct IsPrimitive{C<:AbstractContext}
     context::C
 end
 
-@inline (::IsPrimitive{<:AbstractContext})(input...) = Val(false)
+@inline (::IsPrimitive)(input...) = Val(false)
 
 @inline is_default_primitive(::Type{F}) where {F} = (F.name.module == Core) || (F <: Core.Builtin)
 
-###############
-# Intercepted #
-###############
+#############
+# Intercept #
+#############
 
-struct Intercepted{C<:AbstractContext,d,p}
+struct Intercept{C<:AbstractContext,d,p}
     context::C
     debug::Val{d}
     force_primitive::Val{p}
 end
 
-@inline Intercepted(t::Trace, f) = Intercepted(wrap(t.context, f), t.debug, Val(false))
+@inline Intercept(t::Trace, f) = Intercept(wrap(t.context, f), t.debug, Val(false))
 
-@inline Intercepted(t::Trace) = Intercepted(t.context, t.debug, Val(true))
+@inline Intercept(t::Trace) = Intercept(t.context, t.debug, Val(true))
 
-@inline execute(isprimitive::Val{true},  debug::Val, ctx::AbstractContext, input...) = ctx(input...)
+@inline execute(isprimitive::Val{true}, ::Val, ctx::AbstractContext, input...) = ctx(input...)
 
 @inline execute(isprimitive::Val{false}, debug::Val, ctx::AbstractContext, input...) = Trace(ctx, debug)(input...)
 
-@generated function (i::Intercepted{C,d,p})(input...) where {C<:AbstractContext,d,p}
+@generated function (i::Intercept{C,d,p})(input...) where {C<:AbstractContext,d,p}
     F = unwrap(C)
     if p || is_default_primitive(F)
         return quote
@@ -93,7 +93,8 @@ end
     else
         return quote
             $(Expr(:meta, :inline))
-            execute(IsPrimitive(i.context)(input...), Val($d), i.context, input...)
+            isprimitive = IsPrimitive(i.context)(input...)
+            execute(isprimitive, Val($d), i.context, input...)
         end
     end
 end

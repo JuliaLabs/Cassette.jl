@@ -56,8 +56,8 @@ function wrap end # this stub gets overloaded by Cassette.@context
     end
 end
 
-@inline contextcall(f, g, ::AbstractContext, arg::Any) = g(arg)
-@inline contextcall(f, g, ctx::AbstractContext{T}, arg::AbstractCtxArg{T}) where {T} = f(value(ctx, arg), meta(ctx, arg))
+@inline ctxcall(f, g, ::AbstractContext, arg::Any) = g(arg)
+@inline ctxcall(f, g, ctx::AbstractContext{T}, arg::AbstractCtxArg{T}) where {T} = f(value(ctx, arg), meta(ctx, arg))
 
 @inline hascontext(::AbstractContext, ::Any) = false
 @inline hascontext(::Type{<:AbstractContext}, ::Type{<:Any}) = false
@@ -68,34 +68,41 @@ end
 # @context #
 ############
 
+const DEFINED_CONTEXTS = Dict{Symbol,Symbol}()
+
 macro context(Ctx, CtxArg = nothing)
     expr = Expr(:block)
+    haskey(DEFINED_CONTEXTS, Ctx) && error("context type ", Ctx, " is already defined")
     push!(expr.args, quote
         struct $Ctx{T,F} <: $Cassette.AbstractContext{T,F}
             tag::$Cassette.Tag{T}
             func::F
-            @inline $Ctx(tag::$Cassette.Tag{T}, func::F) where {T,F} = new{T,F}(func, tag)
+            @inline $Ctx(tag::$Cassette.Tag{T}, func::F) where {T,F} = new{T,F}(tag, func)
             @inline $Ctx(tag::$Cassette.Tag{T}, func::$Cassette.AbstractContext) where {T} = error("cannot nest contexts without a Trace barrier")
         end
         @inline $Ctx(f) = $Ctx($Cassette.Tag(f, Val($(Expr(:quote, Ctx)))), f)
         @inline $Cassette.wrap(ctx::$Ctx, f) = $Ctx(ctx.tag, f)
     end)
-    CtxArg !== nothing && push!(expr.args, quote
-        struct $CtxArg{T,V,M,U} <: $Cassette.AbstractCtxArg{T,V,M,U}
-            tag::$Cassette.Tag{T}
-            value::U
-            meta::M
-            @inline function $CtxArg(ctx::$Ctx{T}, value::V, meta::M = nothing) where {T,V,M}
-                new{T,V,M,V}(ctx.tag, value, meta)
+    if CtxArg !== nothing
+        in(CtxArg, values(DEFINED_CONTEXTS)) && error("context argument type ", CtxArg, " is already defined")
+        push!(expr.args, quote
+            struct $CtxArg{T,V,M,U} <: $Cassette.AbstractCtxArg{T,V,M,U}
+                tag::$Cassette.Tag{T}
+                value::U
+                meta::M
+                @inline function $CtxArg(ctx::$Ctx{T}, value::V, meta::M = nothing) where {T,V,M}
+                    new{T,V,M,V}(ctx.tag, value, meta)
+                end
+                @inline function $CtxArg(ctx::$Ctx{T}, value::Type{V}, meta::M = nothing) where {T,V,M}
+                    new{T,Type{V},M,Type{V}}(ctx.tag, value, meta)
+                end
+                @inline function $CtxArg(ctx::$Ctx{T}, value::$Cassette.AbstractCtxArg{<:Any,V}, meta::M = nothing) where {T,V,M}
+                    new{T,V,M,typeof(value)}(ctx.tag, value, meta)
+                end
             end
-            @inline function $CtxArg(ctx::$Ctx{T}, value::Type{V}, meta::M = nothing) where {T,V,M}
-                new{T,Type{V},M,Type{V}}(ctx.tag, value, meta)
-            end
-            @inline function $CtxArg(ctx::$Ctx{T}, value::$Cassette.AbstractCtxArg{<:Any,V}, meta::M = nothing) where {T,V,M}
-                new{T,V,M,typeof(value)}(ctx.tag, value, meta)
-            end
-        end
-    end)
+        end)
+    end
+    DEFINED_CONTEXTS[Ctx] = CtxArg
     return esc(expr)
 end
 
@@ -103,35 +110,88 @@ end
 # @contextual #
 ###############
 
-function iscontextdispatch(x)
-    if isa(x, Expr) && length(x.args) == 2
+function is_ctx_dispatch(x)
+    if isa(x, Expr)
         if x.head == :(::)
-            return isquotedsymbol(x.args[2])
+            return is_quoted_symbol(last(x.args))
         elseif x.head == :(:)
             v, C = x.args
-            return isa(v, Expr) && v.head == :(::) && isa(C, Symbol)
+            return is_non_ctx_dispatch(v) && isa(C, Symbol)
         end
     end
     return false
 end
 
-macro contextual(expr)
-    @assert isfuncdef(expr)
+is_non_ctx_dispatch(x) = isa(x, Expr) && x.head == :(::) && !is_ctx_dispatch(x)
+
+function parse_ctx_dispatch(x)
+    if x.head == :(::)
+        v = length(x.args) == 1 ? nothing : x.args[1]
+        V = :Any
+        C = extract_quoted_symbol(last(x.args))
+    elseif x.head == :(:)
+        y, C = x.args
+        v = length(y.args) == 1 ? nothing : y.args[1]
+        V = last(y.args)
+    else
+        error("encountered malformed `@contextual` syntax: ", x)
+    end
+    return v, V, C
+end
+
+function transform_ctx_dispatch(v, V, C, tag)
+    v === nothing && V === :Any && return :(::$C{$tag})
+    v === nothing && return :(::$C{$tag,<:$V})
+    V === :Any && return :($v::$C{$tag})
+    return :($v::$C{$tag,<:$V})
+end
+
+function contextual_transform!(def)
+    @assert is_method_definition(def)
+    signature, body = def.args
+    sig_caller = extract_caller_from_signature(signature)
+    sig_args = extract_args_from_signature(signature)
+    @assert is_ctx_dispatch(sig_caller)
+
+    # add the tag parameter to the signature's `where` clause
     tag = gensym("TagTypeVar")
-    addtypevar!(expr, tag)
-    replace_match!(iscontextdispatch, expr) do x
-        if x.head == :(::)
-            v = x.args[1]
-            C = extractquotedsymbol(x.args[2])
-            return :($v::$C{$tag})
-        elseif x.head == :(:)
-            v = x.args[1].args[1]
-            V = x.args[1].args[2]
-            C = x.args[2]
-            return :($v::$C{$tag,$V})
-        else
-            error("encountered malformed `@contextual` syntax: $(expr)")
+    add_type_variable!(def, tag)
+
+    # replace use of triple-colon syntax with contextualized equivalent
+    v, V, MC = parse_ctx_dispatch(sig_caller)
+    haskey(DEFINED_CONTEXTS, MC) || error("context type not defined: ", MC)
+    replace_signature_caller!(signature, transform_ctx_dispatch(v, V, MC, tag))
+
+    AC = DEFINED_CONTEXTS[MC]
+    for i in eachindex(sig_args)
+        x = sig_args[i]
+        if is_non_ctx_dispatch(x)
+            # replace `::V` with `::Union{AbstractCtxArg{<:Any,V},V}`
+            i = length(x.args)
+            (i == 1 || i == 2) || error("failed to parse dispatch syntax in subexpression ", x)
+            V = x.args[i]
+            x.args[i] = :(Union{$Cassette.AbstractCtxArg{<:Any,$V},$V})
+        elseif is_ctx_dispatch(x)
+            # replace use of triple-colon syntax with contextualized equivalent
+            v, V, C = parse_ctx_dispatch(x)
+            if C !== AC
+                error("argument context type ", C, " is not paired with the method context type ",
+                      MC, "; the correct argument context type for ", MC, " is ", AC)
+            end
+            sig_args[i] = transform_ctx_dispatch(v, V, C, tag)
         end
     end
-    return esc(expr)
+
+    # make sure the user didn't mistakenly use triple-colon syntax in the method body
+    replace_match!(is_ctx_dispatch, body) do x
+        error("Triple-colon syntax can only be used in the method signature, not body! ",
+              "Encountered triple-colon syntax in method body subexpression: ", x)
+    end
+
+    return def
+end
+
+macro contextual(def)
+    contextual_transform!(def)
+    return esc(def)
 end

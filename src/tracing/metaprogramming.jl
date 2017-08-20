@@ -67,10 +67,7 @@ replace_match!(f, ismatch, ast::Expr) = (replace_match!(f, ismatch, ast.args); a
 function replace_match!(f, ismatch, lines::Array)
     for i in eachindex(lines)
         line = lines[i]
-        println("checking line expr ------------")
-        dump(line)
         if ismatch(line)
-            println("found match!: ", line)
             lines[i] = f(line)
         else
             replace_match!(f, ismatch, line)
@@ -114,19 +111,44 @@ replace_slotnumbers!(f, x) = replace_match!(f, s -> isa(s, SlotNumber), x)
 # Miscellaneous #
 #################
 
-function isfuncdef(x)
+function is_method_definition(x)
     if isa(x, Expr)
         if x.head == :function
             return true
-        elseif x.head == :(=)
-            lhs = first(x.args)
-            return isa(lhs, Expr) && lhs.head == :call
+        elseif x.head == :(=) && isa(x.args[1], Expr)
+            lhs = x.args[1]
+            if lhs.head == :where
+                lhs = lhs.args[1]
+            end
+            return lhs.head == :call
         end
     end
     return false
 end
 
-function isquotedsymbol(x)
+function replace_signature_caller!(sig, new_caller)
+    if sig.head == :where
+        sig = sig.args[1]
+    end
+    sig.args[1] = new_caller
+    return sig
+end
+
+function extract_caller_from_signature(sig)
+    if sig.head == :where
+        sig = sig.args[1]
+    end
+    return sig.args[1]
+end
+
+function extract_args_from_signature(sig)
+    if sig.head == :where
+        sig = sig.args[1]
+    end
+    return view(sig.args, 2:length(sig.args))
+end
+
+function is_quoted_symbol(x)
     if isa(x, QuoteNode)
         return true
     elseif isa(x, Expr) && x.head == :quote && length(x.args) == 1
@@ -135,8 +157,8 @@ function isquotedsymbol(x)
     return false
 end
 
-function extractquotedsymbol(x)
-    @assert isquotedsymbol(x)
+function extract_quoted_symbol(x)
+    @assert is_quoted_symbol(x)
     if isa(x, QuoteNode)
         return x.value
     elseif isa(x, Expr)
@@ -146,8 +168,8 @@ end
 
 get_tls_world_age() = ccall(:jl_get_tls_world_age, UInt, ())
 
-function addtypevar!(x, T)
-    @assert isfuncdef(x)
+function add_type_variable!(x, T)
+    @assert is_method_definition(x)
     if isa(x.args[1], Expr) && x.args[1].head == :where
         push!(x.args[1].args, T)
     else
