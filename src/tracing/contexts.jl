@@ -72,7 +72,13 @@ function wrap end
 @inline unwrap(::AbstractContext{<:Any,T}, m::AbstractMeta{<:Any,<:Any,T}) where {T} = m.value
 @inline unwrap(::Type{C}, ::Type{M}) where {F,V,VM,T,U,C<:AbstractContext{F,T},M<:AbstractMeta{V,VM,T,U}} = U
 
-@inline unwrapcall(ctx::AbstractContext, args...) = mapcall(x -> unwrap(ctx, x), unwrap(ctx), args...)
+@generated function unwrapcall(ctx::AbstractContext, args...)
+    args = [:(unwrap(ctx, args[$i])) for i in 1:nfields(args)]
+    return quote
+        $(Expr(:meta, :inline))
+        unwrap(ctx)($(args...))
+    end
+end
 
 @inline contextcall(f, ctx::AbstractContext, arg) = unwrap(ctx)(arg)
 @inline contextcall(f, ctx::AbstractContext{T}, arg::AbstractMeta{T}) where {T} = f(arg.value, arg.meta)

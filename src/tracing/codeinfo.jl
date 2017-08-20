@@ -9,14 +9,14 @@ function lookup_code_info(::Type{S}, arg_names::Vector,
         println("-----------------------------------")
         println("ENCOUNTERED TYPE SIGNATURE: ", S)
     end
-    method, code_info = lookup_code_info(S, arg_names, world)
+    method, code_info = _lookup_code_info(S, arg_names, world)
     debug && println("LOOKED UP METHOD: ", method)
     debug && println("LOOKED UP CODEINFO: ", code_info)
     return code_info
 end
 
-function lookup_code_info(::Type{S}, arg_names::Vector,
-                          world::UInt = typemax(UInt)) where {S<:Tuple}
+function _lookup_code_info(::Type{S}, arg_names::Vector,
+                           world::UInt = typemax(UInt)) where {S<:Tuple}
     # retrieve initial Method + CodeInfo
     methods = Base._methods_by_ftype(S, -1, world)
     length(methods) == 1 || return nothing
