@@ -4,7 +4,7 @@ module Cassette
 
 const MAX_ARGS = 20
 
-include("tracing/codeinfo.jl")
+include("tracing/metaprogramming.jl")
 include("tracing/contexts.jl")
 include("tracing/tracing.jl")
 

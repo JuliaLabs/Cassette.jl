@@ -55,7 +55,6 @@ function _lookup_code_info(::Type{S}, arg_names::Vector,
     return method, code_info
 end
 
-# current_world_age() = ccall(:jl_get_tls_world_age, UInt, ())
 
 ###################################
 # Subexpression Match Replacement #
@@ -107,3 +106,33 @@ replace_calls!(f, x) = replace_match!(call -> transform_call!(f, call), is_repla
 ##########################
 
 replace_slotnumbers!(f, x) = replace_match!(f, s -> isa(s, SlotNumber), x)
+
+#################
+# Miscellaneous #
+#################
+
+function isfuncdef(x)
+    if isa(x, Expr)
+        if x.head == :function
+            return true
+        elseif x.head == :(=)
+            lhs = first(x.args)
+            return isa(lhs, Expr) && lhs.head == :call
+        end
+    end
+    return false
+end
+
+get_tls_world_age() = ccall(:jl_get_tls_world_age, UInt, ())
+
+function iscontextdispatch(x)
+    if isa(x, Expr)
+        if x.head == :(::) && isa(x.args[2], QuoteNode)
+            return true
+        elseif x.head == :(:) && length(x.args) == 2
+            y = x.args[1]
+            return isa(y, Expr) && y.head == :(::)
+        end
+    end
+    return false
+end

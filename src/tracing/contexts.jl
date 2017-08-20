@@ -22,24 +22,31 @@ struct Tag{T} end
     end
 end
 
-################################
+##################################
 # AbstractContext/AbstractCtxArg #
-################################
+##################################
 
-abstract type AbstractContext{F,T} end
-abstract type AbstractCtxArg{V,M,T,U} end
+abstract type AbstractContext{T,F} end
+abstract type AbstractCtxArg{T,V,M,U} end
 
-# this stub only exists to be extended by Cassette.@context
-function wrap end
+function wrap end # this stub gets overloaded by Cassette.@context
+
+@inline value(ctx, arg) = error("cannot extract `value` field: tag of context $(ctx) does not match tag of argument $(arg)")
+@inline value(::AbstractContext{T}, arg::AbstractCtxArg{T}) where {T} = arg.value
+@inline value(::Type{C}, ::Type{A}) where {T,V,M,U,C<:AbstractContext{T},A<:AbstractCtxArg{T,V,M,U}} = U
+
+@inline meta(ctx, arg) = error("cannot extract `meta` field: tag of context $(ctx) does not match tag of argument $(arg)")
+@inline meta(::AbstractContext{T}, arg::AbstractCtxArg{T}) where {T} = arg.meta
+@inline meta(::Type{C}, ::Type{A}) where {T,V,M,C<:AbstractContext{T},A<:AbstractCtxArg{T,V,M}} = M
 
 @inline unwrap(x) = x
 @inline unwrap(ctx::AbstractContext) = ctx.func
-@inline unwrap(::Type{C}) where {F,C<:AbstractContext{F}} = F
+@inline unwrap(::Type{C}) where {T,F,C<:AbstractContext{T,F}} = F
 
-@inline unwrap(::AbstractContext, x) = x
-@inline unwrap(::Type{C},         x) where {C<:AbstractContext} = x
-@inline unwrap(::AbstractContext{<:Any,T}, arg::AbstractCtxArg{<:Any,<:Any,T}) where {T} = arg.value
-@inline unwrap(::Type{C}, ::Type{A}) where {F,V,M,T,U,C<:AbstractContext{F,T},A<:AbstractCtxArg{V,M,T,U}} = U
+@inline unwrap(::AbstractContext, arg) = arg
+@inline unwrap(ctx::AbstractContext{T}, arg::AbstractCtxArg{T}) where {T} = value(ctx, arg)
+@inline unwrap(::Type{C}, ::Type{A}) where {C<:AbstractContext,A} = A
+@inline unwrap(::Type{C}, ::Type{A}) where {T,C<:AbstractContext{T},A<:AbstractCtxArg{T}} = value(C, A)
 
 @generated function unwrapcall(ctx::AbstractContext, args...)
     args = [:(unwrap(ctx, args[$i])) for i in 1:nfields(args)]
@@ -49,45 +56,49 @@ function wrap end
     end
 end
 
-@inline contextcall(f, ctx::AbstractContext, arg) = unwrap(ctx)(arg)
-@inline contextcall(f, ctx::AbstractContext{T}, arg::AbstractCtxArg{T}) where {T} = f(arg.value, arg.meta)
+@inline contextcall(f, g, ::AbstractContext, arg::Any) = g(arg)
+@inline contextcall(f, g, ctx::AbstractContext{T}, arg::AbstractCtxArg{T}) where {T} = f(value(ctx, arg), meta(ctx, arg))
 
 @inline hascontext(::AbstractContext, ::Any) = false
-@inline hascontext(::Type{<:AbstractContext}, ::Any) = false
-@inline hascontext(::AbstractContext{<:Any,T}, ::AbstractCtxArg{<:Any,<:Any,T}) where {T} = true
-@inline hascontext(::Type{C}, ::Type{A}) where {F,V,M,T,U,C<:AbstractContext{F,T},A<:AbstractCtxArg{V,M,T,U}} = true
+@inline hascontext(::Type{<:AbstractContext}, ::Type{<:Any}) = false
+@inline hascontext(::AbstractContext{T}, ::AbstractCtxArg{T}) where {T} = true
+@inline hascontext(::Type{C}, ::Type{A}) where {T,C<:AbstractContext{T},A<:AbstractCtxArg{T}} = true
 
-##########
-# macros #
-##########
+############
+# @context #
+############
 
 macro context(Ctx, CtxArg = nothing)
     expr = Expr(:block)
     push!(expr.args, quote
-        struct $Ctx{F,T} <: $Cassette.AbstractContext{F,T}
-            func::F
+        struct $Ctx{T,F} <: $Cassette.AbstractContext{T,F}
             tag::$Cassette.Tag{T}
-            @inline $Ctx(func::F, tag::$Cassette.Tag{T}) where {F,T} = new{F,T}(func, tag)
-            @inline $Ctx(func::$Cassette.AbstractContext, tag::$Cassette.Tag{T}) where {T} = error("cannot nest contexts without a Trace barrier")
+            func::F
+            @inline $Ctx(tag::$Cassette.Tag{T}, func::F) where {T,F} = new{T,F}(func, tag)
+            @inline $Ctx(tag::$Cassette.Tag{T}, func::$Cassette.AbstractContext) where {T} = error("cannot nest contexts without a Trace barrier")
         end
-        @inline $Ctx(f) = $Ctx(f, $Cassette.Tag(f, Val($(Expr(:quote, Ctx)))))
-        @inline $Cassette.wrap(ctx::$Ctx, f) = $Ctx(f, ctx.tag)
+        @inline $Ctx(f) = $Ctx($Cassette.Tag(f, Val($(Expr(:quote, Ctx)))), f)
+        @inline $Cassette.wrap(ctx::$Ctx, f) = $Ctx(ctx.tag, f)
     end)
     CtxArg !== nothing && push!(expr.args, quote
-        struct $CtxArg{V,M,T,U} <: $Cassette.AbstractCtxArg{V,M,T,U}
+        struct $CtxArg{T,V,M,U} <: $Cassette.AbstractCtxArg{T,V,M,U}
+            tag::$Cassette.Tag{T}
             value::U
             meta::M
-            tag::$Cassette.Tag{T}
-            @inline function $CtxArg(ctx::$Ctx{C,T}, value::V, meta::M = nothing) where {C,T,V,M}
-                new{V,M,T,V}(value, meta, ctx.tag)
+            @inline function $CtxArg(ctx::$Ctx{T}, value::V, meta::M = nothing) where {T,V,M}
+                new{T,V,M,V}(ctx.tag, value, meta)
             end
-            @inline function $CtxArg(ctx::$Ctx{C,T}, value::Type{V}, meta::M = nothing) where {C,T,V,M}
-                new{Type{V},M,T,Type{V}}(value, meta, ctx.tag)
+            @inline function $CtxArg(ctx::$Ctx{T}, value::Type{V}, meta::M = nothing) where {T,V,M}
+                new{T,Type{V},M,Type{V}}(ctx.tag, value, meta)
             end
-            @inline function $CtxArg(ctx::$Ctx{C,T}, value::$Cassette.AbstractCtxArg{V,M,T}, meta::M = nothing) where {C,V,M,T}
-                new{V,M,T,typeof(value)}(value, meta, ctx.tag)
+            @inline function $CtxArg(ctx::$Ctx{T}, value::$Cassette.AbstractCtxArg{<:Any,V}, meta::M = nothing) where {T,V,M}
+                new{T,V,M,typeof(value)}(ctx.tag, value, meta)
             end
         end
     end)
     return esc(expr)
 end
+
+###############
+# @contextual #
+###############
