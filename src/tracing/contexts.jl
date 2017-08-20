@@ -102,3 +102,36 @@ end
 ###############
 # @contextual #
 ###############
+
+function iscontextdispatch(x)
+    if isa(x, Expr) && length(x.args) == 2
+        if x.head == :(::)
+            return isquotedsymbol(x.args[2])
+        elseif x.head == :(:)
+            v, C = x.args
+            return isa(v, Expr) && v.head == :(::) && isa(C, Symbol)
+        end
+    end
+    return false
+end
+
+macro contextual(expr)
+    @assert isfuncdef(expr)
+    tag = gensym("TagTypeVar")
+    addtypevar!(expr, tag)
+    replace_match!(iscontextdispatch, expr) do x
+        if x.head == :(::)
+            v = x.args[1]
+            C = extractquotedsymbol(x.args[2])
+            return :($v::$C{$tag})
+        elseif x.head == :(:)
+            v = x.args[1].args[1]
+            V = x.args[1].args[2]
+            C = x.args[2]
+            return :($v::$C{$tag,$V})
+        else
+            error("encountered malformed `@contextual` syntax: $(expr)")
+        end
+    end
+    return esc(expr)
+end

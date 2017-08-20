@@ -67,7 +67,10 @@ replace_match!(f, ismatch, ast::Expr) = (replace_match!(f, ismatch, ast.args); a
 function replace_match!(f, ismatch, lines::Array)
     for i in eachindex(lines)
         line = lines[i]
+        println("checking line expr ------------")
+        dump(line)
         if ismatch(line)
+            println("found match!: ", line)
             lines[i] = f(line)
         else
             replace_match!(f, ismatch, line)
@@ -123,16 +126,32 @@ function isfuncdef(x)
     return false
 end
 
-get_tls_world_age() = ccall(:jl_get_tls_world_age, UInt, ())
-
-function iscontextdispatch(x)
-    if isa(x, Expr)
-        if x.head == :(::) && isa(x.args[2], QuoteNode)
-            return true
-        elseif x.head == :(:) && length(x.args) == 2
-            y = x.args[1]
-            return isa(y, Expr) && y.head == :(::)
-        end
+function isquotedsymbol(x)
+    if isa(x, QuoteNode)
+        return true
+    elseif isa(x, Expr) && x.head == :quote && length(x.args) == 1
+        return isa(x.args[1], Symbol)
     end
     return false
+end
+
+function extractquotedsymbol(x)
+    @assert isquotedsymbol(x)
+    if isa(x, QuoteNode)
+        return x.value
+    elseif isa(x, Expr)
+        return x.args[1]
+    end
+end
+
+get_tls_world_age() = ccall(:jl_get_tls_world_age, UInt, ())
+
+function addtypevar!(x, T)
+    @assert isfuncdef(x)
+    if isa(x.args[1], Expr) && x.args[1].head == :where
+        push!(x.args[1].args, T)
+    else
+        x.args = Any[Expr(:where, x.args[1], T), x.args[2]]
+    end
+    return x
 end
