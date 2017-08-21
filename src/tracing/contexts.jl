@@ -111,6 +111,62 @@ end
 # @contextual #
 ###############
 
+macro contextual(def)
+    contextual_method_transform!(def)
+    return esc(def)
+end
+
+################
+# @isprimitive #
+################
+
+struct IsPrimitive{C<:AbstractContext}
+    context::C
+end
+
+@inline (::IsPrimitive)(input...) = Val(false)
+
+macro isprimitive(signature)
+    contextual_signature_transform!(signature)
+    wrap_signature_callable_type!(signature, :($Cassette.IsPrimitive))
+    body = Expr(:block)
+    push!(body.args, Expr(:meta, :inline))
+    push!(body.args, :(return Val(true)))
+    return esc(Expr(:function, signature, body))
+end
+
+##############
+# @primitive #
+##############
+
+macro primitive(def)
+    signature = deepcopy(first(def))
+    return esc(quote
+        $Cassette.@contextual $def
+        $Cassette.@isprimitive $signature
+    end)
+end
+
+#########
+# @hook #
+#########
+
+struct Hook{C<:AbstractContext}
+    context::C
+end
+
+@inline (::Hook)(input...) = nothing
+
+macro hook(def)
+    contextual_method_transform!(def)
+    wrap_signature_callable_type!(first(def.args), :($Cassette.Hook))
+    return esc(def)
+end
+
+###################
+# macro utilities #
+###################
+
 function is_ctx_dispatch(x)
     if isa(x, Expr)
         if x.head == :(::)
@@ -147,25 +203,23 @@ function transform_ctx_dispatch(v, V, C, tag)
     return :($v::$C{$tag,<:$V})
 end
 
-function contextual_transform!(def)
-    @assert is_method_definition(def)
-    signature, body = def.args
-    sig_caller = extract_caller_from_signature(signature)
-    sig_args = extract_args_from_signature(signature)
-    @assert is_ctx_dispatch(sig_caller)
+function contextual_signature_transform!(signature)
+    callable = extract_callable_from_signature(signature)
+    input = extract_args_from_signature(signature)
+    @assert is_ctx_dispatch(callable)
 
     # add the tag parameter to the signature's `where` clause
     tag = gensym("TagTypeVar")
     add_type_variable!(def, tag)
 
     # replace use of triple-colon syntax with contextualized equivalent
-    v, V, MC = parse_ctx_dispatch(sig_caller)
+    v, V, MC = parse_ctx_dispatch(callable)
     haskey(DEFINED_CONTEXTS, MC) || error("context type not defined: ", MC)
-    replace_signature_caller!(signature, transform_ctx_dispatch(v, V, MC, tag))
+    replace_signature_callable!(signature, transform_ctx_dispatch(v, V, MC, tag))
 
     AC = DEFINED_CONTEXTS[MC]
-    for i in eachindex(sig_args)
-        x = sig_args[i]
+    for i in eachindex(input)
+        x = input[i]
         if is_non_ctx_dispatch(x)
             # replace `::V` with `::Union{AbstractCtxArg{<:Any,V},V}`
             i = length(x.args)
@@ -179,9 +233,17 @@ function contextual_transform!(def)
                 error("argument context type ", C, " is not paired with the method context type ",
                       MC, "; the correct argument context type for ", MC, " is ", AC)
             end
-            sig_args[i] = transform_ctx_dispatch(v, V, C, tag)
+            input[i] = transform_ctx_dispatch(v, V, C, tag)
         end
     end
+    return signature
+end
+
+function contextual_method_transform!(def)
+    @assert is_method_definition(def)
+    signature, body = def.args
+
+    contextual_signature_transform!(signature)
 
     # make sure the user didn't mistakenly use triple-colon syntax in the method body
     replace_match!(is_ctx_dispatch, body) do x
@@ -193,9 +255,4 @@ function contextual_transform!(def)
     unshift!(def.args[2].args, Expr(:meta, :inline))
 
     return def
-end
-
-macro contextual(def)
-    contextual_transform!(def)
-    return esc(def)
 end

@@ -53,18 +53,6 @@ for N in 0:MAX_ARGS
 end
 
 ###############
-# IsPrimitive #
-###############
-
-struct IsPrimitive{C<:AbstractContext}
-    context::C
-end
-
-@inline (::IsPrimitive)(input...) = Val(false)
-
-@inline is_default_primitive(::Type{F}) where {F} = (F.name.module == Core) || (F <: Core.Builtin)
-
-###############
 # Intercepted #
 ###############
 
@@ -80,55 +68,23 @@ end
 
 @inline Intercepted(i::Intercept) = Intercepted(i.context, i.debug, Val(true))
 
-@inline execute(isprimitive::Val{true}, ::Val, ctx::AbstractContext, input...) = ctx(input...)
+@inline execute(isprimitive::Val{true}, debug::Val, ctx::AbstractContext, input...) = ctx(input...)
 
 @inline execute(isprimitive::Val{false}, debug::Val, ctx::AbstractContext, input...) = Intercept(ctx, debug)(input...)
 
+@inline is_default_primitive(::Type{F}) where {F} = (F.name.module == Core) || (F <: Core.Builtin)
+
 @generated function (i::Intercepted{C,d,p})(input...) where {C<:AbstractContext,d,p}
-    F = unwrap(C)
-    if p || is_default_primitive(F)
-        return quote
-            $(Expr(:meta, :inline))
-            return execute(Val(true), Val($d), i.context, input...)
-        end
+    if p || is_default_primitive(unwrap(C))
+        isprimitive = Val(true)
     else
-        return quote
-            $(Expr(:meta, :inline))
-            isprimitive = IsPrimitive(i.context)(input...)
-            execute(isprimitive, Val($d), i.context, input...)
-        end
+        isprimitive = :(IsPrimitive(ctx)(input...))
+    end
+    return quote
+        $(Expr(:meta, :inline))
+        ctx = i.context
+        Hook(ctx)(input...)
+        output = execute($isprimitive, Val($d), ctx, input...)
+        return output
     end
 end
-
-# Using the below instead of the above helps avoid JuliaLang/julia#5402; hopefully, that issue will be fixed before Julia 1.0 releases
-
-#=
-function generate_intercepted_body(::Type{Intercepted{C,d,p}}, f_name, arg_names) where {C<:AbstractContext,d,p}
-    F = unwrap(C)
-    if p || is_default_primitive(F)
-        return quote
-            $(Expr(:meta, :inline))
-            execute(Val(true), Val($d), $(f_name).context, $(arg_names...))
-        end
-    else
-        return quote
-            $(Expr(:meta, :inline))
-            isprimitive = IsPrimitive($(f_name).context)($(arg_names...))
-            execute(isprimitive, Val($d), $(f_name).context, $(arg_names...))
-        end
-    end
-end
-
-for N in 0:MAX_ARGS
-    arg_names = [Symbol("x_$i") for i in 1:N]
-    @eval begin
-        @inline execute(isprimitive::Val{true}, ::Val, ctx::AbstractContext, $(arg_names...)) = ctx($(arg_names...))
-
-        @inline execute(isprimitive::Val{false}, debug::Val, ctx::AbstractContext, $(arg_names...)) = Intercept(ctx, debug)($(arg_names...))
-
-        @generated function (i::Intercepted{C,d,p})($(arg_names...)) where {C<:AbstractContext,d,p}
-            return generate_intercepted_body(i, :i, $arg_names)
-        end
-    end
-end
-=#

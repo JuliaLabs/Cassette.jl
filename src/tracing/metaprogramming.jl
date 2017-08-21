@@ -126,19 +126,26 @@ function is_method_definition(x)
     return false
 end
 
-function replace_signature_caller!(sig, new_caller)
+function replace_signature_callable!(sig, new_callable)
     if sig.head == :where
         sig = sig.args[1]
     end
-    sig.args[1] = new_caller
+    sig.args[1] = new_callable
     return sig
 end
 
-function extract_caller_from_signature(sig)
+function extract_callable_from_signature(sig)
     if sig.head == :where
         sig = sig.args[1]
     end
     return sig.args[1]
+end
+
+function wrap_signature_callable_type!(signature, T)
+    callable = extract_callable_from_signature(signature)
+    i = length(callable.args)
+    callable.args[i] = :($T{<:$(callable.args[i])})
+    return signature
 end
 
 function extract_args_from_signature(sig)
