@@ -78,10 +78,11 @@ macro context(Ctx, CtxArg = nothing)
             tag::$Cassette.Tag{T}
             func::F
             @inline $Ctx(tag::$Cassette.Tag{T}, func::F) where {T,F} = new{T,F}(tag, func)
-            @inline $Ctx(tag::$Cassette.Tag{T}, func::$Cassette.AbstractContext) where {T} = error("cannot nest contexts without a Trace barrier")
+            @inline $Ctx(tag::$Cassette.Tag{T}, func::Type{F}) where {T,F} = new{T,Type{F}}(tag, func)
+            @inline $Ctx(tag::$Cassette.Tag{T}, func::$Cassette.AbstractContext) where {T} = error("cannot nest contexts without an Intercept barrier")
         end
         @inline $Ctx(f) = $Ctx($Cassette.Tag(f, Val($(Expr(:quote, Ctx)))), f)
-        @inline $Cassette.wrap(ctx::$Ctx, f) = $Ctx(ctx.tag, f)
+        @inline $Cassette.wrap(ctx::$Ctx, f::F) where {F} = $Ctx(ctx.tag, f)
     end)
     if CtxArg !== nothing
         in(CtxArg, values(DEFINED_CONTEXTS)) && error("context argument type ", CtxArg, " is already defined")
@@ -187,6 +188,9 @@ function contextual_transform!(def)
         error("Triple-colon syntax can only be used in the method signature, not body! ",
               "Encountered triple-colon syntax in method body subexpression: ", x)
     end
+
+    # force inlining
+    unshift!(def.args[2].args, Expr(:meta, :inline))
 
     return def
 end
