@@ -40,21 +40,17 @@ itself defined by Cassette users.
 The easiest way to see what I mean is via an example.
 
 ```julia
-julia> using Cassette: @context, @contextual, Intercept, unwrap
+julia> using Cassette: @context, @hook, Intercept, unwrap
 
 # Define a new Cassette context called `PrintCtx`.
 julia> @context PrintCtx
 
-# Define what it means to call a function within `PrintCtx`.
-# The triple-colon here is not a typo; it's Cassette's context
-# dispatch syntax. The full syntax is `f::F:Ctx`, which can be
-# read as `f of type F in context Ctx`. If a `T` is not provided,
-# it defaults to `Any` (just like normal type dispatch).
-julia> @contextual function (ctx:::PrintCtx)(args...)
-           f = unwrap(ctx)
-           println("calling ", f, args)
-           return f(args...)
-       end
+# This hook will be called every time a `PrintCtx` function is called.
+# The `:::` is not a typo; it's Cassette's context dispatch syntax. The
+# full syntax is `f::F:Ctx`, which can be read as `f of type F in context
+# Ctx`. If a `T` is not provided, the type defaults to `Any` (just like
+# normal type dispatch).
+julia> @hook (f:::PrintCtx)(args...) =  println("calling ", unwrap(f), args)
 
 # Define the best toy example Julia function ever.
 julia> function rosenbrock(x::Vector{Float64})
@@ -132,18 +128,7 @@ can macro-expand the code to confirm this. I've also added an extra `TypeVar` `F
 demonstrate how the `@contextual` macro transforms the triple-colon syntax:
 
 ```julia
-julia> @macroexpand @contextual function (ctx::F:PrintCtx)(args...) where F
-           f = unwrap(ctx)
-           println("calling ", f, args)
-           return f(args...)
-       end
-quote
-    function (ctx::PrintCtx{##TagTypeVar#780,<:F})(args...) where {F, ##TagTypeVar#780}
-        f = unwrap(ctx)
-        println("calling ", f, args)
-        return f(args...)
-    end
-end
+julia> @macroexpand @hook (f::F|PrintCtx)(args...) where {F} =  println("calling ", unwrap(f), args)
 ```
 
 ---
