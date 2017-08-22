@@ -68,23 +68,24 @@ end
 
 @inline Intercepted(i::Intercept) = Intercepted(i.context, i.debug, Val(true))
 
-@inline execute(isprimitive::Val{true}, debug::Val, ctx::AbstractContext, input...) = ctx(input...)
+@inline function (i::Intercepted{C,d,p})(args...) where {C<:AbstractContext,d,p}
+    Hook(i.context)(args...)
+    return execute(i, args...)
+end
 
-@inline execute(isprimitive::Val{false}, debug::Val, ctx::AbstractContext, input...) = Intercept(ctx, debug)(input...)
-
-@inline is_default_primitive(::Type{F}) where {F} = (F.name.module == Core) || (F <: Core.Builtin)
-
-@generated function (i::Intercepted{C,d,p})(input...) where {C<:AbstractContext,d,p}
-    if p || is_default_primitive(unwrap(C))
-        isprimitive = Val(true)
+@generated treat_as_primitive(i::Intercepted{C,d,p}, args...) where {C<:AbstractContext,d,p}
+    F = unwrap(C)
+    if p || (F.name.module == Core) || (F <: Core.Builtin)
+        isprimitive = :(Val(true))
     else
-        isprimitive = :(IsPrimitive(ctx)(input...))
+        isprimitive = :(IsPrimitive(i.context)(args...))
     end
     return quote
         $(Expr(:meta, :inline))
-        ctx = i.context
-        Hook(ctx)(input...)
-        output = execute($isprimitive, Val($d), ctx, input...)
-        return output
+        $isprimitive
     end
 end
+
+@inline execute(i::Intercepted, args...) = execute(treat_as_primitive(i), i, args...)
+@inline execute(::Val{true}, i::Intercepted, args...) = i.context(args...)
+@inline execute(::Val{false}, i::Intercepted, args...) = Intercept(i.context, i.debug)(args...)
