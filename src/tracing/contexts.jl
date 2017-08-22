@@ -83,6 +83,7 @@ macro context(Ctx, CtxArg = nothing)
         end
         @inline $Ctx(f) = $Ctx($Cassette.Tag(f, Val($(Expr(:quote, Ctx)))), f)
         @inline $Cassette.wrap(ctx::$Ctx, f::F) where {F} = $Ctx(ctx.tag, f)
+        $Cassette.@contextual (f:::$Ctx)(args...) = $Cassette.unwrapcall(f, args...)
     end)
     if CtxArg !== nothing
         in(CtxArg, values(DEFINED_CONTEXTS)) && error("context argument type ", CtxArg, " is already defined")
@@ -124,7 +125,7 @@ struct IsPrimitive{C<:AbstractContext}
     context::C
 end
 
-@inline (::IsPrimitive)(input...) = Val(false)
+@inline (::IsPrimitive)(args...) = Val(false)
 
 macro isprimitive(signature)
     contextual_signature_transform!(signature)
@@ -155,7 +156,7 @@ struct Hook{C<:AbstractContext}
     context::C
 end
 
-@inline (::Hook)(input...) = nothing
+@inline (::Hook)(args...) = nothing
 
 macro hook(def)
     contextual_method_transform!(def)
