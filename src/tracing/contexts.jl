@@ -83,6 +83,7 @@ macro context(Ctx, CtxArg = nothing)
         end
         @inline $Ctx(f) = $Ctx($Cassette.Tag(f, Val($(Expr(:quote, Ctx)))), f)
         @inline $Cassette.wrap(ctx::$Ctx, f::F) where {F} = $Ctx(ctx.tag, f)
+        # TODO going to have to change the triple-colon syntax, since it breaks in situations like these
         $Cassette.@contextual (f:::$Ctx)(args...) = $Cassette.unwrapcall(f, args...)
     end)
     if CtxArg !== nothing

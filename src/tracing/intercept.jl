@@ -73,7 +73,7 @@ end
     return execute(i, args...)
 end
 
-@generated treat_as_primitive(i::Intercepted{C,d,p}, args...) where {C<:AbstractContext,d,p}
+@generated function treat_as_primitive(i::Intercepted{C,d,p}, args...) where {C<:AbstractContext,d,p}
     F = unwrap(C)
     if p || (F.name.module == Core) || (F <: Core.Builtin)
         isprimitive = :(Val(true))
