@@ -40,7 +40,7 @@ itself defined by Cassette users.
 The easiest way to see what I mean is via an example.
 
 ```julia
-julia> using Cassette: @context, @hook, Intercept, unwrap
+julia> using Cassette: @context, @hook, Enter, unwrap
 
 julia> @context PrintCtx
 
@@ -57,115 +57,144 @@ julia> function rosenbrock(x::Vector{Float64})
               end
 rosenbrock (generic function with 1 method)
 
-julia> Intercept(PrintCtx(rosenbrock))(rand(3))
-calling length([0.792214, 0.757227, 0.825464],)
-calling arraylen([0.792214, 0.757227, 0.825464],)
-calling colon(1, 2)
-calling UnitRange{Int64}(1, 2)
-calling start(1:2,)
+julia> Enter(PrintCtx(rosenbrock))(rand(2))
+calling length([0.896566, 0.742933],)
+calling arraylen([0.896566, 0.742933],)
+calling colon(1, 1)
+calling UnitRange{Int64}(1, 1)
+calling start(1:1,)
 calling oneunit(Int64,)
 calling Int64(1,)
 calling oftype(2, 1)
 calling convert(Int64, 1)
 calling !(false,)
 calling not_int(false,)
-calling next(1:2, 1)
+calling next(1:1, 1)
 calling convert(Int64, 1)
 calling +(1, 1)
 calling add_int(1, 1)
-calling getindex([0.792214, 0.757227, 0.825464], 1)
-calling Core.arrayref([0.792214, 0.757227, 0.825464], 1)
-calling Base.literal_pow(^, 0.20778562536661283, Val{2}())
-calling *(0.20778562536661283, 0.20778562536661283)
-calling mul_float(0.20778562536661283, 0.20778562536661283)
+calling getindex([0.896566, 0.742933], 1)
+calling Core.arrayref([0.896566, 0.742933], 1)
+calling Base.literal_pow(^, 0.10343429038286822, Val{2}())
+calling *(0.10343429038286822, 0.10343429038286822)
+calling mul_float(0.10343429038286822, 0.10343429038286822)
 calling +(1, 1)
 calling add_int(1, 1)
-calling getindex([0.792214, 0.757227, 0.825464], 1)
-calling Core.arrayref([0.792214, 0.757227, 0.825464], 1)
+calling getindex([0.896566, 0.742933], 1)
+calling Core.arrayref([0.896566, 0.742933], 1)
 calling Val{2}()
-calling -(0.7572270252068938, 0.6276036153757687)
-calling sub_float(0.7572270252068938, 0.6276036153757687)
+calling -(0.7429328146031335, 0.8038300716612711)
+calling sub_float(0.7429328146031335, 0.8038300716612711)
 calling Val{2}()
-calling *(100.0, 0.016802228376247813)
-calling mul_float(100.0, 0.016802228376247813)
-calling +(0.0, 1.7233977037337755)
-calling add_float(0.0, 1.7233977037337755)
-calling !(false,)
-calling not_int(false,)
-calling next(1:2, 2)
-calling convert(Int64, 2)
-calling +(2, 1)
-calling add_int(2, 1)
-calling getindex([0.792214, 0.757227, 0.825464], 2)
-calling Core.arrayref([0.792214, 0.757227, 0.825464], 2)
-calling Base.literal_pow(^, 0.24277297479310622, Val{2}())
-calling *(0.24277297479310622, 0.24277297479310622)
-calling mul_float(0.24277297479310622, 0.24277297479310622)
-calling +(2, 1)
-calling add_int(2, 1)
-calling getindex([0.792214, 0.757227, 0.825464], 2)
-calling Core.arrayref([0.792214, 0.757227, 0.825464], 2)
-calling Val{2}()
-calling -(0.8254637584336366, 0.5733927677036817)
-calling sub_float(0.8254637584336366, 0.5733927677036817)
-calling Val{2}()
-calling *(100.0, 0.063539784367581)
-calling mul_float(100.0, 0.063539784367581)
-calling +(1.7233977037337755, 6.412917154047994)
-calling add_float(1.7233977037337755, 6.412917154047994)
+calling *(100.0, 0.0037084759172048816)
+calling mul_float(100.0, 0.0037084759172048816)
+calling +(0.0, 0.38154624414749566)
+calling add_float(0.0, 0.38154624414749566)
 calling !(true,)
 calling not_int(true,)
-8.13631485778177
+0.38154624414749566
 ```
 
-<!-- So, what actually happened here? Here's an overly-detailed, step-by-step breakdown:
+So, what actually happened here? Here's an overly-detailed, step-by-step breakdown:
 
 ---
 
 We defined a new Cassette context called `PrintCtx` using the `@context` macro. This
-macro merely defines a normal Julia `struct` with the name `PrintCtx`. To prove that, let's
-expand the call to the `@context` macro. Don't get hung up on the tagging details here -
-we'll cover that later. Here's the expanded code, with some manual clean-up for readability:
+macro merely defines a normal Julia `struct` with the name `PrintCtx`, and overloads a
+couple of Cassette's internal methods with this new type. To prove that, let's expand the
+call to the `@context` macro. Don't get hung up on the details here - I just want to prove
+that nothing diabolical is going on. Here's the expanded code, with some manual clean-up
+for readability:
 
 ```julia
 julia> @macroexpand @context PrintCtx
 quote
-    begin
-        struct PrintCtx{T, F} <: Cassette.AbstractContext{T, F}
-            tag::Cassette.Tag{T}
-            func::F
-            PrintCtx(tag::Cassette.Tag{T}, func::F) where {T, F} = new{T, F}(tag, func)
-            PrintCtx(tag::Cassette.Tag{T}, func::Type{F}) where {T, F} = new{T, Type{F}}(tag, func)
-            PrintCtx(tag::Cassette.Tag{T}, func::Cassette.AbstractContext) where {T} = error("cannot nest contexts without an Intercept barrier")
-        end
-        PrintCtx(f) = PrintCtx(Cassette.Tag(f, Val(:PrintCtx)), f)
-        Cassette._wrap(ctx::PrintCtx, f::F) where {F} = PrintCtx(ctx.tag, f)
+    struct PrintCtx{T, F} <: Cassette.AbstractContext{:PrintCtx, T, F}
+        tag::Cassette.Tag{:PrintCtx, T}
+        func::F
+        @inline PrintCtx(tag::Cassette.Tag{:PrintCtx, T}, func::F) where {T, F} = new{T, F}(tag, func)
+        @inline PrintCtx(tag::Cassette.Tag{:PrintCtx, T}, func::Type{F}) where {T, F} = new{T, Type{F}}(tag, func)
+        @inline PrintCtx(tag::Cassette.Tag{:PrintCtx, T}, func::Cassette.AbstractContext) where T = error("cannot nest contexts without an Enter barrier")
     end
+    @inline PrintCtx(f) = PrintCtx(Cassette.Tag(Val{:PrintCtx}(), f), f)
+    @inline Cassette._wrap(ctx::PrintCtx, f::F) where F = PrintCtx(ctx.tag, f)
+    @inline Cassette._hook(ctx::PrintCtx, args...) = nothing
+    @inline Cassette._isprimitive(ctx::PrintCtx, args...) = Val(false)
+    @inline (f::PrintCtx{##TagTypeVar#778})(args...) where ##TagTypeVar#778 = Cassette.unwrapcall(f, args...)
 end
 ```
 
 ---
 
-Next, we defined what it means to call a function wrapped in `PrintCtx`. Despite the fancy
-syntax, this is literally just overloading call for `PrintCtx` objects. Once again, we
-can macro-expand the code to confirm this. I've also added an extra `TypeVar` `F` to
-demonstrate how the `@contextual` macro transforms the triple-colon syntax:
+Next, we defined a Cassette "hook" for `PrintCtx` method calls via the `@hook` macro.
+Cassette will call this hook every time it intercepts a method call. Once again, let's
+see what's really going on by macro-expanding the code (and once again, I've cleaned
+this up a little bit for readability):
 
 ```julia
-julia> @macroexpand @hook (f::F|PrintCtx)(args...) where {F} =  println("calling ", unwrap(f), args)
+julia> @macroexpand @hook PrintCtx @ctx(f)(args...) =  println("calling ", unwrap(f), args)
+quote
+    @inline function Cassette._hook(f::PrintCtx{##TagTypeVar#779}, args...) where ##TagTypeVar#779
+        println("calling ", unwrap(f), args)
+    end
+end
+```
+
+As you can see, this macro overrides the `Cassette._hook` method originally defined by the
+`@context` macro. You may also notice that the arguments are also available for dispatch;
+let's leverage this to add more specialized hooks:
+
+```julia
+julia> @hook PrintCtx @ctx(f)(args::Number...) =  println("OH WOW, NUMERIC ARGUMENTS! ", unwrap(f), args)
+
+julia> Enter(PrintCtx(rosenbrock))(rand(2))
+calling length([0.734847, 0.748465],)
+calling arraylen([0.734847, 0.748465],)
+OH WOW, A NUMERIC CALL! colon(1, 1)
+OH WOW, A NUMERIC CALL! UnitRange{Int64}(1, 1)
+calling start(1:1,)
+calling oneunit(Int64,)
+OH WOW, A NUMERIC CALL! Int64(1,)
+OH WOW, A NUMERIC CALL! oftype(2, 1)
+calling convert(Int64, 1)
+OH WOW, A NUMERIC CALL! !(false,)
+OH WOW, A NUMERIC CALL! not_int(false,)
+calling next(1:1, 1)
+calling convert(Int64, 1)
+OH WOW, A NUMERIC CALL! +(1, 1)
+OH WOW, A NUMERIC CALL! add_int(1, 1)
+calling getindex([0.734847, 0.748465], 1)
+calling Core.arrayref([0.734847, 0.748465], 1)
+calling Base.literal_pow(^, 0.26515338155520785, Val{2}())
+OH WOW, A NUMERIC CALL! *(0.26515338155520785, 0.26515338155520785)
+OH WOW, A NUMERIC CALL! mul_float(0.26515338155520785, 0.26515338155520785)
+OH WOW, A NUMERIC CALL! +(1, 1)
+OH WOW, A NUMERIC CALL! add_int(1, 1)
+calling getindex([0.734847, 0.748465], 1)
+calling Core.arrayref([0.734847, 0.748465], 1)
+OH WOW, A NUMERIC CALL! Val{2}()
+OH WOW, A NUMERIC CALL! -(0.7484645710915683, 0.539999552639746)
+OH WOW, A NUMERIC CALL! sub_float(0.7484645710915683, 0.539999552639746)
+OH WOW, A NUMERIC CALL! Val{2}()
+OH WOW, A NUMERIC CALL! *(100.0, 0.043457663918118616)
+OH WOW, A NUMERIC CALL! mul_float(100.0, 0.043457663918118616)
+OH WOW, A NUMERIC CALL! +(0.0, 4.416072707562023)
+OH WOW, A NUMERIC CALL! add_float(0.0, 4.416072707562023)
+OH WOW, A NUMERIC CALL! !(true,)
+OH WOW, A NUMERIC CALL! not_int(true,)
+4.416072707562023
 ```
 
 ---
 
-Finally, we recursively intercepted all method calls within `rosenbrock`, and at the base cases -
-called "primitives" in Cassette-lingo - we called our `PrintCtx` method, which logged and
-called the underlying method. Note that, as a fallback, `Core` methods and unreflectable
-methods are always considered primitives.
+Finally, we recursively intercepted all method calls within `rosenbrock`. At the base cases
+- called "primitives" in Cassette-lingo - we called the `(f::PrintCtx)(args...)` method
+automatically defined by `@context`. Note that, as a fallback, Cassette always considers
+`Core` methods and unreflectable methods primitives.
 
-To illustrate what's actually going on, let's look at the lowered code for a normal
-`rosenbrock` call and compare it to the lowered code for a call to
-`Intercept(PrintCtx(rosenbrock))`. Once again, I've manually munged the output for
-readability:
+To illustrate what's actually going on, let's look at the lowered code for a normal `rosenbrock`
+call and compare it to the lowered code for a call to `Enter(PrintCtx(rosenbrock))`. Once
+again, I've manually munged the output for readability:
 
 ```julia
 julia> @code_lowered rosenbrock(rand(3))
@@ -186,25 +215,25 @@ CodeInfo(:(begin
         return result
     end))
 
-julia> @code_lowered Intercept(PrintCtx(rosenbrock))(rand(3))
+julia> @code_lowered Enter(PrintCtx(rosenbrock))(rand(3))
 CodeInfo(:(begin
         nothing
         a = 1.0
         b = 100.0
         result = 0.0
-        SSAValue(0) = ((Cassette.Intercepted)(#self#, Main.colon))(1, ((Cassette.Intercepted)(#self#, Main.length))(x) - 1)
-        #temp# = ((Cassette.Intercepted)(#self#, Base.start))(SSAValue(0))
+        SSAValue(0) = ((Cassette.Intercept)(#self#, Main.colon))(1, ((Cassette.Intercept)(#self#, Main.length))(x) - 1)
+        #temp# = ((Cassette.Intercept)(#self#, Base.start))(SSAValue(0))
         10:
-        unless ((Cassette.Intercepted)(#self#, Base.!))((Base.done)(SSAValue(0), #temp#)) goto 19
-        SSAValue(1) = ((Cassette.Intercepted)(#self#, Base.next))(SSAValue(0), #temp#)
+        unless ((Cassette.Intercept)(#self#, Base.!))((Base.done)(SSAValue(0), #temp#)) goto 19
+        SSAValue(1) = ((Cassette.Intercept)(#self#, Base.next))(SSAValue(0), #temp#)
         i = (Core.getfield)(SSAValue(1), 1)
         #temp# = (Core.getfield)(SSAValue(1), 2)
-        result = ((Cassette.Intercepted)(#self#, Main.+))(result, ((Cassette.Intercepted)(#self#, Base.literal_pow))(Main.^, a - ((Cassette.Intercepted)(#self#, Main.getindex))(x, i), ((Core.apply_type)(Base.Val, 2))()) + ((Cassette.Intercepted)(#self#, Main.*))(b, (Base.literal_pow)(Main.^, ((Cassette.Intercepted)(#self#, Main.-))((Main.getindex)(x, ((Cassette.Intercepted)(#self#, Main.+))(i, 1)), (Base.literal_pow)(Main.^, ((Cassette.Intercepted)(#self#, Main.getindex))(x, i), ((Cassette.Intercepted)(#self#, (Core.apply_type)(Base.Val, 2)))())), ((Cassette.Intercepted)(#self#, (Core.apply_type)(Base.Val, 2)))())))
+        result = ((Cassette.Intercept)(#self#, Main.+))(result, ((Cassette.Intercept)(#self#, Base.literal_pow))(Main.^, a - ((Cassette.Intercept)(#self#, Main.getindex))(x, i), ((Core.apply_type)(Base.Val, 2))()) + ((Cassette.Intercept)(#self#, Main.*))(b, (Base.literal_pow)(Main.^, ((Cassette.Intercept)(#self#, Main.-))((Main.getindex)(x, ((Cassette.Intercept)(#self#, Main.+))(i, 1)), (Base.literal_pow)(Main.^, ((Cassette.Intercept)(#self#, Main.getindex))(x, i), ((Cassette.Intercept)(#self#, (Core.apply_type)(Base.Val, 2)))())), ((Cassette.Intercept)(#self#, (Core.apply_type)(Base.Val, 2)))())))
         goto 10
         19:
         return result
     end))
-``` -->
+```
 
 ## Cassette's Contextual Metadata Propagation Framework
 

@@ -110,7 +110,7 @@ macro context(Ctx)
         @inline $Cassette._isprimitive(ctx::$Ctx, args...) = Val(false)
 
         # define fallback execution behavior
-        @eval $Cassette.@contextual $Ctx @ctx(f)(args...) = $Cassette.unwrapcall(f, args...)
+        $Cassette.@contextual $Ctx @ctx(f)(args...) = $Cassette.unwrapcall(f, args...)
     end)
 end
 

@@ -106,22 +106,22 @@ replace_calls!(f, x) = replace_match!(call -> transform_call!(f, call), is_repla
 
 replace_slotnumbers!(f, x) = replace_match!(f, s -> isa(s, SlotNumber), x)
 
-#############
-# Intercept #
-#############
+#########
+# Enter #
+#########
 
-struct Intercept{C<:AbstractContext,d}
+struct Enter{C<:AbstractContext,d}
     context::C
     debug::Val{d}
 end
 
-Intercept(context) = Intercept(context, Val(false))
+Enter(context) = Enter(context, Val(false))
 
 function intercept_calls!(code_info, f_name::Symbol, arg_names::Vector, debug::Bool = false)
     if isa(code_info, CodeInfo)
         replace_calls!(code_info) do call
             if !(isa(call, SlotNumber) && call.id == 1)
-                return :($(Cassette.Intercepted)($(SlotNumber(0)), $call))
+                return :($(Cassette.Intercept)($(SlotNumber(0)), $call))
             else
                 return call
             end
@@ -141,7 +141,7 @@ function intercept_calls!(code_info, f_name::Symbol, arg_names::Vector, debug::B
     else
         expr = quote
             $(Expr(:meta, :inline))
-            $(Cassette.Intercepted)($f_name)($(arg_names...))
+            $(Cassette.Intercept)($f_name)($(arg_names...))
         end
         debug && println("INTERCEPTED CODEINFO: ", expr)
         return expr
@@ -151,39 +151,39 @@ end
 for N in 0:MAX_ARGS
     arg_names = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
     @eval begin
-        @generated function (i::Intercept{C,d})($(arg_names...)) where {C<:AbstractContext,d}
+        @generated function (e::Enter{C,d})($(arg_names...)) where {C<:AbstractContext,d}
             arg_types = map(T -> value(C, T), ($(arg_names...),))
             code_info = lookup_code_info(Tuple{unwrap(C), arg_types...}, $arg_names, d)
-            body = intercept_calls!(code_info, :i, $arg_names, d)
+            body = intercept_calls!(code_info, :e, $arg_names, d)
             return body
         end
     end
 end
 
-###############
-# Intercepted #
-###############
+#############
+# Intercept #
+#############
 
-struct Intercepted{C<:AbstractContext,d,p}
+struct Intercept{C<:AbstractContext,d,p}
     context::C
     debug::Val{d}
     force_primitive::Val{p}
 end
 
-@inline Intercepted(ctx::AbstractContext) = Intercepted(ctx, Val(false), Val(false))
+@inline Intercept(ctx::AbstractContext) = Intercept(ctx, Val(false), Val(false))
 
-@inline Intercepted(i::Intercept, f) = Intercepted(_wrap(i.context, f), i.debug, Val(false))
+@inline Intercept(i::Enter, f) = Intercept(_wrap(i.context, f), i.debug, Val(false))
 
-@inline Intercepted(i::Intercept) = Intercepted(i.context, i.debug, Val(true))
+@inline Intercept(i::Enter) = Intercept(i.context, i.debug, Val(true))
 
-@inline function (i::Intercepted{C,d,p})(args...) where {C<:AbstractContext,d,p}
+@inline function (i::Intercept{C,d,p})(args...) where {C<:AbstractContext,d,p}
     hook(i.context, args...)
     return execute(i, args...)
 end
 
-@inline isprimitive(i::Intercepted{C,d,true}, args...) where {C,d} = Val(true)
-@inline isprimitive(i::Intercepted{C,d,false}, args...) where {C,d} = isprimitive(i.context, args...)
+@inline isprimitive(i::Intercept{C,d,true}, args...) where {C,d} = Val(true)
+@inline isprimitive(i::Intercept{C,d,false}, args...) where {C,d} = isprimitive(i.context, args...)
 
-@inline execute(i::Intercepted, args...) = execute(isprimitive(i, args...), i, args...)
-@inline execute(::Val{true}, i::Intercepted, args...) = i.context(args...)
-@inline execute(::Val{false}, i::Intercepted, args...) = Intercept(i.context, i.debug)(args...)
+@inline execute(i::Intercept, args...) = execute(isprimitive(i, args...), i, args...)
+@inline execute(::Val{true}, i::Intercept, args...) = i.context(args...)
+@inline execute(::Val{false}, i::Intercept, args...) = Enter(i.context, i.debug)(args...)
