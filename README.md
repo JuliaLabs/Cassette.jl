@@ -148,41 +148,41 @@ let's leverage this to add more specialized hooks:
 julia> @hook PrintCtx @ctx(f)(args::Number...) =  println("OH WOW, NUMERIC ARGUMENTS! ", unwrap(f), args)
 
 julia> Enter(PrintCtx(rosenbrock))(rand(2))
-calling length([0.734847, 0.748465],)
-calling arraylen([0.734847, 0.748465],)
-OH WOW, A NUMERIC CALL! colon(1, 1)
-OH WOW, A NUMERIC CALL! UnitRange{Int64}(1, 1)
+calling length([0.862201, 0.591748],)
+calling arraylen([0.862201, 0.591748],)
+OH WOW, NUMERIC ARGUMENTS! colon(1, 1)
+OH WOW, NUMERIC ARGUMENTS! UnitRange{Int64}(1, 1)
 calling start(1:1,)
 calling oneunit(Int64,)
-OH WOW, A NUMERIC CALL! Int64(1,)
-OH WOW, A NUMERIC CALL! oftype(2, 1)
+OH WOW, NUMERIC ARGUMENTS! Int64(1,)
+OH WOW, NUMERIC ARGUMENTS! oftype(2, 1)
 calling convert(Int64, 1)
-OH WOW, A NUMERIC CALL! !(false,)
-OH WOW, A NUMERIC CALL! not_int(false,)
+OH WOW, NUMERIC ARGUMENTS! !(false,)
+OH WOW, NUMERIC ARGUMENTS! not_int(false,)
 calling next(1:1, 1)
 calling convert(Int64, 1)
-OH WOW, A NUMERIC CALL! +(1, 1)
-OH WOW, A NUMERIC CALL! add_int(1, 1)
-calling getindex([0.734847, 0.748465], 1)
-calling Core.arrayref([0.734847, 0.748465], 1)
-calling Base.literal_pow(^, 0.26515338155520785, Val{2}())
-OH WOW, A NUMERIC CALL! *(0.26515338155520785, 0.26515338155520785)
-OH WOW, A NUMERIC CALL! mul_float(0.26515338155520785, 0.26515338155520785)
-OH WOW, A NUMERIC CALL! +(1, 1)
-OH WOW, A NUMERIC CALL! add_int(1, 1)
-calling getindex([0.734847, 0.748465], 1)
-calling Core.arrayref([0.734847, 0.748465], 1)
-OH WOW, A NUMERIC CALL! Val{2}()
-OH WOW, A NUMERIC CALL! -(0.7484645710915683, 0.539999552639746)
-OH WOW, A NUMERIC CALL! sub_float(0.7484645710915683, 0.539999552639746)
-OH WOW, A NUMERIC CALL! Val{2}()
-OH WOW, A NUMERIC CALL! *(100.0, 0.043457663918118616)
-OH WOW, A NUMERIC CALL! mul_float(100.0, 0.043457663918118616)
-OH WOW, A NUMERIC CALL! +(0.0, 4.416072707562023)
-OH WOW, A NUMERIC CALL! add_float(0.0, 4.416072707562023)
-OH WOW, A NUMERIC CALL! !(true,)
-OH WOW, A NUMERIC CALL! not_int(true,)
-4.416072707562023
+OH WOW, NUMERIC ARGUMENTS! +(1, 1)
+OH WOW, NUMERIC ARGUMENTS! add_int(1, 1)
+calling getindex([0.862201, 0.591748], 1)
+calling Core.arrayref([0.862201, 0.591748], 1)
+calling Base.literal_pow(^, 0.13779926032137668, Val{2}())
+OH WOW, NUMERIC ARGUMENTS! *(0.13779926032137668, 0.13779926032137668)
+OH WOW, NUMERIC ARGUMENTS! mul_float(0.13779926032137668, 0.13779926032137668)
+OH WOW, NUMERIC ARGUMENTS! +(1, 1)
+OH WOW, NUMERIC ARGUMENTS! add_int(1, 1)
+calling getindex([0.862201, 0.591748], 1)
+calling Core.arrayref([0.862201, 0.591748], 1)
+OH WOW, NUMERIC ARGUMENTS! Val{2}()
+OH WOW, NUMERIC ARGUMENTS! -(0.5917475134530223, 0.7433901155023652)
+OH WOW, NUMERIC ARGUMENTS! sub_float(0.5917475134530223, 0.7433901155023652)
+OH WOW, NUMERIC ARGUMENTS! Val{2}()
+OH WOW, NUMERIC ARGUMENTS! *(100.0, 0.02299547875629537)
+OH WOW, NUMERIC ARGUMENTS! mul_float(100.0, 0.02299547875629537)
+OH WOW, NUMERIC ARGUMENTS! +(0.0, 2.3185365117746555)
+OH WOW, NUMERIC ARGUMENTS! add_float(0.0, 2.3185365117746555)
+OH WOW, NUMERIC ARGUMENTS! !(true,)
+OH WOW, NUMERIC ARGUMENTS! not_int(true,)
+2.3185365117746555
 ```
 
 ---
@@ -197,7 +197,7 @@ call and compare it to the lowered code for a call to `Enter(PrintCtx(rosenbrock
 again, I've manually munged the output for readability:
 
 ```julia
-julia> @code_lowered rosenbrock(rand(3))
+julia> @code_lowered rosenbrock(rand(2))
 CodeInfo(:(begin
         a = 1.0
         b = 100.0
@@ -215,7 +215,7 @@ CodeInfo(:(begin
         return result
     end))
 
-julia> @code_lowered Enter(PrintCtx(rosenbrock))(rand(3))
+julia> @code_lowered Enter(PrintCtx(rosenbrock))(rand(2))
 CodeInfo(:(begin
         nothing
         a = 1.0
@@ -234,6 +234,30 @@ CodeInfo(:(begin
         return result
     end))
 ```
+
+The lowered code for `Enter(PrintCtx(rosenbrock))` is the same as the lowered code for
+`rosenbrock`, but every callable object that is being called has been wrapped in the
+`Cassette.Intercept` type. Let's examine the lowered and type-inferred code of a call
+to `Intercept`:
+
+```julia
+julia> caller = Enter(PrintCtx(rosenbrock));
+
+julia> @code_typed Cassette.Intercept(caller, +)(rand(), rand())
+CodeInfo(:(begin
+        $(Expr(:invoke, MethodInstance for println(::String, ::Function, ::Vararg{Any,N} where N), :(Main.println), "OH WOW, NUMERIC ARGUMENTS! ", :($(QuoteNode(+))), :((Core.tuple)((Core.getfield)(args, 1)::Float64, (Core.getfield)(args, 2)::Float64)::Tuple{Float64,Float64})))::Void
+        $(Expr(:invoke, MethodInstance for println(::String, ::Function, ::Vararg{Any,N} where N), :(Main.println), "OH WOW, NUMERIC ARGUMENTS! ", :(Base.add_float), :((Core.tuple)((Core.getfield)(args, 1)::Float64, (Core.getfield)(args, 2)::Float64)::Tuple{Float64,Float64})))::Void
+        #temp# = (Base.add_float)((Core.getfield)(args, 1)::Float64, (Core.getfield)(args, 2)::Float64)
+        return #temp#
+    end))
+```
+
+Note: I plan on resolving the inference performance bugs here (i.e. the erroneously
+uninferred `#temp#` return variable) by fixing Julia's compiler/codegen (ref JuliaLang/julia#5402,
+which causes the vast majority of Cassette-related performance overhead)
+
+As you can see, the bodies of the calls to our `PrintCtx` hooks have been aggressively
+inlined along with the call to the underlying `Base.add_float` call.
 
 ## Cassette's Contextual Metadata Propagation Framework
 
