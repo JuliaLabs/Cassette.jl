@@ -152,7 +152,7 @@ for N in 0:MAX_ARGS
     arg_names = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
     @eval begin
         @generated function (i::Intercept{C,d})($(arg_names...)) where {C<:AbstractContext,d}
-            arg_types = map(T -> unwrap(C, T), ($(arg_names...),))
+            arg_types = map(T -> value(C, T), ($(arg_names...),))
             code_info = lookup_code_info(Tuple{unwrap(C), arg_types...}, $arg_names, d)
             body = intercept_calls!(code_info, :i, $arg_names, d)
             return body
@@ -172,7 +172,7 @@ end
 
 @inline Intercepted(ctx::AbstractContext) = Intercepted(ctx, Val(false), Val(false))
 
-@inline Intercepted(i::Intercept, f) = Intercepted(intercept_wrap(i.context, f), i.debug, Val(false))
+@inline Intercepted(i::Intercept, f) = Intercepted(_wrap(i.context, f), i.debug, Val(false))
 
 @inline Intercepted(i::Intercept) = Intercepted(i.context, i.debug, Val(true))
 

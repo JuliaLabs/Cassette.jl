@@ -44,7 +44,7 @@ julia> using Cassette: @context, @hook, Intercept, unwrap
 
 julia> @context PrintCtx
 
-julia> @hook @ctx(f, PrintCtx)(args...) =  println("calling ", unwrap(f), args)
+julia> @hook PrintCtx @ctx(f)(args...) =  println("calling ", unwrap(f), args)
 
 julia> function rosenbrock(x::Vector{Float64})
                   a = 1.0
@@ -139,7 +139,7 @@ quote
             PrintCtx(tag::Cassette.Tag{T}, func::Cassette.AbstractContext) where {T} = error("cannot nest contexts without an Intercept barrier")
         end
         PrintCtx(f) = PrintCtx(Cassette.Tag(f, Val(:PrintCtx)), f)
-        Cassette.wrap(ctx::PrintCtx, f::F) where {F} = PrintCtx(ctx.tag, f)
+        Cassette._wrap(ctx::PrintCtx, f::F) where {F} = PrintCtx(ctx.tag, f)
     end
 end
 ```

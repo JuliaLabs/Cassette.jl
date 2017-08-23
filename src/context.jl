@@ -5,53 +5,58 @@
 # and have been modified from their original version to fit your TV - er, to fit Cassette's
 # use case.
 
-struct Tag{T} end
-
-@inline tagtype(::Tag{T}) where {T} = T
+struct Tag{C,T} end
 
 # Here, we could've just as easily used `hash`; however, this is unsafe/undefined behavior
 # if `hash(::Type{F})` is overloaded in a module loaded after Cassette. Thus, we instead
 # use `hash(Symbol(F))`, which is somewhat safer since it's far less likely that somebody
 # would overwrite the Base definition for `Symbol(::DataType)` or `hash(::Symbol)`.
-@generated function Tag(::F, ::Val{C}) where {F,C}
+@generated function Tag(::Val{C}, ::F) where {C,F}
     @assert isa(C, Symbol)
-    T = hash(C, hash(Symbol(F)))
+    T = hash(Symbol(F))
     return quote
         $(Expr(:meta, :inline))
-        Tag{$T}()
+        Tag{C,$T}()
     end
 end
 
-##################################
-# AbstractContext/AbstractCtxArg #
-##################################
+##########################
+# AbstractContext/CtxArg #
+##########################
 
-abstract type AbstractContext{T,F} end
-abstract type AbstractCtxArg{T,V,M,U} end
+abstract type AbstractContext{C,T,F} end
 
-# these stubs get overloaded by Cassette.@context
-function intercept_wrap end
-function wrap end
+struct CtxArg{C,T,V,M,U}
+    tag::Tag{C,T}
+    value::U
+    meta::M
+    @inline function CtxArg(tag::Tag{C,T}, value::V, meta::M) where {C,T,V,M}
+        new{C,T,V,M,V}(ctx.tag, value, meta)
+    end
+    @inline function CtxArg(tag::Tag{C,T}, value::Type{V}, meta::M) where {C,T,V,M}
+        new{C,T,Type{V},M,Type{V}}(ctx.tag, value, meta)
+    end
+    @inline function CtxArg(tag::Tag{C,T}, value::CtxArg{<:Any,<:Any,V}, meta::M) where {C,T,V,M}
+        new{C,T,V,M,typeof(value)}(ctx.tag, value, meta)
+    end
+end
 
-@inline value(ctx, arg) = error("cannot extract `value` field: tag of context $(ctx) does not match tag of argument $(arg)")
-@inline value(::AbstractContext{T}, arg::AbstractCtxArg{T}) where {T} = arg.value
-@inline value(::Type{C}, ::Type{A}) where {T,V,M,U,C<:AbstractContext{T},A<:AbstractCtxArg{T,V,M,U}} = U
+@inline CtxArg(ctx::AbstractContext, value, meta = nothing) = CtxArg(ctx.tag, value, meta)
 
-@inline meta(ctx, arg) = error("cannot extract `meta` field: tag of context $(ctx) does not match tag of argument $(arg)")
-@inline meta(::AbstractContext{T}, arg::AbstractCtxArg{T}) where {T} = arg.meta
-@inline meta(::Type{C}, ::Type{A}) where {T,V,M,C<:AbstractContext{T},A<:AbstractCtxArg{T,V,M}} = M
+@inline value(ctx, arg) = arg
+@inline value(::AbstractContext{C,T}, arg::CtxArg{C,T}) where {C,T} = arg.value
+@inline value(::Type{AC}, ::Type{CA}) where {C,T,V,M,U,AC<:AbstractContext{C,T},CA<:CtxArg{C,T,V,M,U}} = U
+
+@inline meta(ctx, arg) = nothing
+@inline meta(::AbstractContext{C,T}, arg::CtxArg{C,T}) where {C,T} = arg.meta
+@inline meta(::Type{AC}, ::Type{CA}) where {C,T,V,M,AC<:AbstractContext{C,T},CA<:CtxArg{C,T,V,M}} = U
 
 @inline unwrap(x) = x
 @inline unwrap(ctx::AbstractContext) = ctx.func
-@inline unwrap(::Type{C}) where {T,F,C<:AbstractContext{T,F}} = F
-
-@inline unwrap(::AbstractContext, arg) = arg
-@inline unwrap(ctx::AbstractContext{T}, arg::AbstractCtxArg{T}) where {T} = value(ctx, arg)
-@inline unwrap(::Type{C}, ::Type{A}) where {C<:AbstractContext,A} = A
-@inline unwrap(::Type{C}, ::Type{A}) where {T,C<:AbstractContext{T},A<:AbstractCtxArg{T}} = value(C, A)
+@inline unwrap(::Type{AC}) where {C,T,F,AC<:AbstractContext{C,T,F}} = F
 
 @generated function unwrapcall(ctx::AbstractContext, args...)
-    args = [:(unwrap(ctx, args[$i])) for i in 1:nfields(args)]
+    args = [:(value(ctx, args[$i])) for i in 1:nfields(args)]
     return quote
         $(Expr(:meta, :inline))
         unwrap(ctx)($(args...))
@@ -59,87 +64,53 @@ function wrap end
 end
 
 @inline ctxcall(f, g, ::AbstractContext, arg::Any) = g(arg)
-@inline ctxcall(f, g, ctx::AbstractContext{T}, arg::AbstractCtxArg{T}) where {T} = f(value(ctx, arg), meta(ctx, arg))
+@inline ctxcall(f, g, ctx::AbstractContext{C,T}, arg::CtxArg{C,T}) where {C,T} = f(value(ctx, arg), meta(ctx, arg))
 
 @inline hasctx(::AbstractContext, ::Any) = false
 @inline hasctx(::Type{<:AbstractContext}, ::Type{<:Any}) = false
-@inline hasctx(::AbstractContext{T}, ::AbstractCtxArg{T}) where {T} = true
-@inline hasctx(::Type{C}, ::Type{A}) where {T,C<:AbstractContext{T},A<:AbstractCtxArg{T}} = true
+@inline hasctx(::AbstractContext{C,T}, ::CtxArg{C,T}) where {C,T} = true
+@inline hasctx(::Type{AC}, ::Type{CA}) where {C,T,AC<:AbstractContext{C,T},CA<:CtxArg{C,T}} = true
 
-################################
-# Context Reflection Utilities #
-################################
-
-struct ContextInfo
-    mod::Module
-    argument::Symbol
-    hook::Symbol
-    isprimitive::Symbol
-end
-
-const DEFINED_CONTEXTS = Dict{Symbol,ContextInfo}()
-
-function lookup_context_info(key::Symbol)
-    @assert haskey(DEFINED_CONTEXTS, key) "context type not defined: $key"
-    return DEFINED_CONTEXTS[key]
-end
-
-function lookup_context_info(key::Expr)
-    @assert key.head == :(.) "malformed context identifier: $key"
-    return lookup_context_info(extract_quoted_symbol(last(key.args)))
-end
+# these stubs get overloaded by Cassette's various macros
+function _wrap end
+function _isprimitive end
+function _hook end
 
 ##################
 # @context macro #
 ##################
 
+const DEFINED_CONTEXTS = Symbol[]
+
 macro context(Ctx)
     @assert isa(Ctx, Symbol) "context name must be a Symbol"
-    CtxArg = gensym(string(Ctx, "ArgType"))
-    CtxHookFunc = gensym(string(Ctx, "_hook_func"))
-    CtxIsPrimitiveFunc = gensym(string(Ctx, "_isprimitive_func"))
-    haskey(DEFINED_CONTEXTS, Ctx) && error("context type ", Ctx, " is already defined")
-    namesyms = [Expr(:quote, x) for x in (Ctx, CtxArg, CtxHookFunc, CtxIsPrimitiveFunc)]
+    in(Ctx, DEFINED_CONTEXTS) && error("context type ", Ctx, " is already defined")
+    push!(DEFINED_CONTEXTS, Ctx)
+    seed = Val(Ctx)
+    ctxsym = Expr(:quote, Ctx)
     return esc(quote
         # define the actual context type
-        struct $Ctx{T,F} <: $Cassette.AbstractContext{T,F}
-            tag::$Cassette.Tag{T}
+        struct $Ctx{T,F} <: $Cassette.AbstractContext{$ctxsym,T,F}
+            tag::$Cassette.Tag{$ctxsym,T}
             func::F
-            @inline $Ctx(tag::$Cassette.Tag{T}, func::F) where {T,F} = new{T,F}(tag, func)
-            @inline $Ctx(tag::$Cassette.Tag{T}, func::Type{F}) where {T,F} = new{T,Type{F}}(tag, func)
-            @inline $Ctx(tag::$Cassette.Tag{T}, func::$Cassette.AbstractContext) where {T} = error("cannot nest contexts without an Intercept barrier")
+            @inline $Ctx(tag::$Cassette.Tag{$ctxsym,T}, func::F) where {T,F} = new{T,F}(tag, func)
+            @inline $Ctx(tag::$Cassette.Tag{$ctxsym,T}, func::Type{F}) where {T,F} = new{T,Type{F}}(tag, func)
+            @inline $Ctx(tag::$Cassette.Tag{$ctxsym,T}, func::$Cassette.AbstractContext) where {T} = error("cannot nest contexts without an Intercept barrier")
         end
-        @inline $Ctx(f) = $Ctx($Cassette.Tag(f, Val($(Expr(:quote, Ctx)))), f)
-        @inline $Cassette.intercept_wrap(ctx::$Ctx, f::F) where {F} = $Ctx(ctx.tag, f)
+
+        @inline $Ctx(f) = $Ctx($Cassette.Tag($seed, f), f)
+
+        # define the context's tag propagation wrapper
+        @inline $Cassette._wrap(ctx::$Ctx, f::F) where {F} = $Ctx(ctx.tag, f)
 
         # define the context's hook function fallback
-        @inline $(CtxHookFunc)(ctx::$Cassette.AbstractContext, args...) = nothing
+        @inline $Cassette._hook(ctx::$Ctx, args...) = nothing
 
         # define the context's isprimitive function fallback
-        @inline $(CtxIsPrimitiveFunc)(ctx::$Cassette.AbstractContext, args...) = Val(false)
+        @inline $Cassette._isprimitive(ctx::$Ctx, args...) = Val(false)
 
-        # define the context's argument propagator type fallback
-        struct $CtxArg{T,V,M,U} <: $Cassette.AbstractCtxArg{T,V,M,U}
-            tag::$Cassette.Tag{T}
-            value::U
-            meta::M
-            @inline function $CtxArg(ctx::$Ctx{T}, value::V, meta::M) where {T,V,M}
-                new{T,V,M,V}(ctx.tag, value, meta)
-            end
-            @inline function $CtxArg(ctx::$Ctx{T}, value::Type{V}, meta::M) where {T,V,M}
-                new{T,Type{V},M,Type{V}}(ctx.tag, value, meta)
-            end
-            @inline function $CtxArg(ctx::$Ctx{T}, value::$Cassette.AbstractCtxArg{<:Any,V}, meta::M) where {T,V,M}
-                new{T,V,M,typeof(value)}(ctx.tag, value, meta)
-            end
-        end
-        @inline $Cassette.wrap(ctx::$Ctx, value, meta = nothing) = $CtxArg(ctx, value, meta)
-
-        # add context to Cassette's reflection table
-        $Cassette.DEFINED_CONTEXTS[$(namesyms[1])] = $Cassette.ContextInfo(@__MODULE__, $(namesyms[2:end]...))
-
-        # define fallback primitive behavior
-        @eval $Cassette.@contextual @ctx(f, $Ctx)(args...) = $Cassette.unwrapcall(f, args...)
+        # define fallback execution behavior
+        @eval $Cassette.@contextual $Ctx @ctx(f)(args...) = $Cassette.unwrapcall(f, args...)
     end)
 end
 
@@ -147,8 +118,8 @@ end
 # @contextual macro #
 #####################
 
-macro contextual(def)
-    contextual_method_transform!(def)
+macro contextual(ctx, def)
+    contextual_method_transform!(ctx, def)
     return esc(def)
 end
 
@@ -161,18 +132,11 @@ end
 # @hook macro #
 ###############
 
-@generated function hook(ctx::C, args...) where {C<:AbstractContext}
-    ctxinfo = lookup_context_info(Symbol(C.name))
-    return quote
-        $(Expr(:meta, :inline))
-        return $(ctxinfo.mod).$(ctxinfo.hook)(ctx, args...)
-    end
-end
+@inline hook(ctx::AbstractContext, args...) = _hook(ctx, args...)
 
-macro hook(def)
-    ctxinfo = contextual_method_transform!(def)
-    name = :($(ctxinfo.mod).$(ctxinfo.hook))
-    switch_callable_with_method_name!(first(def.args), name)
+macro hook(ctx, def)
+    contextual_method_transform!(ctx, def)
+    switch_callable_with_method_name!(first(def.args), :($Cassette._hook))
     return esc(def)
 end
 
@@ -185,8 +149,7 @@ end
     if F.name.module == Core || F <: Core.Builtin
         body = :(Val(true))
     else
-        ctxinfo = lookup_context_info(Symbol(C.name))
-        body = :($(ctxinfo.mod).$(ctxinfo.isprimitive)(ctx, args...))
+        body = :($Cassette._isprimitive(ctx, args...))
     end
     return quote
         $(Expr(:meta, :inline))
@@ -194,10 +157,9 @@ end
     end
 end
 
-macro isprimitive(signature)
-    ctxinfo = contextual_signature_transform!(signature)
-    name = :($(ctxinfo.mod).$(ctxinfo.isprimitive))
-    switch_callable_with_method_name!(signature, name)
+macro isprimitive(ctx, signature)
+    contextual_signature_transform!(ctx, signature)
+    switch_callable_with_method_name!(signature, :($Cassette._isprimitive))
     body = Expr(:block)
     push!(body.args, Expr(:meta, :inline))
     push!(body.args, :(return Val(true)))
@@ -226,66 +188,70 @@ is_non_ctx_dispatch(x) = isa(x, Expr) && x.head == :(::) && !is_ctx_dispatch(x)
 
 function parse_ctx_dispatch(x)
     @assert is_ctx_dispatch(x) "encountered malformed @ctx syntax"
-    input = x.args[3:end]
-    if length(input) == 1
-        v, V, C = nothing, :Any, input[]
-    else
-        @assert length(input) == 2 "encountered malformed @ctx syntax"
-        arg, C = input
-        if isa(arg, Symbol)
-            v, V = arg, :Any
-        elseif isa(arg, Expr)
-            @assert arg.head == :(::) "encountered malformed @ctx syntax"
-            v, V = (length(arg.args) == 2) ? arg.args : (nothing, arg.args[])
+    e = x.args[3]
+    if isa(e, Symbol)
+        v, V = e, :Any
+    elseif isa(e, Expr) && e.head == :(::)
+        if length(e.args) == 1
+            v, V = nothing, e.args[1]
+        else
+            @assert length(e.args) == 2 "encountered malformed @ctx syntax"
+            v, V = e.args
         end
     end
-    return v, V, C
+    return v, V
 end
 
-function transform_ctx_dispatch(v, V, C, tag)
-    v === nothing && V === :Any && return :(::$C{$tag})
-    v === nothing && return :(::$C{$tag,<:$V})
-    V === :Any && return :($v::$C{$tag})
-    return :($v::$C{$tag,<:$V})
+function transform_ctx_arg_dispatch(v, V, ctx::Symbol, tag)
+    qctx = Expr(:quote, ctx)
+    v === nothing && V === :Any && return :(::$Cassette.CtxArg{$qctx,$tag})
+    v === nothing && return :(::$Cassette.CtxArg{$qctx,$tag,<:$V})
+    V === :Any && return :($v::$Cassette.CtxArg{$qctx,$tag})
+    return :($v::$Cassette.CtxArg{$qctx,$tag,<:$V})
 end
 
-function contextual_signature_transform!(signature)
+function transform_ctx_func_dispatch(v, V, ctx, tag)
+    v === nothing && V === :Any && return :(::$ctx{$tag})
+    v === nothing && return :(::$ctx{$tag,<:$V})
+    V === :Any && return :($v::$ctx{$tag})
+    return :($v::$ctx{$tag,<:$V})
+end
+
+function contextual_signature_transform!(ctx, signature)
     callable = extract_callable_from_signature(signature)
-    input = extract_args_from_signature(signature)
-    @assert is_ctx_dispatch(callable)
+    ctxname = extract_unqualified_symbol(ctx)
+    @assert is_ctx_dispatch(callable) "the signature's method identifier must be wrapped in @ctx"
+    @assert in(ctxname, DEFINED_CONTEXTS) "$ctx is not defined as a Cassette context"
 
     # add the tag parameter to the signature's `where` clause
     tag = gensym("TagTypeVar")
     add_type_variable!(signature, tag)
 
     # replace context syntax with contextualized type
-    v, V, C = parse_ctx_dispatch(callable)
-    ctxinfo = lookup_context_info(C)
-    replace_signature_callable!(signature, transform_ctx_dispatch(v, V, C, tag))
+    v, V = parse_ctx_dispatch(callable)
+    replace_signature_callable!(signature, transform_ctx_func_dispatch(v, V, ctx, tag))
 
-    for i in eachindex(input)
-        x = input[i]
+    argslist = extract_args_from_signature(signature)
+    for i in eachindex(argslist)
+        x = argslist[i]
         if is_non_ctx_dispatch(x)
-            # replace `::V` with `::Union{AbstractCtxArg{<:Any,V},V}`
             i = length(x.args)
             (i == 1 || i == 2) || error("failed to parse dispatch syntax in subexpression ", x)
             V = x.args[i]
-            x.args[i] = :(Union{$Cassette.AbstractCtxArg{<:Any,$V},$V})
+            x.args[i] = :(Union{$Cassette.CtxArg{<:Any,<:Any,$V},$V})
         elseif is_ctx_dispatch(x)
-            # replace context syntax with contextualized type
-            v, V, argC = parse_ctx_dispatch(x)
-            argC !== C && error("argument context type ", argC, " must equal method context type ", C)
-            input[i] = transform_ctx_dispatch(v, V, ctxinfo.argument, tag)
+            v, V = parse_ctx_dispatch(x)
+            argslist[i] = transform_ctx_arg_dispatch(v, V, ctxname, tag)
         end
     end
-    return ctxinfo
+    return signature
 end
 
-function contextual_method_transform!(def)
+function contextual_method_transform!(ctx, def)
     @assert is_method_definition(def)
     signature, body = def.args
 
-    ctxinfo = contextual_signature_transform!(signature)
+    contextual_signature_transform!(ctx, signature)
 
     # make sure the user didn't mistakenly use context syntax in the method body
     replace_match!(is_ctx_dispatch, body) do x
@@ -296,7 +262,7 @@ function contextual_method_transform!(def)
     # force inlining
     unshift!(def.args[2].args, Expr(:meta, :inline))
 
-    return ctxinfo
+    return def
 end
 
 #############################################################################
@@ -333,37 +299,18 @@ function extract_callable_from_signature(sig)
     return sig.args[1]
 end
 
-function wrap_signature_callable_type!(signature, T)
-    callable = extract_callable_from_signature(signature)
-    i = length(callable.args)
-    callable.args[i] = :($T{<:$(callable.args[i])})
-    return signature
+function extract_unqualified_symbol(e::Expr)
+    @assert e.head == :(.)
+    return extract_unqualified_symbol(last(e.args))
 end
+
+extract_unqualified_symbol(name::Symbol) = name
 
 function extract_args_from_signature(sig)
     if sig.head == :where
         sig = sig.args[1]
     end
     return view(sig.args, 2:length(sig.args))
-end
-
-function is_quoted_symbol(x)
-    if isa(x, QuoteNode)
-        return true
-    elseif isa(x, Expr) && x.head == :quote && length(x.args) == 1
-        return isa(x.args[1], Symbol)
-    end
-    return false
-end
-
-function extract_quoted_symbol(x)
-    if isa(x, QuoteNode)
-        return x.value
-    elseif isa(x, Expr)
-        return x.args[1]
-    elseif isa(x, Symbol)
-        return x
-    end
 end
 
 function add_type_variable!(signature, T)
