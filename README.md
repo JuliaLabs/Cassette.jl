@@ -42,59 +42,83 @@ The easiest way to see what I mean is via an example.
 ```julia
 julia> using Cassette: @context, @hook, Intercept, unwrap
 
-# Define a new Cassette context called `PrintCtx`.
 julia> @context PrintCtx
 
-# This hook will be called every time a `PrintCtx` function is called.
-# The `:::` is not a typo; it's Cassette's context dispatch syntax. The
-# full syntax is `f::F:Ctx`, which can be read as `f of type F in context
-# Ctx`. If a `T` is not provided, the type defaults to `Any` (just like
-# normal type dispatch).
-julia> @hook (f:::PrintCtx)(args...) =  println("calling ", unwrap(f), args)
+julia> @hook @ctx(f, PrintCtx)(args...) =  println("calling ", unwrap(f), args)
 
-# Define the best toy example Julia function ever.
 julia> function rosenbrock(x::Vector{Float64})
-           a = 1.0
-           b = 100.0
-           result = 0.0
-           for i in 1:length(x)-1
-               result += (a - x[i])^2 + b*(x[i+1] - x[i]^2)^2
-           end
-           return result
-       end
+                  a = 1.0
+                  b = 100.0
+                  result = 0.0
+                  for i in 1:length(x)-1
+                      result += (a - x[i])^2 + b*(x[i+1] - x[i]^2)^2
+                  end
+                  return result
+              end
 rosenbrock (generic function with 1 method)
 
 julia> Intercept(PrintCtx(rosenbrock))(rand(3))
-calling arraylen([0.474659, 0.838978, 0.481891],)
+calling length([0.792214, 0.757227, 0.825464],)
+calling arraylen([0.792214, 0.757227, 0.825464],)
+calling colon(1, 2)
 calling UnitRange{Int64}(1, 2)
+calling start(1:2,)
+calling oneunit(Int64,)
 calling Int64(1,)
+calling oftype(2, 1)
+calling convert(Int64, 1)
+calling !(false,)
 calling not_int(false,)
+calling next(1:2, 1)
+calling convert(Int64, 1)
+calling +(1, 1)
 calling add_int(1, 1)
-calling Core.arrayref([0.474659, 0.838978, 0.481891], 1)
-calling mul_float(0.5253413404302651, 0.5253413404302651)
+calling getindex([0.792214, 0.757227, 0.825464], 1)
+calling Core.arrayref([0.792214, 0.757227, 0.825464], 1)
+calling Base.literal_pow(^, 0.20778562536661283, Val{2}())
+calling *(0.20778562536661283, 0.20778562536661283)
+calling mul_float(0.20778562536661283, 0.20778562536661283)
+calling +(1, 1)
 calling add_int(1, 1)
-calling Core.arrayref([0.474659, 0.838978, 0.481891], 1)
+calling getindex([0.792214, 0.757227, 0.825464], 1)
+calling Core.arrayref([0.792214, 0.757227, 0.825464], 1)
 calling Val{2}()
-calling sub_float(0.8389779293459476, 0.22530084310453743)
+calling -(0.7572270252068938, 0.6276036153757687)
+calling sub_float(0.7572270252068938, 0.6276036153757687)
 calling Val{2}()
-calling mul_float(100.0, 0.37659956617774715)
-calling add_float(0.0, 37.935940141739785)
+calling *(100.0, 0.016802228376247813)
+calling mul_float(100.0, 0.016802228376247813)
+calling +(0.0, 1.7233977037337755)
+calling add_float(0.0, 1.7233977037337755)
+calling !(false,)
 calling not_int(false,)
+calling next(1:2, 2)
+calling convert(Int64, 2)
+calling +(2, 1)
 calling add_int(2, 1)
-calling Core.arrayref([0.474659, 0.838978, 0.481891], 2)
-calling mul_float(0.16102207065405238, 0.16102207065405238)
+calling getindex([0.792214, 0.757227, 0.825464], 2)
+calling Core.arrayref([0.792214, 0.757227, 0.825464], 2)
+calling Base.literal_pow(^, 0.24277297479310622, Val{2}())
+calling *(0.24277297479310622, 0.24277297479310622)
+calling mul_float(0.24277297479310622, 0.24277297479310622)
+calling +(2, 1)
 calling add_int(2, 1)
-calling Core.arrayref([0.474659, 0.838978, 0.481891], 2)
+calling getindex([0.792214, 0.757227, 0.825464], 2)
+calling Core.arrayref([0.792214, 0.757227, 0.825464], 2)
 calling Val{2}()
-calling sub_float(0.4818909816759547, 0.7038839659296139)
+calling -(0.8254637584336366, 0.5733927677036817)
+calling sub_float(0.8254637584336366, 0.5733927677036817)
 calling Val{2}()
-calling mul_float(100.0, 0.049280885057845385)
-calling add_float(37.935940141739785, 4.954016613022257)
+calling *(100.0, 0.063539784367581)
+calling mul_float(100.0, 0.063539784367581)
+calling +(1.7233977037337755, 6.412917154047994)
+calling add_float(1.7233977037337755, 6.412917154047994)
+calling !(true,)
 calling not_int(true,)
-42.88995675476204
+8.13631485778177
 ```
 
-So, what actually happened here? Here's an overly-detailed, step-by-step breakdown:
+<!-- So, what actually happened here? Here's an overly-detailed, step-by-step breakdown:
 
 ---
 
@@ -180,7 +204,7 @@ CodeInfo(:(begin
         19:
         return result
     end))
-```
+``` -->
 
 ## Cassette's Contextual Metadata Propagation Framework
 

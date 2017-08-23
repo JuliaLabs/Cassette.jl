@@ -2,6 +2,8 @@
 # CodeInfo Lookup #
 ###################
 
+get_tls_world_age() = ccall(:jl_get_tls_world_age, UInt, ())
+
 function lookup_code_info(::Type{S}, arg_names::Vector,
                           debug::Bool = false,
                           world::UInt = typemax(UInt)) where {S<:Tuple}
@@ -55,10 +57,11 @@ function _lookup_code_info(::Type{S}, arg_names::Vector,
     return method, code_info
 end
 
+##################################
+# Subexpression/CodeInfo Munging #
+##################################
 
-###################################
-# Subexpression Match Replacement #
-###################################
+# Match Replacement
 
 replace_match!(f, ismatch, x) = x
 replace_match!(f, ismatch, code_info::CodeInfo) = (replace_match!(f, ismatch, code_info.code); code_info)
@@ -76,9 +79,7 @@ function replace_match!(f, ismatch, lines::Array)
     return lines
 end
 
-####################
-# Call Replacement #
-####################
+# Call Replacement
 
 function is_replaceable_call(x)
     if isa(x, Expr) && (x.head == :call)
@@ -101,86 +102,88 @@ end
 
 replace_calls!(f, x) = replace_match!(call -> transform_call!(f, call), is_replaceable_call, x)
 
-##########################
-# SlotNumber Replacement #
-##########################
+# SlotNumber Replacement
 
 replace_slotnumbers!(f, x) = replace_match!(f, s -> isa(s, SlotNumber), x)
 
-#################
-# Miscellaneous #
-#################
+#############
+# Intercept #
+#############
 
-function is_method_definition(x)
-    if isa(x, Expr)
-        if x.head == :function
-            return true
-        elseif x.head == :(=) && isa(x.args[1], Expr)
-            lhs = x.args[1]
-            if lhs.head == :where
-                lhs = lhs.args[1]
+struct Intercept{C<:AbstractContext,d}
+    context::C
+    debug::Val{d}
+end
+
+Intercept(context) = Intercept(context, Val(false))
+
+function intercept_calls!(code_info, f_name::Symbol, arg_names::Vector, debug::Bool = false)
+    if isa(code_info, CodeInfo)
+        replace_calls!(code_info) do call
+            if !(isa(call, SlotNumber) && call.id == 1)
+                return :($(Cassette.Intercepted)($(SlotNumber(0)), $call))
+            else
+                return call
             end
-            return lhs.head == :call
+        end
+        replace_slotnumbers!(code_info) do sn
+            if sn.id == 1
+                return :($(Cassette.unwrap)($sn))
+            elseif sn.id == 0
+                return SlotNumber(1)
+            else
+                return sn
+            end
+        end
+        debug && println("INTERCEPTED CODEINFO: ", code_info)
+        code_info.inlineable = true
+        return code_info
+    else
+        expr = quote
+            $(Expr(:meta, :inline))
+            $(Cassette.Intercepted)($f_name)($(arg_names...))
+        end
+        debug && println("INTERCEPTED CODEINFO: ", expr)
+        return expr
+    end
+end
+
+for N in 0:MAX_ARGS
+    arg_names = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
+    @eval begin
+        @generated function (i::Intercept{C,d})($(arg_names...)) where {C<:AbstractContext,d}
+            arg_types = map(T -> unwrap(C, T), ($(arg_names...),))
+            code_info = lookup_code_info(Tuple{unwrap(C), arg_types...}, $arg_names, d)
+            body = intercept_calls!(code_info, :i, $arg_names, d)
+            return body
         end
     end
-    return false
 end
 
-function replace_signature_callable!(sig, new_callable)
-    if sig.head == :where
-        sig = sig.args[1]
-    end
-    sig.args[1] = new_callable
-    return sig
+###############
+# Intercepted #
+###############
+
+struct Intercepted{C<:AbstractContext,d,p}
+    context::C
+    debug::Val{d}
+    force_primitive::Val{p}
 end
 
-function extract_callable_from_signature(sig)
-    if sig.head == :where
-        sig = sig.args[1]
-    end
-    return sig.args[1]
+@inline Intercepted(ctx::AbstractContext) = Intercepted(ctx, Val(false), Val(false))
+
+@inline Intercepted(i::Intercept, f) = Intercepted(intercept_wrap(i.context, f), i.debug, Val(false))
+
+@inline Intercepted(i::Intercept) = Intercepted(i.context, i.debug, Val(true))
+
+@inline function (i::Intercepted{C,d,p})(args...) where {C<:AbstractContext,d,p}
+    hook(i.context, args...)
+    return execute(i, args...)
 end
 
-function wrap_signature_callable_type!(signature, T)
-    callable = extract_callable_from_signature(signature)
-    i = length(callable.args)
-    callable.args[i] = :($T{<:$(callable.args[i])})
-    return signature
-end
+@inline isprimitive(i::Intercepted{C,d,true}, args...) where {C,d} = Val(true)
+@inline isprimitive(i::Intercepted{C,d,false}, args...) where {C,d} = isprimitive(i.context, args...)
 
-function extract_args_from_signature(sig)
-    if sig.head == :where
-        sig = sig.args[1]
-    end
-    return view(sig.args, 2:length(sig.args))
-end
-
-function is_quoted_symbol(x)
-    if isa(x, QuoteNode)
-        return true
-    elseif isa(x, Expr) && x.head == :quote && length(x.args) == 1
-        return isa(x.args[1], Symbol)
-    end
-    return false
-end
-
-function extract_quoted_symbol(x)
-    @assert is_quoted_symbol(x)
-    if isa(x, QuoteNode)
-        return x.value
-    elseif isa(x, Expr)
-        return x.args[1]
-    end
-end
-
-get_tls_world_age() = ccall(:jl_get_tls_world_age, UInt, ())
-
-function add_type_variable!(x, T)
-    @assert is_method_definition(x)
-    if isa(x.args[1], Expr) && x.args[1].head == :where
-        push!(x.args[1].args, T)
-    else
-        x.args = Any[Expr(:where, x.args[1], T), x.args[2]]
-    end
-    return x
-end
+@inline execute(i::Intercepted, args...) = execute(isprimitive(i, args...), i, args...)
+@inline execute(::Val{true}, i::Intercepted, args...) = i.context(args...)
+@inline execute(::Val{false}, i::Intercepted, args...) = Intercept(i.context, i.debug)(args...)
