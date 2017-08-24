@@ -2,7 +2,7 @@
 # CodeInfo Lookup #
 ###################
 
-get_tls_world_age() = ccall(:jl_get_tls_world_age, UInt, ())
+get_world_age() = ccall(:jl_get_tls_world_age, UInt, ()) # ccall(:jl_get_world_counter, UInt, ())
 
 function lookup_code_info(::Type{S}, arg_names::Vector,
                           debug::Bool = false,
@@ -110,11 +110,13 @@ replace_slotnumbers!(f, x) = replace_match!(f, s -> isa(s, SlotNumber), x)
 # Enter #
 #########
 
-struct Enter{C<:AbstractContext,d}
+struct Enter{C<:AbstractContext,d,w}
     context::C
     debug::Val{d}
+    world::Val{w}
 end
 
+Enter(context, debug::Val) = Enter(context, debug, Val(get_world_age()))
 Enter(context) = Enter(context, Val(false))
 
 function intercept_calls!(code_info, f_name::Symbol, arg_names::Vector, debug::Bool = false)
@@ -151,9 +153,9 @@ end
 for N in 0:MAX_ARGS
     arg_names = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
     @eval begin
-        @generated function (e::Enter{C,d})($(arg_names...)) where {C<:AbstractContext,d}
+        @generated function (e::Enter{C,d,w})($(arg_names...)) where {C<:AbstractContext,d,w}
             arg_types = map(T -> value(C, T), ($(arg_names...),))
-            code_info = lookup_code_info(Tuple{unwrap(C), arg_types...}, $arg_names, d)
+            code_info = lookup_code_info(Tuple{unwrap(C), arg_types...}, $arg_names, d, w)
             body = intercept_calls!(code_info, :e, $arg_names, d)
             return body
         end
@@ -164,26 +166,27 @@ end
 # Intercept #
 #############
 
-struct Intercept{C<:AbstractContext,d,p}
+struct Intercept{C<:AbstractContext,p,d,w}
     context::C
+    primitive::Val{p}
     debug::Val{d}
-    force_primitive::Val{p}
+    world::Val{w}
 end
 
-@inline Intercept(ctx::AbstractContext) = Intercept(ctx, Val(false), Val(false))
+@inline Intercept(ctx::AbstractContext) = Intercept(ctx, Val(false), Val(false), Val(get_world_age()))
 
-@inline Intercept(i::Enter, f) = Intercept(_wrap(i.context, f), i.debug, Val(false))
+@inline Intercept(e::Enter, f) = Intercept(_wrap(e.context, f), Val(false), e.debug, e.world)
 
-@inline Intercept(i::Enter) = Intercept(i.context, i.debug, Val(true))
+@inline Intercept(e::Enter) = Intercept(e.context, Val(true), e.debug, e.world)
 
-@inline function (i::Intercept{C,d,p})(args...) where {C<:AbstractContext,d,p}
+@inline function (i::Intercept)(args...)
     hook(i.context, args...)
     return execute(i, args...)
 end
 
-@inline isprimitive(i::Intercept{C,d,true}, args...) where {C,d} = Val(true)
-@inline isprimitive(i::Intercept{C,d,false}, args...) where {C,d} = isprimitive(i.context, args...)
+@inline isprimitive(i::Intercept{<:Any,true}, args...) = Val(true)
+@inline isprimitive(i::Intercept{<:Any,false}, args...) = isprimitive(i.context, args...)
 
 @inline execute(i::Intercept, args...) = execute(isprimitive(i, args...), i, args...)
 @inline execute(::Val{true}, i::Intercept, args...) = i.context(args...)
-@inline execute(::Val{false}, i::Intercept, args...) = Enter(i.context, i.debug)(args...)
+@inline execute(::Val{false}, i::Intercept, args...) = Enter(i.context, i.debug, i.world)(args...)
