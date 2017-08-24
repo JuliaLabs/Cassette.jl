@@ -20,36 +20,36 @@ struct Tag{C,T} end
     end
 end
 
-##########################
-# AbstractContext/CtxArg #
-##########################
+###########################
+# AbstractContext/CtxMeta #
+###########################
 
 abstract type AbstractContext{C,T,F} end
 
-struct CtxArg{C,T,V,M,U}
+struct CtxMeta{C,T,V,M,U}
     tag::Tag{C,T}
     value::U
     meta::M
-    @inline function CtxArg(tag::Tag{C,T}, value::V, meta::M) where {C,T,V,M}
+    @inline function CtxMeta(tag::Tag{C,T}, value::V, meta::M) where {C,T,V,M}
         new{C,T,V,M,V}(ctx.tag, value, meta)
     end
-    @inline function CtxArg(tag::Tag{C,T}, value::Type{V}, meta::M) where {C,T,V,M}
+    @inline function CtxMeta(tag::Tag{C,T}, value::Type{V}, meta::M) where {C,T,V,M}
         new{C,T,Type{V},M,Type{V}}(ctx.tag, value, meta)
     end
-    @inline function CtxArg(tag::Tag{C,T}, value::CtxArg{<:Any,<:Any,V}, meta::M) where {C,T,V,M}
+    @inline function CtxMeta(tag::Tag{C,T}, value::CtxMeta{<:Any,<:Any,V}, meta::M) where {C,T,V,M}
         new{C,T,V,M,typeof(value)}(ctx.tag, value, meta)
     end
 end
 
-@inline CtxArg(ctx::AbstractContext, value, meta = nothing) = CtxArg(ctx.tag, value, meta)
+@inline CtxMeta(ctx::AbstractContext, value, meta = nothing) = CtxMeta(ctx.tag, value, meta)
 
 @inline value(ctx, arg) = arg
-@inline value(::AbstractContext{C,T}, arg::CtxArg{C,T}) where {C,T} = arg.value
-@inline value(::Type{AC}, ::Type{CA}) where {C,T,V,M,U,AC<:AbstractContext{C,T},CA<:CtxArg{C,T,V,M,U}} = U
+@inline value(::AbstractContext{C,T}, arg::CtxMeta{C,T}) where {C,T} = arg.value
+@inline value(::Type{AC}, ::Type{CM}) where {C,T,V,M,U,AC<:AbstractContext{C,T},CM<:CtxMeta{C,T,V,M,U}} = U
 
 @inline meta(ctx, arg) = nothing
-@inline meta(::AbstractContext{C,T}, arg::CtxArg{C,T}) where {C,T} = arg.meta
-@inline meta(::Type{AC}, ::Type{CA}) where {C,T,V,M,AC<:AbstractContext{C,T},CA<:CtxArg{C,T,V,M}} = U
+@inline meta(::AbstractContext{C,T}, arg::CtxMeta{C,T}) where {C,T} = arg.meta
+@inline meta(::Type{AC}, ::Type{CM}) where {C,T,V,M,AC<:AbstractContext{C,T},CM<:CtxMeta{C,T,V,M}} = U
 
 @inline unwrap(x) = x
 @inline unwrap(ctx::AbstractContext) = ctx.func
@@ -64,12 +64,12 @@ end
 end
 
 @inline ctxcall(f, g, ::AbstractContext, arg::Any) = g(arg)
-@inline ctxcall(f, g, ctx::AbstractContext{C,T}, arg::CtxArg{C,T}) where {C,T} = f(value(ctx, arg), meta(ctx, arg))
+@inline ctxcall(f, g, ctx::AbstractContext{C,T}, arg::CtxMeta{C,T}) where {C,T} = f(value(ctx, arg), meta(ctx, arg))
 
 @inline hasctx(::AbstractContext, ::Any) = false
 @inline hasctx(::Type{<:AbstractContext}, ::Type{<:Any}) = false
-@inline hasctx(::AbstractContext{C,T}, ::CtxArg{C,T}) where {C,T} = true
-@inline hasctx(::Type{AC}, ::Type{CA}) where {C,T,AC<:AbstractContext{C,T},CA<:CtxArg{C,T}} = true
+@inline hasctx(::AbstractContext{C,T}, ::CtxMeta{C,T}) where {C,T} = true
+@inline hasctx(::Type{AC}, ::Type{CM}) where {C,T,AC<:AbstractContext{C,T},CM<:CtxMeta{C,T}} = true
 
 # these stubs get overloaded by Cassette's various macros
 function _wrap end
@@ -204,10 +204,10 @@ end
 
 function transform_ctx_arg_dispatch(v, V, ctx::Symbol, tag)
     qctx = Expr(:quote, ctx)
-    v === nothing && V === :Any && return :(::$Cassette.CtxArg{$qctx,$tag})
-    v === nothing && return :(::$Cassette.CtxArg{$qctx,$tag,<:$V})
-    V === :Any && return :($v::$Cassette.CtxArg{$qctx,$tag})
-    return :($v::$Cassette.CtxArg{$qctx,$tag,<:$V})
+    v === nothing && V === :Any && return :(::$Cassette.CtxMeta{$qctx,$tag})
+    v === nothing && return :(::$Cassette.CtxMeta{$qctx,$tag,<:$V})
+    V === :Any && return :($v::$Cassette.CtxMeta{$qctx,$tag})
+    return :($v::$Cassette.CtxMeta{$qctx,$tag,<:$V})
 end
 
 function transform_ctx_func_dispatch(v, V, ctx, tag)
@@ -238,7 +238,7 @@ function contextual_signature_transform!(ctx, signature)
             i = length(x.args)
             (i == 1 || i == 2) || error("failed to parse dispatch syntax in subexpression ", x)
             V = x.args[i]
-            x.args[i] = :(Union{$Cassette.CtxArg{<:Any,<:Any,$V},$V})
+            x.args[i] = :(Union{$Cassette.CtxMeta{<:Any,<:Any,$V},$V})
         elseif is_ctx_dispatch(x)
             v, V = parse_ctx_dispatch(x)
             argslist[i] = transform_ctx_arg_dispatch(v, V, ctxname, tag)
