@@ -9,7 +9,9 @@ function lookup_code_info(::Type{S}, arg_names::Vector,
                           world::UInt = typemax(UInt)) where {S<:Tuple}
     if debug
         println("-----------------------------------")
-        println("ENCOUNTERED TYPE SIGNATURE: ", S)
+        println("LOOKING UP CODEINFO FOR:")
+        println("\tSIGNATURE: ", S)
+        println("\tWORLD: ", world)
     end
     method, code_info = _lookup_code_info(S, arg_names, world)
     debug && println("LOOKED UP METHOD: ", method)
