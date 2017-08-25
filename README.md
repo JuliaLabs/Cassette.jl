@@ -3,7 +3,7 @@
 ## DISCLAIMER
 
 Cassette is still in development. At any given time, the implementation might be ugly,
-buggy, incomplete, slow, and/or untested. You may not be able to reproduce any examples
+buggy, incomplete, slow, and/or untested. You might not be able to reproduce any examples
 given in the README. Cassette relies on new reflection features and compiler performance
 improvements that will hopefully land in Julia 1.0. Until an initial version of Cassette
 is released, I can't guarantee that Cassette's `master` branch won't rely on some weird
