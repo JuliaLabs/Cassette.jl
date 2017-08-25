@@ -12,8 +12,8 @@ custom version of Julia.
 Also note that whenever I show macro-expanded/lowered code in this README, I've cleaned up
 the output for readability (e.g. removing metadata like line number info).
 
-At the time of writing, all the examples in this README work using Julia Version
-0.7.0-DEV.1485 (commit aa3d2be).
+At the time of writing, all of the examples in this README work using Julia commit aa3d2be
+(Version 0.7.0-DEV.1485) and Cassette commit f437431.
 
 ## Table of Contents
 
