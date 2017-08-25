@@ -123,20 +123,26 @@ for readability:
 ```julia
 julia> @macroexpand @context MyCtx
 quote
-    struct MyCtx{T, F} <: Cassette.AbstractContext{:MyCtx, T, F}
+    struct MyCtx{T, F} <: Cassette.CtxCall{:MyCtx, T, F}
         tag::Cassette.Tag{:MyCtx, T}
         func::F
         MyCtx(tag::Cassette.Tag{:MyCtx, T}, func::F) where {T, F} = new{T, F}(tag, func)
         MyCtx(tag::Cassette.Tag{:MyCtx, T}, func::Type{F}) where {T, F} = new{T, Type{F}}(tag, func)
-        MyCtx(tag::Cassette.Tag{:MyCtx, T}, func::Cassette.AbstractContext) where T = error("cannot nest contexts without an Enter barrier")
+        MyCtx(tag::Cassette.Tag{:MyCtx, T}, func::Cassette.CtxCall) where T = error("cannot nest contexts without an Enter barrier")
     end
     MyCtx(f) = MyCtx(Cassette.Tag(Val{:MyCtx}(), f), f)
     Cassette._wrap(ctx::MyCtx, f::F) where F = MyCtx(ctx.tag, f)
     Cassette._hook(ctx::MyCtx, args...) = nothing
     Cassette._isprimitive(ctx::MyCtx, args...) = Val(false)
-    (f::MyCtx{##TagTypeVar#778})(args...) where ##TagTypeVar#778 = Cassette.unwrapcall(f, args...)
+    (f::MyCtx{##TagTypeVar#778})(args...) where ##TagTypeVar#778 = Cassette.ctxcall(unwrap(f), f, args...)
 end
 ```
+
+This last line is particularly important - it's a fallback definition that describes how
+to execute a function wrapped in `MyCtx`. It uses `Cassette.ctxcall`, which is a nifty
+function we'll learn more about in the Contextual Metadata Propagation section. Briefly,
+`ctxcall(f, ctx::CtxCall, args...)` will call `f(unwrap(ctx, arg[1]), unwrap(ctx, arg[2]), ...)`,
+where `unwrap(ctx, arg)` returns `arg` stripped of contextual metadata (if any was present).
 
 ##### 2. We defined a hook
 
@@ -254,8 +260,8 @@ The lowered code for `Enter(MyCtx(rosenbrock))` is the same as the lowered code 
 of `Cassette.Intercept` and its execution behavior looks similar to the following:
 
 ```julia
-struct Enter{C<:AbstractContext}
-    context::C
+struct Enter{C<:CtxCall}
+    call::C
 end
 
 @generated function (::Enter)(args...)
@@ -264,22 +270,22 @@ end
     # with all subcalls wrapped in `Intercept`
 end
 
-struct Intercept{C<:AbstractContext}
-    context::C
+struct Intercept{C<:CtxCall}
+    call::C
 end
 
-Intercept(e::Enter, f) = Intercept(_wrap(e.context, f))
+Intercept(e::Enter, f) = Intercept(_wrap(e.call, f))
 
-Intercept(e::Enter) = Intercept(e.context)
+Intercept(e::Enter) = Intercept(e.call)
 
 function (i::Intercept)(args...)
-    hook(i.context, args...)
+    hook(i.call, args...)
     return execute(i, args...)
 end
 
-execute(i::Intercept, args...) = execute(isprimitive(i.context, args...), i, args...)
-execute(::Val{true}, i::Intercept, args...) = i.context(args...)
-execute(::Val{false}, i::Intercept, args...) = Enter(i.context)(args...)
+execute(i::Intercept, args...) = execute(isprimitive(i.call, args...), i, args...)
+execute(::Val{true}, i::Intercept, args...) = i.call(args...)
+execute(::Val{false}, i::Intercept, args...) = Enter(i.call)(args...)
 ```
 
 #### Contextual primitives
@@ -290,23 +296,28 @@ Earlier in the README, I mentioned primitives:
 method automatically defined by `@context`. Note that, as a fallback, Cassette always considers
 `Core` methods and unreflectable methods primitives.
 
-Context creators can also define their own primitives and primitive behaviors. For this
-purpose, Cassette provides three macros: `@contextual`, `@isprimitive`, and `@primitive`.
+Unlike hooks, which can only really be used to generate side-effects in the original
+program, new primitive definitions can alter an otherwise pure program's execution
+behavior.
 
-Let's start with `@contextual`. Here's a macro-expanded example of `@contextual` in action:
+Note that there are really two separate mechanisms at work here. The first is defining what
+if means for a given primitive to execute in a given context. The second is defining which
+methods actually count as primitives; in other words, which methods Cassette shouldn't
+recursively apply `Enter` to, but instead invoke the primitive execution method on.
+
+For the first mechanism, Cassette provides the `@contextual` macro, which wraps a method
+definition in a similar manner to `@hook`. For the second mechanism, Cassette provides the
+`@isprimitive` macro, which takes a method signature and registers it as a primitive method
+call for the given context. For convenience, Cassette provides a `@primitive` macro which
+simultaneously passes the given method definition to `@contextual` and marks its signature
+with `@primitive`.
+
+For the sake of example, let's use `@contextual` to wreak some havoc with by redirecting all
+intercepted `sin` calls to `cos` calls:
 
 ```julia
-julia> @macroexpand @contextual MyCtx @ctx(f)(args...) = Cassette.unwrapcall(f, args...)
-quote
-    function (f::MyCtx{##TagTypeVar#780})(args...) where ##TagTypeVar#780
-        # call `f(args...)`, but contextually unwrap `f` and its arguments first
-        return Cassette.unwrapcall(f, args...)
-    end
-end
+@contextual MyCtx @ctx(f::typeof(sin))(x) = cos(x)
 ```
-
-If you have sharp eyes and an insanely good memory, you might recall that this is
-the fallback method definition that is defined by `@context`.
 
 ### Cassette's Contextual Metadata Propagation Framework
 

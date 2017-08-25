@@ -112,14 +112,14 @@ replace_slotnumbers!(f, x) = replace_match!(f, s -> isa(s, SlotNumber), x)
 # Enter #
 #########
 
-struct Enter{C<:AbstractContext,d,w}
-    context::C
+struct Enter{C<:CtxCall,d,w}
+    call::C
     debug::Val{d}
     world::Val{w}
 end
 
-Enter(context, debug::Val) = Enter(context, debug, Val(get_world_age()))
-Enter(context) = Enter(context, Val(false))
+Enter(call, debug::Val) = Enter(call, debug, Val(get_world_age()))
+Enter(call) = Enter(call, Val(false))
 
 function intercept_calls!(code_info, f_name::Symbol, arg_names::Vector, debug::Bool = false)
     if isa(code_info, CodeInfo)
@@ -155,7 +155,7 @@ end
 for N in 0:MAX_ARGS
     arg_names = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
     @eval begin
-        @generated function (e::Enter{C,d,w})($(arg_names...)) where {C<:AbstractContext,d,w}
+        @generated function (e::Enter{C,d,w})($(arg_names...)) where {C<:CtxCall,d,w}
             arg_types = map(T -> value(C, T), ($(arg_names...),))
             code_info = lookup_code_info(Tuple{unwrap(C), arg_types...}, $arg_names, d, w)
             body = intercept_calls!(code_info, :e, $arg_names, d)
@@ -168,26 +168,26 @@ end
 # Intercept #
 #############
 
-struct Intercept{C<:AbstractContext,p,d,w}
-    context::C
+struct Intercept{C<:CtxCall,p,d,w}
+    call::C
     primitive::Val{p}
     debug::Val{d}
     world::Val{w}
 end
 
-@inline Intercept(ctx::AbstractContext) = Intercept(ctx, Val(false), Val(false), Val(get_world_age()))
+@inline Intercept(ctx::CtxCall) = Intercept(ctx, Val(false), Val(false), Val(get_world_age()))
 
-@inline Intercept(e::Enter, f) = Intercept(_wrap(e.context, f), Val(false), e.debug, e.world)
+@inline Intercept(e::Enter, f) = Intercept(_wrap(e.call, f), Val(false), e.debug, e.world)
 
-@inline Intercept(e::Enter) = Intercept(e.context, Val(true), e.debug, e.world)
+@inline Intercept(e::Enter) = Intercept(e.call, Val(true), e.debug, e.world)
 
-@inline hook(i::Intercept, args...) = hook(i.world, i.context, args...)
+@inline hook(i::Intercept, args...) = hook(i.world, i.call, args...)
 
 @inline isprimitive(i::Intercept{<:Any,true}, args...) = Val(true)
-@inline isprimitive(i::Intercept{<:Any,false}, args...) = isprimitive(i.world, i.context, args...)
+@inline isprimitive(i::Intercept{<:Any,false}, args...) = isprimitive(i.world, i.call, args...)
 
 @inline execute(i::Intercept, args...) = execute(isprimitive(i, args...), i, args...)
-@inline execute(::Val{true}, i::Intercept, args...) = i.context(args...)
-@inline execute(::Val{false}, i::Intercept, args...) = Enter(i.context, i.debug, i.world)(args...)
+@inline execute(::Val{true}, i::Intercept, args...) = i.call(args...)
+@inline execute(::Val{false}, i::Intercept, args...) = Enter(i.call, i.debug, i.world)(args...)
 
 @inline (i::Intercept)(args...) = (hook(i, args...); execute(i, args...))

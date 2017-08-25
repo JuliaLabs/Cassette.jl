@@ -21,55 +21,55 @@ struct Tag{C,T} end
 end
 
 ###########################
-# AbstractContext/CtxMeta #
+# CtxCall/CtxVar #
 ###########################
 
-abstract type AbstractContext{C,T,F} end
+abstract type CtxCall{C,T,F} end
 
-struct CtxMeta{C,T,V,M,U}
+struct CtxVar{C,T,V,M,U}
     tag::Tag{C,T}
     value::U
     meta::M
-    @inline function CtxMeta(tag::Tag{C,T}, value::V, meta::M) where {C,T,V,M}
+    @inline function CtxVar(tag::Tag{C,T}, value::V, meta::M) where {C,T,V,M}
         new{C,T,V,M,V}(ctx.tag, value, meta)
     end
-    @inline function CtxMeta(tag::Tag{C,T}, value::Type{V}, meta::M) where {C,T,V,M}
+    @inline function CtxVar(tag::Tag{C,T}, value::Type{V}, meta::M) where {C,T,V,M}
         new{C,T,Type{V},M,Type{V}}(ctx.tag, value, meta)
     end
-    @inline function CtxMeta(tag::Tag{C,T}, value::CtxMeta{<:Any,<:Any,V}, meta::M) where {C,T,V,M}
+    @inline function CtxVar(tag::Tag{C,T}, value::CtxVar{<:Any,<:Any,V}, meta::M) where {C,T,V,M}
         new{C,T,V,M,typeof(value)}(ctx.tag, value, meta)
     end
 end
 
-@inline CtxMeta(ctx::AbstractContext, value, meta = nothing) = CtxMeta(ctx.tag, value, meta)
-
-@inline value(ctx, arg) = arg
-@inline value(::AbstractContext{C,T}, arg::CtxMeta{C,T}) where {C,T} = arg.value
-@inline value(::Type{AC}, ::Type{CM}) where {C,T,V,M,U,AC<:AbstractContext{C,T},CM<:CtxMeta{C,T,V,M,U}} = U
-
-@inline meta(ctx, arg) = nothing
-@inline meta(::AbstractContext{C,T}, arg::CtxMeta{C,T}) where {C,T} = arg.meta
-@inline meta(::Type{AC}, ::Type{CM}) where {C,T,V,M,AC<:AbstractContext{C,T},CM<:CtxMeta{C,T,V,M}} = U
+@inline CtxVar(ctx::CtxCall, value, meta = nothing) = CtxVar(ctx.tag, value, meta)
 
 @inline unwrap(x) = x
-@inline unwrap(ctx::AbstractContext) = ctx.func
-@inline unwrap(::Type{AC}) where {C,T,F,AC<:AbstractContext{C,T,F}} = F
+@inline unwrap(ctx::CtxCall) = ctx.func
+@inline unwrap(::Type{CC}) where {C,T,F,CC<:CtxCall{C,T,F}} = F
 
-@generated function unwrapcall(ctx::AbstractContext, args...)
-    args = [:(value(ctx, args[$i])) for i in 1:nfields(args)]
+@inline unwrap(ctx, arg) = arg
+@inline unwrap(::CtxCall{C,T}, arg::CtxVar{C,T}) where {C,T} = arg.value
+@inline unwrap(::Type{CC}, ::Type{CV}) where {C,T,V,M,U,CC<:CtxCall{C,T},CV<:CtxVar{C,T,V,M,U}} = U
+
+@inline meta(ctx, arg) = nothing
+@inline meta(::CtxCall{C,T}, arg::CtxVar{C,T}) where {C,T} = arg.meta
+@inline meta(::Type{CC}, ::Type{CV}) where {C,T,V,M,CC<:CtxCall{C,T},CV<:CtxVar{C,T,V,M}} = U
+
+@generated function ctxcall(f, ctx::CtxCall, args...)
+    args = [:(unwrap(ctx, args[$i])) for i in 1:nfields(args)]
     return quote
         $(Expr(:meta, :inline))
-        unwrap(ctx)($(args...))
+        f($(args...))
     end
 end
 
-@inline ctxcall(f, g, ::AbstractContext, arg::Any) = g(arg)
-@inline ctxcall(f, g, ctx::AbstractContext{C,T}, arg::CtxMeta{C,T}) where {C,T} = f(value(ctx, arg), meta(ctx, arg))
+@inline hasctxcall(f, g, ::CtxCall, arg::Any) = g(arg)
+@inline hasctxcall(f, g, ctx::CtxCall{C,T}, arg::CtxVar{C,T}) where {C,T} = f(value(ctx, arg), meta(ctx, arg))
 
-@inline hasctx(::AbstractContext, ::Any) = false
-@inline hasctx(::Type{<:AbstractContext}, ::Type{<:Any}) = false
-@inline hasctx(::AbstractContext{C,T}, ::CtxMeta{C,T}) where {C,T} = true
-@inline hasctx(::Type{AC}, ::Type{CM}) where {C,T,AC<:AbstractContext{C,T},CM<:CtxMeta{C,T}} = true
+@inline hasctx(::CtxCall, ::Any) = false
+@inline hasctx(::Type{<:CtxCall}, ::Type{<:Any}) = false
+@inline hasctx(::CtxCall{C,T}, ::CtxVar{C,T}) where {C,T} = true
+@inline hasctx(::Type{CC}, ::Type{CV}) where {C,T,CC<:CtxCall{C,T},CV<:CtxVar{C,T}} = true
 
 # these stubs get overloaded by Cassette's various macros
 function _wrap end
@@ -86,12 +86,12 @@ macro context(Ctx)
     ctxsym = Expr(:quote, Ctx)
     return esc(quote
         # define the actual context type
-        struct $Ctx{T,F} <: $Cassette.AbstractContext{$ctxsym,T,F}
+        struct $Ctx{T,F} <: $Cassette.CtxCall{$ctxsym,T,F}
             tag::$Cassette.Tag{$ctxsym,T}
             func::F
             @inline $Ctx(tag::$Cassette.Tag{$ctxsym,T}, func::F) where {T,F} = new{T,F}(tag, func)
             @inline $Ctx(tag::$Cassette.Tag{$ctxsym,T}, func::Type{F}) where {T,F} = new{T,Type{F}}(tag, func)
-            @inline $Ctx(tag::$Cassette.Tag{$ctxsym,T}, func::$Cassette.AbstractContext) where {T} = error("cannot nest contexts without an Intercept barrier")
+            @inline $Ctx(tag::$Cassette.Tag{$ctxsym,T}, func::$Cassette.CtxCall) where {T} = error("cannot nest contexts without an Intercept barrier")
         end
 
         @inline $Ctx(f) = $Ctx($Cassette.Tag($seed, f), f)
@@ -106,7 +106,7 @@ macro context(Ctx)
         @inline $Cassette._isprimitive(ctx::$Ctx, args...) = Val(false)
 
         # define fallback execution behavior
-        $Cassette.@contextual $Ctx @ctx(f)(args...) = $Cassette.unwrapcall(f, args...)
+        $Cassette.@contextual $Ctx @ctx(f)(args...) = $Cassette.ctxcall(unwrap(f), f, args...)
     end)
 end
 
@@ -129,7 +129,7 @@ end
 ###############
 
 # passing world age here forces recompilation
-@inline hook(::Val{world}, ctx::AbstractContext, args...) where {world} = _hook(ctx, args...)
+@inline hook(::Val{world}, ctx::CtxCall, args...) where {world} = _hook(ctx, args...)
 
 macro hook(ctx, def)
     contextual_method_transform!(ctx, def)
@@ -142,7 +142,7 @@ end
 ######################
 
 # passing world age here forces recompilation
-@generated function isprimitive(::Val{world}, ctx::C, args...) where {world, C<:AbstractContext}
+@generated function isprimitive(::Val{world}, ctx::C, args...) where {world, C<:CtxCall}
     F = unwrap(C)
     if F.name.module == Core || F <: Core.Builtin
         body = :(Val(true))
@@ -202,10 +202,10 @@ end
 
 function transform_ctx_arg_dispatch(v, V, ctx::Symbol, tag)
     qctx = Expr(:quote, ctx)
-    v === nothing && V === :Any && return :(::$Cassette.CtxMeta{$qctx,$tag})
-    v === nothing && return :(::$Cassette.CtxMeta{$qctx,$tag,<:$V})
-    V === :Any && return :($v::$Cassette.CtxMeta{$qctx,$tag})
-    return :($v::$Cassette.CtxMeta{$qctx,$tag,<:$V})
+    v === nothing && V === :Any && return :(::$Cassette.CtxVar{$qctx,$tag})
+    v === nothing && return :(::$Cassette.CtxVar{$qctx,$tag,<:$V})
+    V === :Any && return :($v::$Cassette.CtxVar{$qctx,$tag})
+    return :($v::$Cassette.CtxVar{$qctx,$tag,<:$V})
 end
 
 function transform_ctx_func_dispatch(v, V, ctx, tag)
@@ -235,7 +235,7 @@ function contextual_signature_transform!(ctx, signature)
             i = length(x.args)
             (i == 1 || i == 2) || error("failed to parse dispatch syntax in subexpression ", x)
             V = x.args[i]
-            x.args[i] = :(Union{$Cassette.CtxMeta{<:Any,<:Any,$V},$V})
+            x.args[i] = :(Union{$Cassette.CtxVar{<:Any,<:Any,$V},$V})
         elseif is_ctx_dispatch(x)
             v, V = parse_ctx_dispatch(x)
             argslist[i] = transform_ctx_arg_dispatch(v, V, ctxname, tag)
