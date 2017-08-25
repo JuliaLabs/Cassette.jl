@@ -45,7 +45,7 @@ they occur during program execution. Which calls are intercepted and what actual
 when interception occurs are both defined with respect to a Cassette "context", which is
 itself defined by Cassette users.
 
-### Contextual code execution
+### Contextual Code Execution
 
 The easiest way to understand Cassette's call interception is via an example:
 
@@ -185,8 +185,8 @@ end
 
 This last line is particularly important - it's a fallback definition that describes how
 to execute a function wrapped in `MyCtx`. It uses `Cassette.ctxcall`, which is a nifty
-function we'll learn more about in the Contextual Metadata Propagation section. Briefly,
-`ctxcall(f, ctx::CtxCall, args...)` will call `f(unwrap(ctx, arg[1]), unwrap(ctx, arg[2]), ...)`,
+function we'll learn more about in the [Contextual Metadata Propagation](#contextual-metadata-propagation)
+section. Briefly, `ctxcall(f, ctx::CtxCall, args...)` will call `f(unwrap(ctx, arg[1]), unwrap(ctx, arg[2]), ...)`,
 where `unwrap(ctx, arg)` returns `arg` stripped of contextual metadata (if any was present).
 
 #### 2. We defined a hook
