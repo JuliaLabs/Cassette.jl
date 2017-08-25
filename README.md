@@ -12,9 +12,7 @@ Until an initial version of Cassette is released, I can't guarantee that Cassett
 Also note that whenever I show macro-expanded/lowered code in this README, I've cleaned up
 the output for readability (e.g. removing metadata like line number info).
 
-## Introduction
-
-### What is Cassette?
+## What is Cassette?
 
 Cassette is a Julia package that provides...
 
@@ -32,13 +30,11 @@ programming, dynamic code analysis (e.g. profiling, `rr`-style debugging, etc.),
 transpilation to different backends, automatic parallelization/rescheduling, memoization,
 automatic preallocation, and code fuzzing.
 
-### Why "Cassette"?
+## Why "Cassette"?
 
 Because the package enables you to "overdub" Julia "tapes" with new behaviors :D
 
-## Some Details
-
-### Cassette's Contextual Call Interceptor
+## Cassette's Contextual Call Interceptor
 
 First and foremost, "contextual call intercepting" is a phrase I just made up. If anybody
 knows of any existing terms in the literature for Cassette's weird brand of execution
@@ -49,7 +45,7 @@ they occur during program execution. Which calls are intercepted and what actual
 when interception occurs are both defined with respect to a Cassette "context", which is
 itself defined by Cassette users.
 
-#### Contextual code execution
+### Contextual code execution
 
 The easiest way to understand Cassette's call interception is via an example:
 
@@ -160,7 +156,7 @@ calling not_int(true,)
 
 So, what actually happened here? Here's an overly-detailed, step-by-step breakdown.
 
-##### 1. We defined a context
+#### 1. We defined a context
 
 We defined a new Cassette context called `MyCtx` using the `@context` macro. This
 macro merely defines a normal Julia `struct` with the name `MyCtx`, and overloads a
@@ -193,7 +189,7 @@ function we'll learn more about in the Contextual Metadata Propagation section. 
 `ctxcall(f, ctx::CtxCall, args...)` will call `f(unwrap(ctx, arg[1]), unwrap(ctx, arg[2]), ...)`,
 where `unwrap(ctx, arg)` returns `arg` stripped of contextual metadata (if any was present).
 
-##### 2. We defined a hook
+#### 2. We defined a hook
 
 Next, we defined a Cassette "hook" for `MyCtx` method calls via the `@hook` macro.
 Cassette will call this hook every time it intercepts a method call. Once again, let's
@@ -303,7 +299,7 @@ OH WOW, NUMERIC ARGUMENTS! not_int(true,)
 1.1125602152403895
 ```
 
-##### 3. We contextually executed some code
+#### 3. We contextually executed some code
 
 Finally, we recursively intercepted all method calls within `rosenbrock`. At the base cases
 - called "primitives" in Cassette-lingo - we called the `(f::MyCtx)(args...)` method
@@ -387,7 +383,7 @@ execute(::Val{true}, i::Intercept, args...) = i.call(args...)
 execute(::Val{false}, i::Intercept, args...) = Enter(i.call)(args...)
 ```
 
-#### Contextual primitives
+### Contextual primitives
 
 Earlier, I mentioned primitives:
 
@@ -463,10 +459,10 @@ primitive at the same time, like so:
 @primitive MyCtx @ctx(f::typeof(sin))(x) = cos(x)
 ```
 
-### Cassette's Contextual Metadata Propagation Framework
+## Cassette's Contextual Metadata Propagation Framework
 
 TODO
 
-### Cassette's Computation Graph Framework
+## Cassette's Computation Graph Framework
 
 TODO
