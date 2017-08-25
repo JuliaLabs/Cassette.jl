@@ -5,12 +5,15 @@
 Cassette is still in development. At any given time, the implementation might be ugly,
 buggy, incomplete, slow, and/or untested. You may not be able to reproduce any examples
 given in the README. Cassette relies on new reflection features and compiler performance
-improvements (e.g. fixing JuliaLang/julia#5402) that will hopefully land in Julia 1.0.
-Until an initial version of Cassette is released, I can't guarantee that Cassette's
-`master` branch won't rely on some weird custom version of Julia.
+improvements that will hopefully land in Julia 1.0. Until an initial version of Cassette
+is released, I can't guarantee that Cassette's `master` branch won't rely on some weird
+custom version of Julia.
 
 Also note that whenever I show macro-expanded/lowered code in this README, I've cleaned up
 the output for readability (e.g. removing metadata like line number info).
+
+At the time of writing, all the examples in this README work using Julia Version
+0.7.0-DEV.1485 (commit aa3d2be).
 
 ## Table of Contents
 
@@ -42,6 +45,41 @@ automatic preallocation, and code fuzzing.
 
 Because the package enables you to "overdub" Julia "tapes" with new behaviors :D
 
+## What is Cassette's current development status?
+
+First, see the disclaimer above.
+
+I'll update this section when reasonable, but I don't guarantee this is up to date.
+
+Cassette is still in prototypical development, so in this section, I define "completeness"
+as a complete prototype that is able to support an automatic differentiation implementation.
+Once such a prototype exists (hopefully in Fall 2017), I will encourage interested
+developers to play around with the prototype and provide feedback. Using the feedback, I'll
+take a second pass at Cassette's design, get tests/benchmarks in place, etc., and finally
+release the package (planned Winter 2017/2018, assuming Julia's compiler will be sufficient
+by then).
+
+- Contextual Call Interceptor: Design is complete. Besides some significant details that
+require more compiler improvements, implementation is complete. Performance right now is
+pretty bad due to fixable compiler issues (specifically JuliaLang/julia#5402).
+Theoretically, once these bugs have been fixed, interception overhead should be quite low
+(<5% of original program runtime). I have been testing this by measuring the performance of
+Cassette code rewritten to avoid the compiler performance problems (e.g. removing all
+splats), which makes the code pretty horrible and un-generic, but should be representative
+of post-fix performance.
+
+- Contextual Metadata Propagation Framework: Design is complete. Implementation is mostly
+complete. All that really remains is final integration with the call interceptor (which is
+important, but shouldn't take more than a few days of development at most). The same compiler
+performance problems that affect the call interceptor will affect metadata propagation.
+
+- Computation Graph Framework: I had a prototype of the graph framework running at JuliaCon
+2017, but I threw the prototype away a couple months ago so that I could focus on nailing
+down Cassette's call interceptor and metadata propagation framework without worrying about
+updating any coupled graph code. Once those implementations are complete, I will redesign
+and rebuild the graph framework on top of them. I expect this to take a 2-3 weeks of
+development time (longer in reality, since I have other responsibilities).
+
 ## Cassette's Contextual Call Interceptor
 
 First and foremost, "contextual call intercepting" is a phrase I just made up. If anybody
@@ -50,8 +88,8 @@ tracing, feel free to let me know.
 
 Cassette can instrument your Julia code in order to intercept native Julia method calls as
 they occur during program execution. Which calls are intercepted and what actually happens
-when interception occurs are both defined with respect to a Cassette "context", which is
-itself defined by Cassette users.
+when interception occurs are both defined with respect to Cassette "contexts", which are
+defined by Cassette users.
 
 ### Contextual Code Execution
 
@@ -215,7 +253,7 @@ end
 
 As you can see, this macro overrides the `Cassette._hook` method originally defined by the
 `@context` macro. You may also notice that the arguments are also available for dispatch;
-let's leverage this to add more specialized hooks:
+let's leverage this to add a more specialized hook:
 
 ```julia
 julia> @hook MyCtx @ctx(f)(args::Number...) = println("OH WOW, NUMERIC ARGUMENTS! ", unwrap(f), args)
@@ -309,14 +347,15 @@ OH WOW, NUMERIC ARGUMENTS! not_int(true,)
 
 #### 3. We contextually executed some code
 
-Finally, we recursively intercepted all method calls within `rosenbrock`. At the base cases
-- called "primitives" in Cassette-lingo - we called the `(f::MyCtx)(args...)` method
+Finally, we recursively intercepted all method calls within `rosenbrock`. At the base cases -
+called "primitives" in Cassette-lingo - we called the `(f::MyCtx)(args...)` method
 automatically defined by `@context`. Note that, as a fallback, Cassette always considers
-`Core` methods and unreflectable methods primitives.
+`Core` methods and unreflectable methods to be primitives.
 
 To illustrate what's actually going on, let's look at the lowered code for a normal `rosenbrock`
-call and compare it to the lowered code for a call to `Cassette.Enter(MyCtx(rosenbrock))`, where `Cassette.Enter(MyCtx(f))(args...)` is what `Intercept(MyCtx(f))(args...)` calls if `MyCtx(f)`
-is not a primitive.
+call and compare it to the lowered code for a call to `Cassette.Enter(MyCtx(rosenbrock))`
+(note that `Cassette.Enter(MyCtx(f))(args...)` is what `Intercept(MyCtx(f))(args...)`
+calls if `MyCtx(f)` is not a primitive).
 
 ```julia
 julia> @code_lowered rosenbrock(rand(2))
@@ -360,7 +399,8 @@ CodeInfo(:(begin
 The lowered code for `Cassette.Enter(MyCtx(rosenbrock))` is the same as the lowered code for
 `rosenbrock`, but every callable object that is being called has been wrapped in the `Intercept`
 type, which can then be called instead. Internally, the definitions for `Enter` and `Intercept`
-look similar to the following:
+look similar to the following (this is *not* the real code, but hopefully illuminates
+the kind of thing going on under the hood):
 
 ```julia
 struct Enter{C<:CtxCall}
@@ -397,22 +437,23 @@ Earlier, I mentioned primitives:
 
 > At the base cases - called "primitives" in Cassette-lingo - we called the `(f::MyCtx)(args...)`
 method automatically defined by `@context`. Note that, as a fallback, Cassette always considers
-`Core` methods and unreflectable methods primitives.
+`Core` methods and unreflectable methods to be primitives.
 
-Unlike hooks, which can only really be used to generate side-effects if the original program is
-otherwise pure, new primitive definitions can alter a program's execution behavior.
+Unlike hooks, new primitive definitions can actually alter an otherwise pure program's
+execution behavior.
 
-Note that there are really two separate mechanisms at work here. The first is defining what
-it means for a given primitive to execute in a given context. The second is defining which
-methods actually count as primitives; in other words, which methods Cassette shouldn't
-recursively apply `Enter` to, but instead invoke the primitive execution method on.
+There are two separate mechanisms that encompass Cassette's notion of a "primitive". The
+first mechanism is the definition of a given primitive's execution in a given context. The
+second is a predicate definition that specifies whether a given method is counts as a
+primitive in a given context. Cassette uses this second mechanism to decide when to
+invoke the first mechanism, or to otherwise recursively apply `Enter` to a method call.
 
 For the first mechanism, Cassette provides the `@contextual` macro, which wraps a method
 definition in a similar manner to `@hook`. For the second mechanism, Cassette provides the
 `@isprimitive` macro, which takes a method signature and registers it as a primitive method
 call for the given context. For convenience, Cassette provides a `@primitive` macro which
 simultaneously passes the given method definition to `@contextual` and marks its signature
-with `@primitive`.
+with `@isprimitive`.
 
 For the sake of example, let's use these macros to wreak some havoc by redirecting all
 intercepted `sin` calls to `cos` calls:
@@ -469,8 +510,8 @@ primitive at the same time, like so:
 
 ## Cassette's Contextual Metadata Propagation Framework
 
-TODO
+Description coming soon!
 
 ## Cassette's Computation Graph Framework
 
-TODO
+Description coming soon!
