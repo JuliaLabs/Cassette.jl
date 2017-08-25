@@ -66,16 +66,16 @@ end
 # Match Replacement
 
 replace_match!(f, ismatch, x) = x
-replace_match!(f, ismatch, code_info::CodeInfo) = (replace_match!(f, ismatch, code_info.code); code_info)
-replace_match!(f, ismatch, ast::Expr) = (replace_match!(f, ismatch, ast.args); ast)
 
-function replace_match!(f, ismatch, lines::Array)
+replace_match!(f, ismatch, code_info::CodeInfo) = (replace_match!(f, ismatch, code_info.code); code_info)
+
+function replace_match!(f, ismatch, lines::AbstractArray)
     for i in eachindex(lines)
         line = lines[i]
         if ismatch(line)
             lines[i] = f(line)
-        else
-            replace_match!(f, ismatch, line)
+        elseif isa(line, Expr)
+            replace_match!(f, ismatch, line.args)
         end
     end
     return lines
@@ -95,9 +95,9 @@ function is_replaceable_call(x)
 end
 
 function transform_call!(f, call::Expr)
-    call.args[1] = f(replace_calls!(f, call.args[1]))
+    call.args[1] = f(replace_calls!(f, Any[call.args[1]])[])
     for i in 2:length(call.args)
-        replace_calls!(f, call.args[i])
+        call.args[i] = replace_calls!(f, Any[call.args[i]])[]
     end
     return call
 end
@@ -156,7 +156,7 @@ for N in 0:MAX_ARGS
     arg_names = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
     @eval begin
         @generated function (e::Enter{C,d,w})($(arg_names...)) where {C<:CtxCall,d,w}
-            arg_types = map(T -> value(C, T), ($(arg_names...),))
+            arg_types = map(T -> unwrap(C, T), ($(arg_names...),))
             code_info = lookup_code_info(Tuple{unwrap(C), arg_types...}, $arg_names, d, w)
             body = intercept_calls!(code_info, :e, $arg_names, d)
             return body
@@ -173,9 +173,13 @@ struct Intercept{C<:CtxCall,p,d,w}
     primitive::Val{p}
     debug::Val{d}
     world::Val{w}
+    @inline function Intercept(ctx::C,
+                               primitive::Val{p} = Val(false),
+                               debug::Val{d} = Val(false),
+                               world::Val{w} = Val(get_world_age())) where {C<:CtxCall,d,p,w}
+        return new{C,p,d,w}(ctx, primitive, debug, world)
+    end
 end
-
-@inline Intercept(ctx::CtxCall) = Intercept(ctx, Val(false), Val(false), Val(get_world_age()))
 
 @inline Intercept(e::Enter, f) = Intercept(_wrap(e.call, f), Val(false), e.debug, e.world)
 

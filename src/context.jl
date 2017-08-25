@@ -64,7 +64,7 @@ end
 end
 
 @inline hasctxcall(f, g, ::CtxCall, arg::Any) = g(arg)
-@inline hasctxcall(f, g, ctx::CtxCall{C,T}, arg::CtxVar{C,T}) where {C,T} = f(value(ctx, arg), meta(ctx, arg))
+@inline hasctxcall(f, g, ctx::CtxCall{C,T}, arg::CtxVar{C,T}) where {C,T} = f(unwrap(ctx, arg), meta(ctx, arg))
 
 @inline hasctx(::CtxCall, ::Any) = false
 @inline hasctx(::Type{<:CtxCall}, ::Type{<:Any}) = false
@@ -168,11 +168,11 @@ end
 # @primitive macro #
 ####################
 
-macro primitive(def)
-    signature = deepcopy(first(def))
+macro primitive(ctx, def)
+    signature = deepcopy(first(def.args))
     return esc(quote
-        $Cassette.@contextual $def
-        $Cassette.@isprimitive $signature
+        $Cassette.@contextual $ctx $def
+        $Cassette.@isprimitive $ctx $signature
     end)
 end
 
