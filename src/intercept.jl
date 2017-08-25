@@ -139,7 +139,7 @@ function intercept_calls!(code_info, f_name::Symbol, arg_names::Vector, debug::B
                 return sn
             end
         end
-        debug && println("INTERCEPTED CODEINFO: ", code_info)
+        debug && println("RETURNING Enter(...) BODY: ", code_info)
         code_info.inlineable = true
         return code_info
     else
@@ -147,7 +147,7 @@ function intercept_calls!(code_info, f_name::Symbol, arg_names::Vector, debug::B
             $(Expr(:meta, :inline))
             $(Cassette.Intercept)($f_name)($(arg_names...))
         end
-        debug && println("INTERCEPTED CODEINFO: ", expr)
+        debug && println("RETURNING Enter(...) BODY: ", expr)
         return expr
     end
 end
@@ -181,14 +181,13 @@ end
 
 @inline Intercept(e::Enter) = Intercept(e.context, Val(true), e.debug, e.world)
 
-@inline function (i::Intercept)(args...)
-    hook(i.context, args...)
-    return execute(i, args...)
-end
+@inline hook(i::Intercept, args...) = hook(i.world, i.context, args...)
 
 @inline isprimitive(i::Intercept{<:Any,true}, args...) = Val(true)
-@inline isprimitive(i::Intercept{<:Any,false}, args...) = isprimitive(i.context, args...)
+@inline isprimitive(i::Intercept{<:Any,false}, args...) = isprimitive(i.world, i.context, args...)
 
 @inline execute(i::Intercept, args...) = execute(isprimitive(i, args...), i, args...)
 @inline execute(::Val{true}, i::Intercept, args...) = i.context(args...)
 @inline execute(::Val{false}, i::Intercept, args...) = Enter(i.context, i.debug, i.world)(args...)
+
+@inline (i::Intercept)(args...) = (hook(i, args...); execute(i, args...))

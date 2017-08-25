@@ -80,12 +80,8 @@ function _hook end
 # @context macro #
 ##################
 
-const DEFINED_CONTEXTS = Symbol[]
-
 macro context(Ctx)
     @assert isa(Ctx, Symbol) "context name must be a Symbol"
-    in(Ctx, DEFINED_CONTEXTS) && error("context type ", Ctx, " is already defined")
-    push!(DEFINED_CONTEXTS, Ctx)
     seed = Val(Ctx)
     ctxsym = Expr(:quote, Ctx)
     return esc(quote
@@ -132,7 +128,8 @@ end
 # @hook macro #
 ###############
 
-@inline hook(ctx::AbstractContext, args...) = _hook(ctx, args...)
+# passing world age here forces recompilation
+@inline hook(::Val{world}, ctx::AbstractContext, args...) where {world} = _hook(ctx, args...)
 
 macro hook(ctx, def)
     contextual_method_transform!(ctx, def)
@@ -144,7 +141,8 @@ end
 # @isprimitive macro #
 ######################
 
-@generated function isprimitive(ctx::C, args...) where {C<:AbstractContext}
+# passing world age here forces recompilation
+@generated function isprimitive(::Val{world}, ctx::C, args...) where {world, C<:AbstractContext}
     F = unwrap(C)
     if F.name.module == Core || F <: Core.Builtin
         body = :(Val(true))
@@ -221,7 +219,6 @@ function contextual_signature_transform!(ctx, signature)
     callable = extract_callable_from_signature(signature)
     ctxname = extract_unqualified_symbol(ctx)
     @assert is_ctx_dispatch(callable) "the signature's method identifier must be wrapped in @ctx"
-    @assert in(ctxname, DEFINED_CONTEXTS) "$ctx is not defined as a Cassette context"
 
     # add the tag parameter to the signature's `where` clause
     tag = gensym("TagTypeVar")
