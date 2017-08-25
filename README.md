@@ -12,6 +12,14 @@ Until an initial version of Cassette is released, I can't guarantee that Cassett
 Also note that whenever I show macro-expanded/lowered code in this README, I've cleaned up
 the output for readability (e.g. removing metadata like line number info).
 
+## Table of Contents
+
+- [What is Cassette?](#what-is-cassette)
+- [Why "Cassette"?](#why-cassette)
+- [Cassette's Contextual Call Interceptor](#cassettes-contextual-call-interceptor)
+- [Cassette's Contextual Metadata Propagation Framework](#cassettes-contextual-metadata-propagation-framework)
+- [Cassette's Computation Graph Framework](#cassettes-computation-graph-framework)
+
 ## What is Cassette?
 
 Cassette is a Julia package that provides...
@@ -185,7 +193,7 @@ end
 
 This last line is particularly important - it's a fallback definition that describes how
 to execute a function wrapped in `MyCtx`. It uses `Cassette.ctxcall`, which is a nifty
-function we'll learn more about in the [Contextual Metadata Propagation](#contextual-metadata-propagation)
+function we'll learn more about in the [Contextual Metadata Propagation Framework](#cassettes-contextual-metadata-propagation-framework)
 section. Briefly, `ctxcall(f, ctx::CtxCall, args...)` will call `f(unwrap(ctx, arg[1]), unwrap(ctx, arg[2]), ...)`,
 where `unwrap(ctx, arg)` returns `arg` stripped of contextual metadata (if any was present).
 
