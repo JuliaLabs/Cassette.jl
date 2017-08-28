@@ -1,4 +1,4 @@
-module InterceptTests
+module ExecuteTests
 
 using Base.Test
 using Cassette

@@ -1,80 +1,51 @@
 #######
 # Tag #
 #######
-# Note that the code/comments here were originally used for ForwardDiff's tagging system,
-# and have been modified from their original version to fit your TV - er, to fit Cassette's
-# use case.
 
-struct Tag{C,T} end
+struct Tag{T} end
 
-# Here, we could've just as easily used `hash`; however, this is unsafe/undefined behavior
-# if `hash(::Type{F})` is overloaded in a module loaded after Cassette. Thus, we instead
-# use `hash(Symbol(F))`, which is somewhat safer since it's far less likely that somebody
-# would overwrite the Base definition for `Symbol(::DataType)` or `hash(::Symbol)`.
-@generated function Tag(::Val{C}, ::F) where {C,F}
-    @assert isa(C, Symbol)
-    T = hash(Symbol(F))
+@generated function Tag(::T) where {T}
     return quote
         $(Expr(:meta, :inline))
-        Tag{C,$T}()
+        Tag{$(object_id(T))}()
     end
 end
 
-###########################
-# CtxCall/CtxVar #
-###########################
+###########
+# Context #
+###########
 
-abstract type CtxCall{C,T,F} end
+abstract type Context{S,T} end
 
-struct CtxVar{C,T,V,M,U}
-    tag::Tag{C,T}
-    value::U
+Base.show(io::IO, ::Context{S,T}) where {S,T} = print(io, "$S{$T}()")
+
+########
+# Meta #
+########
+
+struct Meta{C<:Context,V,M,U}
+    context::C
+    value::V
     meta::M
-    @inline function CtxVar(tag::Tag{C,T}, value::V, meta::M) where {C,T,V,M}
-        new{C,T,V,M,V}(ctx.tag, value, meta)
-    end
-    @inline function CtxVar(tag::Tag{C,T}, value::Type{V}, meta::M) where {C,T,V,M}
-        new{C,T,Type{V},M,Type{V}}(ctx.tag, value, meta)
-    end
-    @inline function CtxVar(tag::Tag{C,T}, value::CtxVar{<:Any,<:Any,V}, meta::M) where {C,T,V,M}
-        new{C,T,V,M,typeof(value)}(ctx.tag, value, meta)
-    end
+    @inline Meta(context::C, value::V, meta::M = nothing) where {C,V,M} = new{C,V,M,V}(context, value, meta)
+    @inline Meta(context::C, value::Type{V}, meta::M = nothing) where {C,V,M} = new{C,Type{value},M,Type{value}}(context, value, meta)
+    @inline Meta(context::C, value::Meta{<:Context,<:Any,<:Any,U}, meta::M = nothing) where {C,M,U} = new{C,typeof(value),M,U}(context, value, meta)
 end
 
-@inline CtxVar(ctx::CtxCall, value, meta = nothing) = CtxVar(ctx.tag, value, meta)
+@inline value(::Context, x) = x
+@inline value(::Type{C}, ::Type{X}) where {C,X} = X
+@inline value(::C, x::Meta{C}) where {C<:Context} = x.value
+@inline value(::Type{C}, ::Type{X}) where {C<:Context,V,X<:Meta{C,V}} = V
 
-@inline unwrap(x) = x
-@inline unwrap(ctx::CtxCall) = ctx.func
-@inline unwrap(::Type{CC}) where {C,T,F,CC<:CtxCall{C,T,F}} = F
+@inline meta(::C, x::Meta{C}) where {C<:Context} = x.meta
 
-@inline unwrap(ctx, arg) = arg
-@inline unwrap(::CtxCall{C,T}, arg::CtxVar{C,T}) where {C,T} = arg.value
-@inline unwrap(::Type{CC}, ::Type{CV}) where {C,T,V,M,U,CC<:CtxCall{C,T},CV<:CtxVar{C,T,V,M,U}} = U
-
-@inline meta(ctx, arg) = nothing
-@inline meta(::CtxCall{C,T}, arg::CtxVar{C,T}) where {C,T} = arg.meta
-@inline meta(::Type{CC}, ::Type{CV}) where {C,T,V,M,CC<:CtxCall{C,T},CV<:CtxVar{C,T,V,M}} = U
-
-@generated function ctxcall(f, ctx::CtxCall, args...)
-    args = [:(unwrap(ctx, args[$i])) for i in 1:nfields(args)]
+@generated function lowercall(f, ctx::Context, args...)
+    valargs = [:(value(ctx, args[$i])) for i in 1:nfields(args)]
     return quote
         $(Expr(:meta, :inline))
-        f($(args...))
+        value(ctx, f)($(valargs...))
     end
 end
-
-@inline hasctxcall(f, g, ::CtxCall, arg::Any) = g(arg)
-@inline hasctxcall(f, g, ctx::CtxCall{C,T}, arg::CtxVar{C,T}) where {C,T} = f(unwrap(ctx, arg), meta(ctx, arg))
-
-@inline hasctx(::CtxCall, ::Any) = false
-@inline hasctx(::Type{<:CtxCall}, ::Type{<:Any}) = false
-@inline hasctx(::CtxCall{C,T}, ::CtxVar{C,T}) where {C,T} = true
-@inline hasctx(::Type{CC}, ::Type{CV}) where {C,T,CC<:CtxCall{C,T},CV<:CtxVar{C,T}} = true
-
-# these stubs get overloaded by Cassette's various macros
-function _wrap end
-function _isprimitive end
-function _hook end
 
 ##################
 # @context macro #
@@ -82,72 +53,53 @@ function _hook end
 
 macro context(Ctx)
     @assert isa(Ctx, Symbol) "context name must be a Symbol"
-    seed = Val(Ctx)
-    ctxsym = Expr(:quote, Ctx)
+    name = Expr(:quote, Ctx)
     return esc(quote
-        # define the actual context type
-        struct $Ctx{T,F} <: $Cassette.CtxCall{$ctxsym,T,F}
-            tag::$Cassette.Tag{$ctxsym,T}
-            func::F
-            @inline $Ctx(tag::$Cassette.Tag{$ctxsym,T}, func::F) where {T,F} = new{T,F}(tag, func)
-            @inline $Ctx(tag::$Cassette.Tag{$ctxsym,T}, func::Type{F}) where {T,F} = new{T,Type{F}}(tag, func)
-            @inline $Ctx(tag::$Cassette.Tag{$ctxsym,T}, func::$Cassette.CtxCall) where {T} = error("cannot nest contexts without an Intercept barrier")
+        struct $Ctx{T} <: $Cassette.Context{$name,T}
+            tag::$Cassette.Tag{T}
         end
-
-        @inline $Ctx(f) = $Ctx($Cassette.Tag($seed, f), f)
-
-        # define the context's tag propagation wrapper
-        @inline $Cassette._wrap(ctx::$Ctx, f::F) where {F} = $Ctx(ctx.tag, f)
-
-        # define the context's hook function fallback
-        @inline $Cassette._hook(ctx::$Ctx, args...) = nothing
-
-        # define the context's isprimitive function fallback
-        @inline $Cassette._isprimitive(ctx::$Ctx, args...) = Val(false)
-
-        # define fallback execution behavior
-        $Cassette.@contextual $Ctx @ctx(f)(args...) = $Cassette.ctxcall(unwrap(f), f, args...)
+        @inline $Ctx(x) = $Ctx($Cassette.Tag(x))
+        $Cassette.@hook $Ctx f(args...) = nothing
+        $Cassette.@execution ctx::$Ctx f(args...) = $Cassette.lowercall(f, ctx, args...)
     end)
-end
-
-#####################
-# @contextual macro #
-#####################
-
-macro contextual(ctx, def)
-    contextual_method_transform!(ctx, def)
-    return esc(def)
-end
-
-macro ctx(args...)
-    error("cannot use @ctx macro outside of the scope of @contextual, @isprimitive, ",
-          "@primitive or @hook method definitions.")
 end
 
 ###############
 # @hook macro #
 ###############
 
-# passing world age here forces recompilation
-@inline hook(::Val{world}, ctx::CtxCall, args...) where {world} = _hook(ctx, args...)
+function _hook end
+
+@inline hook(::Val{world}, ctx::Context, f, args...) where {world} = _hook(ctx, f, args...)
 
 macro hook(ctx, def)
-    contextual_method_transform!(ctx, def)
-    switch_callable_with_method_name!(first(def.args), :($Cassette._hook))
-    return esc(def)
+    return contextual_transform!(ctx, :($Cassette._hook), def)
+end
+
+####################
+# @execution macro #
+####################
+
+function _execution end
+
+@inline execution(::Val{world}, ctx::Context, f, args...) where {world} = _execution(ctx, f, args...)
+
+macro execution(ctx, def)
+    return contextual_transform!(ctx, :($Cassette._execution), def)
 end
 
 ######################
 # @isprimitive macro #
 ######################
 
+@inline _isprimitive(args...) = Val(false)
+
 # passing world age here forces recompilation
-@generated function isprimitive(::Val{world}, ctx::C, args...) where {world, C<:CtxCall}
-    F = unwrap(C)
+@generated function isprimitive(::Val{world}, ctx::Context, f::F, args...) where {world,F}
     if F.name.module == Core || F <: Core.Builtin
         body = :(Val(true))
     else
-        body = :($Cassette._isprimitive(ctx, args...))
+        body = :($Cassette._isprimitive(ctx, f, args...))
     end
     return quote
         $(Expr(:meta, :inline))
@@ -156,12 +108,9 @@ end
 end
 
 macro isprimitive(ctx, signature)
-    contextual_signature_transform!(ctx, signature)
-    switch_callable_with_method_name!(signature, :($Cassette._isprimitive))
     body = Expr(:block)
-    push!(body.args, Expr(:meta, :inline))
     push!(body.args, :(return Val(true)))
-    return esc(Expr(:function, signature, body))
+    return contextual_transform!(ctx, :($Cassette._isprimitive), signature, body)
 end
 
 ####################
@@ -169,102 +118,76 @@ end
 ####################
 
 macro primitive(ctx, def)
+    @assert is_method_definition(def)
     signature = deepcopy(first(def.args))
     return esc(quote
-        $Cassette.@contextual $ctx $def
+        $Cassette.@execution $ctx $def
         $Cassette.@isprimitive $ctx $signature
     end)
 end
 
-####################################
-# context-specific macro utilities #
-####################################
+#############
+# utilities #
+#############
 
-is_ctx_dispatch(x) = isa(x, Expr) && x.head == :macrocall && x.args[1] == Symbol("@ctx")
+macro Meta(args...)
+    error("cannot use @Meta macro outside of the scope of @execution, @isprimitive, ",
+          "@primitive or @hook method definitions.")
+end
 
-is_non_ctx_dispatch(x) = isa(x, Expr) && x.head == :(::) && !is_ctx_dispatch(x)
+function contextual_transform!(ctx, f, method)
+    @assert is_method_definition(method)
+    signature, body = method.args
+    return contextual_transform!(ctx, f, signature, body)
+end
 
-function parse_ctx_dispatch(x)
-    @assert is_ctx_dispatch(x) "encountered malformed @ctx syntax"
-    e = x.args[3]
-    if isa(e, Symbol)
-        v, V = e, :Any
-    elseif isa(e, Expr) && e.head == :(::)
-        if length(e.args) == 1
-            v, V = nothing, e.args[1]
-        else
-            @assert length(e.args) == 2 "encountered malformed @ctx syntax"
-            v, V = e.args
+function contextual_transform!(ctx, f, signature::Expr, body::Expr)
+    @assert is_valid_ctx_specification(ctx) "invalid context specifier: $ctx. Valid syntax is `ContextType` or `context_name::ContextType`."
+
+    if signature.head != :where
+        signature = Expr(:where, signature)
+    end
+
+    ctxtypevar = gensym("ContextTypeVar")
+    if isa(ctx, Expr) && ctx.head == :(::)
+        ctxtype = last(ctx.args)
+        ctx.args[end] = ctxtypevar
+    else
+        ctxtype = ctx
+        ctx = :(::$(ctxtypevar))
+    end
+    push!(signature.args, :($ctxtypevar <: $ctxtype))
+
+    callargs = signature.args[1].args
+    for i in 1:length(callargs)
+        x = callargs[i]
+        if isa(x, Expr) && x.head == :(::)
+            xtype = last(x.args)
+            if isa(xtype, Expr) && xtype.head == :macrocall && xtype.args[1] == Symbol("@Meta")
+                metaargs = xtype.args[3:end]
+                if isempty(metaargs)
+                    U, M = :Any, :Any
+                elseif length(metaargs) == 1
+                    U, M = first(metaargs), :Any
+                elseif length(metaargs) == 2
+                    U, M = metaargs
+                else
+                    error("incorrect usage of `@Meta`: $(xtype)")
+                end
+                new_xtype = :($Cassette.Meta{$ctxtypevar,<:Any,<:$M,<:$U})
+            else
+                new_xtype = :(Union{$Cassette.Meta{<:Any,<:Any,<:Any,<:$xtype},$xtype})
+            end
+            x.args[end] = new_xtype
         end
     end
-    return v, V
+
+    signature.args[1] = Expr(:call, f, ctx, callargs...)
+
+    unshift!(body.args, Expr(:meta, :inline))
+
+    return esc(Expr(:function, signature, body))
 end
-
-function transform_ctx_arg_dispatch(v, V, ctx::Symbol, tag)
-    qctx = Expr(:quote, ctx)
-    v === nothing && V === :Any && return :(::$Cassette.CtxVar{$qctx,$tag})
-    v === nothing && return :(::$Cassette.CtxVar{$qctx,$tag,<:$V})
-    V === :Any && return :($v::$Cassette.CtxVar{$qctx,$tag})
-    return :($v::$Cassette.CtxVar{$qctx,$tag,<:$V})
-end
-
-function transform_ctx_func_dispatch(v, V, ctx, tag)
-    v === nothing && V === :Any && return :(::$ctx{$tag})
-    v === nothing && return :(::$ctx{$tag,<:$V})
-    V === :Any && return :($v::$ctx{$tag})
-    return :($v::$ctx{$tag,<:$V})
-end
-
-function contextual_signature_transform!(ctx, signature)
-    callable = extract_callable_from_signature(signature)
-    ctxname = extract_unqualified_symbol(ctx)
-    @assert is_ctx_dispatch(callable) "the signature's method identifier must be wrapped in @ctx"
-
-    # add the tag parameter to the signature's `where` clause
-    tag = gensym("TagTypeVar")
-    add_type_variable!(signature, tag)
-
-    # replace context syntax with contextualized type
-    v, V = parse_ctx_dispatch(callable)
-    replace_signature_callable!(signature, transform_ctx_func_dispatch(v, V, ctx, tag))
-
-    argslist = extract_args_from_signature(signature)
-    for i in eachindex(argslist)
-        x = argslist[i]
-        if is_non_ctx_dispatch(x)
-            i = length(x.args)
-            (i == 1 || i == 2) || error("failed to parse dispatch syntax in subexpression ", x)
-            V = x.args[i]
-            x.args[i] = :(Union{$Cassette.CtxVar{<:Any,<:Any,$V},$V})
-        elseif is_ctx_dispatch(x)
-            v, V = parse_ctx_dispatch(x)
-            argslist[i] = transform_ctx_arg_dispatch(v, V, ctxname, tag)
-        end
-    end
-    return signature
-end
-
-function contextual_method_transform!(ctx, def)
-    @assert is_method_definition(def)
-    signature, body = def.args
-
-    contextual_signature_transform!(ctx, signature)
-
-    # make sure the user didn't mistakenly use context syntax in the method body
-    replace_match!(is_ctx_dispatch, body) do x
-        error("@ctx can only be used in the method signature, not body! ",
-              "Encountered @ctx in method body subexpression: ", x)
-    end
-
-    # force inlining
-    unshift!(def.args[2].args, Expr(:meta, :inline))
-
-    return def
-end
-
-#############################################################################
-# general macro utilities leveraged in the context-specific section (above) #
-#############################################################################
 
 function is_method_definition(x)
     if isa(x, Expr)
@@ -281,47 +204,24 @@ function is_method_definition(x)
     return false
 end
 
-function replace_signature_callable!(sig, new_callable)
-    if sig.head == :where
-        sig = sig.args[1]
+function is_valid_ctx_specification(x)
+    if isa(x, Expr)
+        T = x.head == :(::) ? last(x.args) : x
+        return is_valid_ctx_type(T)
     end
-    sig.args[1] = new_callable
-    return sig
+    return isa(x, Symbol)
 end
 
-function extract_callable_from_signature(sig)
-    if sig.head == :where
-        sig = sig.args[1]
-    end
-    return sig.args[1]
-end
+is_valid_ctx_type(x::Symbol) = true
+is_valid_ctx_type(x) = isa(x, Expr) && x.head == :(.) && is_valid_ctx_type(unquote(last(x.args)))
 
-function extract_unqualified_symbol(e::Expr)
+unquote(x) = x
+unquote(x::QuoteNode) = x.value
+unquote(x::Expr) = x.head == :quote ? first(x.args) : x
+
+function unqualify_name(e::Expr)
     @assert e.head == :(.)
-    return extract_unqualified_symbol(last(e.args))
+    return unqualify_name(last(e.args))
 end
 
-extract_unqualified_symbol(name::Symbol) = name
-
-function extract_args_from_signature(sig)
-    if sig.head == :where
-        sig = sig.args[1]
-    end
-    return view(sig.args, 2:length(sig.args))
-end
-
-function add_type_variable!(signature, T)
-    if isa(signature, Expr) && signature.head == :where
-        push!(signature.args, T)
-    else
-        signature.args = Any[deepcopy(signature), T]
-        signature.head = :where
-    end
-    return signature
-end
-
-function switch_callable_with_method_name!(signature, name)
-    arglist = (signature.head == :where) ? first(signature.args).args : signature.args
-    unshift!(arglist, name)
-    return signature
-end
+unqualify_name(name::Symbol) = name

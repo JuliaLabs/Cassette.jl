@@ -5,6 +5,7 @@ module Cassette
 const MAX_ARGS = 50
 
 include("context.jl")
-include("intercept.jl")
+include("execute.jl")
+
 
 end # module

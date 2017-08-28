@@ -3,11 +3,12 @@
 ## DISCLAIMER
 
 Cassette is still in development. At any given time, the implementation might be ugly,
-buggy, incomplete, slow, and/or untested. You might not be able to reproduce any examples
-given in the README. Cassette relies on new reflection features and compiler performance
-improvements that will hopefully land in Julia 1.0. Until an initial version of Cassette
-is released, I can't guarantee that Cassette's `master` branch won't rely on some weird
-custom version of Julia.
+buggy, incomplete, slow, and/or untested. You might not be able to reproduce the examples
+given in the README.
+
+Cassette relies on new reflection features and compiler performance improvements that will
+hopefully land in Julia 1.0. Until an initial version of Cassette is released, I can't
+guarantee that Cassette's `master` branch won't rely on some weird custom version of Julia.
 
 Also note that whenever I show macro-expanded/lowered code in this README, I've cleaned up
 the output for readability (e.g. removing metadata like line number info).
@@ -70,10 +71,11 @@ of post-fix performance.
 
 - Contextual Metadata Propagation Framework: Design is mostly complete; some details remain
 regarding external state mutation. For the design areas that are complete, implementation is
-mostly complete. All that really remains is final integration with the call interceptor
-(which is important, but shouldn't take more than a few days of development at most). Note
-that the same compiler performance problems that affect the call interceptor will affect
-metadata propagation.
+mostly complete, though I'm still actively experimenting with alternatives. Besides the
+mutation stuff, all that remains is final integration with the call interceptor (which is
+important, but shouldn't take more than a few days of development at most). Note that the
+same compiler performance problems that affect the call interceptor will affect metadata
+propagation.
 
 - Computation Graph Framework: I had a prototype of the graph framework running at JuliaCon
 2017, but I threw the prototype away a couple months ago so that I could focus on nailing
@@ -98,11 +100,11 @@ defined by Cassette users.
 The easiest way to understand Cassette's call interception is via an example:
 
 ```julia
-julia> using Cassette: @context, @hook, Intercept, unwrap
+julia> using Cassette: @context, @hook, @execute
 
 julia> @context MyCtx
 
-julia> @hook MyCtx @ctx(f)(args...) = println("calling ", unwrap(f), args)
+julia> @hook MyCtx f(args...) = println("calling ", f, args)
 
 julia> function rosenbrock(x::Vector{Float64})
                   a = 1.0
@@ -115,7 +117,7 @@ julia> function rosenbrock(x::Vector{Float64})
               end
 rosenbrock (generic function with 1 method)
 
-julia> Intercept(MyCtx(rosenbrock))(rand(2))
+julia> @execute MyCtx rosenbrock(rand(2))
 calling rosenbrock([0.812348, 0.781836],)
 calling length([0.812348, 0.781836],)
 calling arraylen([0.812348, 0.781836],)
@@ -206,49 +208,39 @@ So, what actually happened here? Here's an overly-detailed, step-by-step breakdo
 
 #### 1. We defined a context
 
-We defined a new Cassette context called `MyCtx` using the `@context` macro. This
-macro merely defines a normal Julia `struct` with the name `MyCtx`, and overloads a
-couple of Cassette's internal methods with this new type. To prove that, let's expand the
-call to the `@context` macro. Don't get hung up on the details here - I just want to prove
-that nothing diabolical is going on. Here's the expanded code, with some manual clean-up
-for readability:
+We defined a new Cassette context called `MyCtx` using the `@context` macro. This macro
+merely defines a normal Julia `struct` with the name `MyCtx`, and overloads a couple of
+Cassette's internal methods with this new type. If we expand this macrocall, it'd look
+something like the following (don't get too hung up on the details here - I just want to
+show that nothing diabolical is going on):
 
 ```julia
-julia> @macroexpand @context MyCtx
-quote
-    struct MyCtx{T, F} <: Cassette.CtxCall{:MyCtx, T, F}
-        tag::Cassette.Tag{:MyCtx, T}
-        func::F
-        MyCtx(tag::Cassette.Tag{:MyCtx, T}, func::F) where {T, F} = new{T, F}(tag, func)
-        MyCtx(tag::Cassette.Tag{:MyCtx, T}, func::Type{F}) where {T, F} = new{T, Type{F}}(tag, func)
-        MyCtx(tag::Cassette.Tag{:MyCtx, T}, func::Cassette.CtxCall) where T = error("cannot nest contexts without an Intercept barrier")
-    end
-    MyCtx(f) = MyCtx(Cassette.Tag(Val{:MyCtx}(), f), f)
-    Cassette._wrap(ctx::MyCtx, f::F) where F = MyCtx(ctx.tag, f)
-    Cassette._hook(ctx::MyCtx, args...) = nothing
-    Cassette._isprimitive(ctx::MyCtx, args...) = Val(false)
-    (f::MyCtx{##TagTypeVar#778})(args...) where ##TagTypeVar#778 = Cassette.ctxcall(unwrap(f), f, args...)
+struct MyCtx{T} <: Cassette.Context{:MyCtx,T}
+    tag::Cassette.Tag{T}
 end
+MyCtx(x) = MyCtx(Cassette.Tag(x))
+Cassette.@hook MyCtx f(args...) = nothing
+Cassette.@execution ctx::MyCtx f(args...) = Cassette.lowercall(f, ctx, args...)
 ```
 
 This last line is particularly important - it's a fallback definition that describes how
-to execute a function wrapped in `MyCtx`. It uses `Cassette.ctxcall`, which is a nifty
+to execute a function within in `MyCtx`. It uses `Cassette.lowercall`, which is a nifty
 function we'll learn more about in the [Contextual Metadata Propagation Framework](#cassettes-contextual-metadata-propagation-framework)
-section. Briefly, `ctxcall(f, ctx::CtxCall, args...)` will call `f(unwrap(ctx, arg[1]), unwrap(ctx, arg[2]), ...)`,
-where `unwrap(ctx, arg)` returns `arg` stripped of contextual metadata (if any was present).
+section. Briefly, `lowercall(f, ctx, args...)` will strip `f` and `args` of any contextual
+metadata w.r.t. `ctx`, and then call `f(args...)`.
 
 #### 2. We defined a hook
 
-Next, we defined a Cassette "hook" for `MyCtx` method calls via the `@hook` macro.
-Cassette will call this hook every time it intercepts a method call. Once again, let's
-see what's really going on by macro-expanding the code (and once again, I've cleaned
-this up a little bit for readability):
+Next, we defined a Cassette "hook" for `MyCtx` method calls via the `@hook` macro. Cassette
+will call this hook every time it intercepts a method call. Once again, let's see what's
+really going on by macro-expanding the code (I've cleaned this up a little bit for
+readability):
 
 ```julia
-julia> @macroexpand @hook MyCtx @ctx(f)(args...) = println("calling ", unwrap(f), args)
+julia> @macroexpand @hook MyCtx f(args...) = println("calling ", f, args)
 quote
-    function Cassette._hook(f::MyCtx{##TagTypeVar#779}, args...) where ##TagTypeVar#779
-        println("calling ", unwrap(f), args)
+    function Cassette._hook(::##ContextTypeVar#798, f, args...) where ##ContextTypeVar#798 <: MyCtx
+        println("calling ", f, args)
     end
 end
 ```
@@ -258,9 +250,9 @@ As you can see, this macro overrides the `Cassette._hook` method originally defi
 let's leverage this to add a more specialized hook:
 
 ```julia
-julia> @hook MyCtx @ctx(f)(args::Number...) = println("OH WOW, NUMERIC ARGUMENTS! ", unwrap(f), args)
+julia> @hook MyCtx f(args::Number...) = println("OH WOW, NUMERIC ARGUMENTS! ", f, args)
 
-julia> Intercept(MyCtx(rosenbrock))(rand(2))
+julia> @execute MyCtx rosenbrock(rand(2))
 calling rosenbrock([0.833447, 0.798788],)
 calling length([0.833447, 0.798788],)
 calling arraylen([0.833447, 0.798788],)
@@ -349,15 +341,73 @@ OH WOW, NUMERIC ARGUMENTS! not_int(true,)
 
 #### 3. We contextually executed some code
 
-Finally, we recursively intercepted all method calls within `rosenbrock`. At the base cases -
-called "primitives" in Cassette-lingo - we called the `(f::MyCtx)(args...)` method
-automatically defined by `@context`. Note that, as a fallback, Cassette always considers
-`Core` methods and unreflectable methods to be primitives.
+Finally, we recursively intercepted all method calls within `rosenbrock`. At the base
+cases - called "primitives" in Cassette-lingo - we called the `@execution` method defined
+by `@context`. Note that, as a fallback, Cassette always considers `Core` methods and
+unreflectable methods to be primitives.
 
-To illustrate what's actually going on, let's look at the lowered code for a normal `rosenbrock`
-call and compare it to the lowered code for a call to `Cassette.Enter(MyCtx(rosenbrock))`
-(note that `Cassette.Enter(MyCtx(f))(args...)` is what `Intercept(MyCtx(f))(args...)`
-calls if `MyCtx(f)` is not a primitive).
+Let's macroexpand our `@execute` call to get a better idea of what's actually going on:
+
+```julia
+julia> @macroexpand @execute MyCtx rosenbrock(rand(2))
+:((Cassette.Intercept(MyCtx(rosenbrock), rosenbrock))(rand(2)))
+```
+
+For clarity, let's break this into two parts:
+
+```julia
+# construct callable `Intercept` struct
+julia> f = Cassette.Intercept(MyCtx(rosenbrock), rosenbrock)
+Cassette.Intercept{MyCtx{0xa7c6d08bc9254c7f},#rosenbrock}(MyCtx{12089579548516371583}(), rosenbrock)
+
+# call `f` on our argument
+julia> f(rand(2))
+calling rosenbrock([0.336142, 0.293493],)
+calling length([0.336142, 0.293493],)
+calling arraylen([0.336142, 0.293493],)
+OH WOW, NUMERIC ARGUMENTS! -(2, 1)
+⋮
+```
+
+If everything is inlined aggressively, then the lowered code for `f(rand(2))` will be nearly
+the same as the lowered code for `rosenbrock(rand(2))`, with the key difference that every
+method call within the program has been wrapped in an `Intercept`. Internally, the
+definition of `Intercept` looks similar to the following (this is *not* the real code, but
+hopefully illuminates the kind of thing going on under the hood):
+
+```julia
+struct Intercept{C<:Context,F}
+    context::C
+    func::F
+end
+
+Intercept(e::Enter, f) = Intercept(e.context, f)
+
+hook(i::Intercept, args...) = _hook(i.context, i.func, args...)
+
+isprimitive(i::Intercept, args...) = _isprimitive(i.context, i.func, args...)
+
+execute(i::Intercept, args...) = execute(isprimitive(i, args...), i, args...)
+execute(::Val{true}, i::Intercept, args...) = _execution(i.context, i.func, args...)
+execute(::Val{false}, i::Intercept, args...) = Enter(i.context, i.func)(args...)
+
+(i::Intercept)(args...) = (hook(i, args...); execute(i, args...))
+
+struct Enter{C<:Context,F}
+    context::C
+    func::F
+end
+
+@generated function (e::Enter)(args...)
+    # I'm not going to show this because it's pretty complicated, but
+    # what this does is run the underlying contextualized method call
+    # with all subcalls wrapped in `Intercept`
+end
+
+```
+
+To further illustrate the interception mechanism, let's look at the lowered code for a normal
+`rosenbrock` call and compare it to the lowered code for a call to an `Enter` struct:
 
 ```julia
 julia> @code_lowered rosenbrock(rand(2))
@@ -378,7 +428,10 @@ CodeInfo(:(begin
         return result
     end))
 
-julia> @code_lowered Cassette.Enter(MyCtx(rosenbrock))(rand(2))
+julia> f = Cassette.Enter(MyCtx(rosenbrock), rosenbrock)
+Cassette.Enter{MyCtx{0xa7c6d08bc9254c7f},#rosenbrock}(MyCtx{12089579548516371583}(), rosenbrock)
+
+julia> @code_lowered f(rand(2))
 CodeInfo(:(begin
         nothing
         a = 1.0
@@ -398,41 +451,6 @@ CodeInfo(:(begin
     end))
 ```
 
-The lowered code for `Cassette.Enter(MyCtx(rosenbrock))` is the same as the lowered code for
-`rosenbrock`, but every callable object that is being called has been wrapped in the `Intercept`
-type, which can then be called instead. Internally, the definitions for `Enter` and `Intercept`
-look similar to the following (this is *not* the real code, but hopefully illuminates
-the kind of thing going on under the hood):
-
-```julia
-struct Enter{C<:CtxCall}
-    call::C
-end
-
-@generated function (::Enter)(args...)
-    # I'm not going to show this because it's pretty complicated, but
-    # what this does is run the underlying contextualized method call
-    # with all subcalls wrapped in `Intercept`
-end
-
-struct Intercept{C<:CtxCall}
-    call::C
-end
-
-Intercept(e::Enter, f) = Intercept(_wrap(e.call, f))
-
-Intercept(e::Enter) = Intercept(e.call)
-
-function (i::Intercept)(args...)
-    hook(i.call, args...)
-    return execute(i, args...)
-end
-
-execute(i::Intercept, args...) = execute(isprimitive(i.call, args...), i, args...)
-execute(::Val{true}, i::Intercept, args...) = i.call(args...)
-execute(::Val{false}, i::Intercept, args...) = Enter(i.call)(args...)
-```
-
 ### Contextual primitives
 
 Earlier, I mentioned primitives:
@@ -450,36 +468,37 @@ second is a predicate definition that specifies whether a given method is counts
 primitive in a given context. Cassette uses this second mechanism to decide when to
 invoke the first mechanism, or to otherwise recursively apply `Enter` to a method call.
 
-For the first mechanism, Cassette provides the `@contextual` macro, which wraps a method
+For the first mechanism, Cassette provides the `@execution` macro, which wraps a method
 definition in a similar manner to `@hook`. For the second mechanism, Cassette provides the
 `@isprimitive` macro, which takes a method signature and registers it as a primitive method
 call for the given context. For convenience, Cassette provides a `@primitive` macro which
-simultaneously passes the given method definition to `@contextual` and marks its signature
+simultaneously passes the given method definition to `@execution` and marks its signature
 with `@isprimitive`.
 
 For the sake of example, let's use these macros to wreak some havoc by redirecting all
 intercepted `sin` calls to `cos` calls:
 
 ```julia
-julia> using Cassette: @contextual, @isprimitive, @primitive
+julia> using Cassette: @execution, @isprimitive, @primitive
 
-# Define the behavior of `sin` in `MyCtx`. Note that the syntax
-# accepted by `@ctx` is the generic call overloading syntax, not
-# the `Function` specific sugar; you have to do `typeof(sin)`.
-julia> @contextual MyCtx @ctx(f::typeof(sin))(x) = cos(x)
+# Define the behavior of `sin` in `MyCtx`. Note that Cassette's
+# macros only accept the syntax for generic call overloading,
+# not the `<:Function` specific sugar; thus, you have to use
+# `(::typeof(sin))(...)` instead of `Base.sin(...)`.
+julia> @execution MyCtx (::typeof(sin))(x) = cos(x)
 
 # Mark the method with this signature as a Cassette primitive.
-# If we don't do this, our `@contextual` definition will never
-# get called, because Cassette will just recurse into `sin` calls
-# rather than treating them as primitives!
-julia> @isprimitive MyCtx @ctx(f::typeof(sin))(x)
+# If we don't do this, our `@execution` definition will never
+# get called, because Cassette will just recurse into `sin`
+# calls rather than treating them as primitives!
+julia> @isprimitive MyCtx (::typeof(sin))(x)
 
-julia> Intercept(MyCtx(sin))(1.0) == cos(1.0)
+julia> @execute(MyCtx, sin(1.0)) == cos(1.0)
 OH WOW, NUMERIC ARGUMENTS! sin(1.0,)
 true
 
-julia> Intercept(MyCtx(x -> sin(x) + cos(x)))(1.0) == 2 * cos(1.0)
-OH WOW, NUMERIC ARGUMENTS! #1(1.0,)
+julia> @execute(MyCtx, (x -> sin(x) + cos(x))(1.0)) == 2 * cos(1.0)
+OH WOW, NUMERIC ARGUMENTS! #6(1.0,)
 OH WOW, NUMERIC ARGUMENTS! sin(1.0,)
 OH WOW, NUMERIC ARGUMENTS! cos(1.0,)
 calling Base.cconvert(Float64, 1.0)
@@ -501,13 +520,13 @@ OH WOW, NUMERIC ARGUMENTS! add_float(0.5403023058681398, 0.5403023058681398)
 true
 ```
 
-Note that we used the same signature for our `@contextual` and `@isprimitive` calls. In this
+Note that we used the same signature for our `@execution` and `@isprimitive` calls. In this
 case, we could've just used the `@primitive` macro to define the execution and mark it as a
 primitive at the same time, like so:
 
 ```julia
-# does @contextual and @isprimitive at the same time
-@primitive MyCtx @ctx(f::typeof(sin))(x) = cos(x)
+# does @execution and @isprimitive at the same time
+@primitive MyCtx (::typeof(sin))(x) = cos(x)
 ```
 
 ## Cassette's Contextual Metadata Propagation Framework

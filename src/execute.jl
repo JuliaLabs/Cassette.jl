@@ -112,14 +112,20 @@ replace_slotnumbers!(f, x) = replace_match!(f, s -> isa(s, SlotNumber), x)
 # Enter #
 #########
 
-struct Enter{C<:CtxCall,d,w}
-    call::C
+struct Enter{C<:Context,F,d,w}
+    context::C
+    func::F
     debug::Val{d}
     world::Val{w}
+    @inline function Enter(context::C,
+                           func::F,
+                           debug::Val{d} = Val(false),
+                           world::Val{w} = Val(get_world_age())) where {C<:Context,F,d,w}
+        return new{C,F,d,w}(context, func, debug, world)
+    end
 end
 
-Enter(call, debug::Val) = Enter(call, debug, Val(get_world_age()))
-Enter(call) = Enter(call, Val(false))
+unwrap(e::Enter) = e.func
 
 function intercept_calls!(code_info, f_name::Symbol, arg_names::Vector, debug::Bool = false)
     if isa(code_info, CodeInfo)
@@ -155,9 +161,9 @@ end
 for N in 0:MAX_ARGS
     arg_names = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
     @eval begin
-        @generated function (e::Enter{C,d,w})($(arg_names...)) where {C<:CtxCall,d,w}
-            arg_types = map(T -> unwrap(C, T), ($(arg_names...),))
-            code_info = lookup_code_info(Tuple{unwrap(C), arg_types...}, $arg_names, d, w)
+        @generated function (e::Enter{C,F,d,w})($(arg_names...)) where {C<:Context,F,d,w}
+            arg_types = map(T -> value(C, T), ($(arg_names...),))
+            code_info = lookup_code_info(Tuple{value(C, F),arg_types...}, $arg_names, d, w)
             body = intercept_calls!(code_info, :e, $arg_names, d)
             return body
         end
@@ -168,30 +174,43 @@ end
 # Intercept #
 #############
 
-struct Intercept{C<:CtxCall,p,d,w}
-    call::C
+struct Intercept{C<:Context,F,p,d,w}
+    context::C
+    func::F
     primitive::Val{p}
     debug::Val{d}
     world::Val{w}
-    @inline function Intercept(ctx::C,
+    @inline function Intercept(context::C,
+                               func::F,
                                primitive::Val{p} = Val(false),
                                debug::Val{d} = Val(false),
-                               world::Val{w} = Val(get_world_age())) where {C<:CtxCall,d,p,w}
-        return new{C,p,d,w}(ctx, primitive, debug, world)
+                               world::Val{w} = Val(get_world_age())) where {C<:Context,F,d,p,w}
+        return new{C,F,p,d,w}(context, func, primitive, debug, world)
     end
 end
 
-@inline Intercept(e::Enter, f) = Intercept(_wrap(e.call, f), Val(false), e.debug, e.world)
+@inline Intercept(e::Enter, f) = Intercept(e.context, f, Val(false), e.debug, e.world)
 
-@inline Intercept(e::Enter) = Intercept(e.call, Val(true), e.debug, e.world)
+@inline Intercept(e::Enter) = Intercept(e.context, e.func, Val(true), e.debug, e.world)
 
-@inline hook(i::Intercept, args...) = hook(i.world, i.call, args...)
+@inline hook(i::Intercept, args...) = hook(i.world, i.context, i.func, args...)
 
-@inline isprimitive(i::Intercept{<:Any,true}, args...) = Val(true)
-@inline isprimitive(i::Intercept{<:Any,false}, args...) = isprimitive(i.world, i.call, args...)
+@inline isprimitive(i::Intercept{<:Context,<:Any,true}, args...) = Val(true)
+@inline isprimitive(i::Intercept{<:Context,<:Any,false}, args...) = isprimitive(i.world, i.context, i.func, args...)
 
 @inline execute(i::Intercept, args...) = execute(isprimitive(i, args...), i, args...)
-@inline execute(::Val{true}, i::Intercept, args...) = i.call(args...)
-@inline execute(::Val{false}, i::Intercept, args...) = Enter(i.call, i.debug, i.world)(args...)
+@inline execute(::Val{true}, i::Intercept, args...) = execution(i.world, i.context, i.func, args...)
+@inline execute(::Val{false}, i::Intercept, args...) = Enter(i.context, i.func, i.debug, i.world)(args...)
 
 @inline (i::Intercept)(args...) = (hook(i, args...); execute(i, args...))
+
+############
+# @execute #
+############
+
+macro execute(ctx, call)
+    @assert isa(call, Expr) && call.head == :call
+    f = call.args[1]
+    call.args[1] = :($Cassette.Intercept($ctx($f), $f))
+    return esc(call)
+end
