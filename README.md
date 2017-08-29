@@ -14,7 +14,7 @@ Also note that whenever I show macro-expanded/lowered code in this README, I've 
 the output for readability (e.g. removing metadata like line number info).
 
 At the time of writing, all of the examples in this README work using Julia commit aa3d2be
-(Version 0.7.0-DEV.1485) and Cassette commit f437431.
+(Version 0.7.0-DEV.1485) and Cassette commit 5de482e.
 
 ## Table of Contents
 
