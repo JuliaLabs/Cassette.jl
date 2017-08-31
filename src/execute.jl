@@ -160,10 +160,10 @@ end
 
 for N in 0:MAX_ARGS
     arg_names = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
+    arg_types = [:(value(C, $T)) for T in arg_names]
     @eval begin
         @generated function (e::Enter{C,F,d,w})($(arg_names...)) where {C<:Context,F,d,w}
-            arg_types = map(T -> value(C, T), ($(arg_names...),))
-            code_info = lookup_code_info(Tuple{value(C, F),arg_types...}, $arg_names, d, w)
+            code_info = lookup_code_info(Tuple{value(C, F),$(arg_types...)}, $arg_names, d, w)
             body = intercept_calls!(code_info, :e, $arg_names, d)
             return body
         end
@@ -203,14 +203,3 @@ end
 @inline execute(::Val{false}, i::Intercept, args...) = Enter(i.context, i.func, i.debug, i.world)(args...)
 
 @inline (i::Intercept)(args...) = (hook(i, args...); execute(i, args...))
-
-############
-# @execute #
-############
-
-macro execute(ctx, call)
-    @assert isa(call, Expr) && call.head == :call
-    f = call.args[1]
-    call.args[1] = :($Cassette.Intercept($ctx($f), $f))
-    return esc(call)
-end
