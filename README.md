@@ -20,15 +20,18 @@ At the time of writing, all of the examples in this README work using Julia comm
 
 - [What is Cassette?](#what-is-cassette)
 - [Why "Cassette"?](#why-cassette)
-- [Cassette's Contextual Call Interceptor](#cassettes-contextual-call-interceptor)
+- [Cassette's Contextual Call Interception Framework](#cassettes-contextual-call-interceptor)
 - [Cassette's Contextual Metadata Propagation Framework](#cassettes-contextual-metadata-propagation-framework)
 - [Cassette's Computation Graph Framework](#cassettes-computation-graph-framework)
+- Similarities to Aspect-Oriented Programming](#similarities-to-aspect-oriented-programming)
 
 ## What is Cassette?
 
+[top](#cassette)
+
 Cassette is a Julia package that provides...
 
-- ...a *contextual call interceptor*.
+- ...a *contextual call interception* framework.
 - ...a *contextual metadata propagation* framework.
 - ...a *computation graph framework* with two graph implementations (one for optimized for
 a dynamic regime, the other for a static regime).
@@ -44,9 +47,13 @@ automatic preallocation, and code fuzzing.
 
 ## Why "Cassette"?
 
+[top](#cassette)
+
 Because the package enables you to "overdub" Julia "tapes" with new behaviors :D
 
 ## What is Cassette's current development status?
+
+[top](#cassette)
 
 First, see the disclaimer above.
 
@@ -60,9 +67,9 @@ take a second pass at Cassette's design, get tests/benchmarks in place, etc., an
 release the package (planned Winter 2017/2018, assuming Julia's compiler will be sufficient
 by then).
 
-- Contextual Call Interceptor: Design is complete. Besides some significant details that
-require more compiler improvements, implementation is complete. Performance right now is
-pretty bad due to fixable compiler issues (specifically JuliaLang/julia#5402).
+- Contextual Call Interception Framework: Design is complete. Besides some significant
+details that require more compiler improvements, implementation is complete. Performance
+right now is pretty bad due to fixable compiler issues (specifically JuliaLang/julia#5402).
 Theoretically, once these bugs have been fixed, interception overhead should be quite low
 (<5% of original program runtime). I have been testing this by measuring the performance of
 Cassette code rewritten to avoid the compiler performance problems (e.g. removing all
@@ -84,11 +91,9 @@ updating any coupled graph code. Once those implementations are complete, I will
 and rebuild the graph framework on top of them. I expect this to take a 2-3 weeks of
 development time (longer in reality, since I have other responsibilities).
 
-## Cassette's Contextual Call Interceptor
+## Cassette's Contextual Call Interception Framework
 
-First and foremost, "contextual call intercepting" is a phrase I just made up. If anybody
-knows of any existing terms in the literature for Cassette's weird brand of execution
-tracing, feel free to let me know.
+[top](#cassette)
 
 Cassette can instrument your Julia code in order to intercept native Julia method calls as
 they occur during program execution. Which calls are intercepted and what actually happens
@@ -531,8 +536,27 @@ primitive at the same time, like so:
 
 ## Cassette's Contextual Metadata Propagation Framework
 
+[top](#cassette)
+
 Description coming soon!
 
 ## Cassette's Computation Graph Framework
 
+[top](#cassette)
+
 Description coming soon!
+
+## Similarities to Aspect-Oriented Programming
+
+[top](#cassette)
+
+Cassette shares many concepts in common with [aspect-oriented programming (AOP)](https://en.wikipedia.org/wiki/Aspect-oriented_programming).
+
+Cassette's call interception framework is similar to an aspect weaver, except that the
+"weaving" is method-local, based on operator-overloading, occurs at runtime, and is JIT
+compiled. Cassette's call hooks can be used to provide at AOP-style "advice", where
+the pointcut is specified via Julia's multiple dispatch mechanism.
+
+Unlike AOP, the motivation behind Cassette isn't to provide a paradigm for modularizing
+cross-cutting concerns. In some sense, Cassette could facilitate such a paradigm, but only
+as a side-effect of being able to intercept and alter the execution of native Julia code.
