@@ -23,7 +23,7 @@ At the time of writing, all of the examples in this README work using Julia comm
 - [Cassette's Contextual Call Interception Framework](#cassettes-contextual-call-interceptor)
 - [Cassette's Contextual Metadata Propagation Framework](#cassettes-contextual-metadata-propagation-framework)
 - [Cassette's Computation Graph Framework](#cassettes-computation-graph-framework)
-- Similarities to Aspect-Oriented Programming](#similarities-to-aspect-oriented-programming)
+- [Similarities to Aspect-Oriented Programming](#similarities-to-aspect-oriented-programming)
 
 ## What is Cassette?
 
