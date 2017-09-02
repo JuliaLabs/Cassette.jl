@@ -42,6 +42,7 @@ end
 @inline value(::Type{C}, ::Type{Type{X}}) where {C<:Context,X<:Meta} = value(C, X)
 
 @inline meta(::C, x::Meta{C}) where {C<:Context} = x.meta
+@inline meta(ctx::Context) = ctx.meta
 
 @generated function lowercall(f, ctx::Context, args...)
     valargs = [:(value(ctx, args[$i])) for i in 1:nfields(args)]

@@ -6,10 +6,11 @@ macro context(Ctx)
     @assert isa(Ctx, Symbol) "context name must be a Symbol"
     name = Expr(:quote, Ctx)
     return esc(quote
-        struct $Ctx{T} <: $Cassette.Context{$name,T}
+        struct $Ctx{T,M} <: $Cassette.Context{$name,T}
             tag::$Cassette.Tag{T}
+            meta::M
         end
-        @inline $Ctx(x) = $Ctx($Cassette.Tag(x))
+        @inline $Ctx(x, meta = nothing) = $Ctx($Cassette.Tag(x), meta)
         $Cassette.@hook $Ctx f(args...) = nothing
         $Cassette.@execution ctx::$Ctx f(args...) = $Cassette.lowercall(f, ctx, args...)
     end)
