@@ -108,30 +108,30 @@ replace_calls!(f, x) = replace_match!(call -> transform_call!(f, call), is_repla
 
 replace_slotnumbers!(f, x) = replace_match!(f, s -> isa(s, SlotNumber), x)
 
-#########
-# Enter #
-#########
+#############
+# Intercept #
+#############
 
-struct Enter{C<:Context,F,d,w}
+struct Intercept{C<:Context,F,d,w}
     context::C
     func::F
     debug::Val{d}
     world::Val{w}
-    @inline function Enter(context::C,
-                           func::F,
-                           debug::Val{d} = Val(false),
-                           world::Val{w} = Val(get_world_age())) where {C<:Context,F,d,w}
+    @inline function Intercept(context::C,
+                               func::F,
+                               debug::Val{d} = Val(false),
+                               world::Val{w} = Val(get_world_age())) where {C<:Context,F,d,w}
         return new{C,F,d,w}(context, func, debug, world)
     end
 end
 
-unwrap(e::Enter) = e.func
+unwrap(i::Intercept) = i.func
 
 function intercept_calls!(code_info, f_name::Symbol, arg_names::Vector, debug::Bool = false)
     if isa(code_info, CodeInfo)
         replace_calls!(code_info) do call
             if !(isa(call, SlotNumber) && call.id == 1)
-                return :($(Cassette.Intercept)($(SlotNumber(0)), $call))
+                return :($(Cassette.Execute)($(SlotNumber(0)), $call))
             else
                 return call
             end
@@ -145,15 +145,15 @@ function intercept_calls!(code_info, f_name::Symbol, arg_names::Vector, debug::B
                 return sn
             end
         end
-        debug && println("RETURNING Enter(...) BODY: ", code_info)
+        debug && println("RETURNING Intercept(...) BODY: ", code_info)
         code_info.inlineable = true
         return code_info
     else
         expr = quote
             $(Expr(:meta, :inline))
-            $(Cassette.Intercept)($f_name)($(arg_names...))
+            $(Cassette.Execute)($f_name)($(arg_names...))
         end
-        debug && println("RETURNING Enter(...) BODY: ", expr)
+        debug && println("RETURNING Intercept(...) BODY: ", expr)
         return expr
     end
 end
@@ -162,44 +162,44 @@ for N in 0:MAX_ARGS
     arg_names = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
     arg_types = [:(value(C, $T)) for T in arg_names]
     @eval begin
-        @generated function (e::Enter{C,F,d,w})($(arg_names...)) where {C<:Context,F,d,w}
+        @generated function (i::Intercept{C,F,d,w})($(arg_names...)) where {C<:Context,F,d,w}
             code_info = lookup_code_info(Tuple{value(C, F),$(arg_types...)}, $arg_names, d, w)
-            body = intercept_calls!(code_info, :e, $arg_names, d)
+            body = intercept_calls!(code_info, :i, $arg_names, d)
             return body
         end
     end
 end
 
-#############
-# Intercept #
-#############
+###########
+# Execute #
+###########
 
-struct Intercept{C<:Context,F,p,d,w}
+struct Execute{C<:Context,F,p,d,w}
     context::C
     func::F
     primitive::Val{p}
     debug::Val{d}
     world::Val{w}
-    @inline function Intercept(context::C,
-                               func::F,
-                               primitive::Val{p} = Val(false),
-                               debug::Val{d} = Val(false),
-                               world::Val{w} = Val(get_world_age())) where {C<:Context,F,d,p,w}
+    @inline function Execute(context::C,
+                             func::F,
+                             primitive::Val{p} = Val(false),
+                             debug::Val{d} = Val(false),
+                             world::Val{w} = Val(get_world_age())) where {C<:Context,F,d,p,w}
         return new{C,F,p,d,w}(context, func, primitive, debug, world)
     end
 end
 
-@inline Intercept(e::Enter, f) = Intercept(e.context, f, Val(false), e.debug, e.world)
+@inline Execute(i::Intercept, f) = Execute(i.context, f, Val(false), i.debug, i.world)
 
-@inline Intercept(e::Enter) = Intercept(e.context, e.func, Val(true), e.debug, e.world)
+@inline Execute(i::Intercept) = Execute(i.context, i.func, Val(true), i.debug, i.world)
 
-@inline hook(i::Intercept, args...) = hook(i.world, i.context, i.func, args...)
+@inline hook(e::Execute, args...) = hook(e.world, e.context, e.func, args...)
 
-@inline isprimitive(i::Intercept{<:Context,<:Any,true}, args...) = Val(true)
-@inline isprimitive(i::Intercept{<:Context,<:Any,false}, args...) = isprimitive(i.world, i.context, i.func, args...)
+@inline isprimitive(e::Execute{<:Context,<:Any,true}, args...) = Val(true)
+@inline isprimitive(e::Execute{<:Context,<:Any,false}, args...) = isprimitive(e.world, e.context, e.func, args...)
 
-@inline execute(i::Intercept, args...) = execute(isprimitive(i, args...), i, args...)
-@inline execute(::Val{true}, i::Intercept, args...) = execution(i.world, i.context, i.func, args...)
-@inline execute(::Val{false}, i::Intercept, args...) = Enter(i.context, i.func, i.debug, i.world)(args...)
+@inline execute(e::Execute, args...) = execute(isprimitive(e, args...), e, args...)
+@inline execute(::Val{true}, e::Execute, args...) = execution(e.world, e.context, e.func, args...)
+@inline execute(::Val{false}, e::Execute, args...) = Intercept(e.context, e.func, e.debug, e.world)(args...)
 
-@inline (i::Intercept)(args...) = (hook(i, args...); execute(i, args...))
+@inline (e::Execute)(args...) = (hook(e, args...); execute(e, args...))

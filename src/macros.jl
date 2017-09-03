@@ -24,7 +24,7 @@ macro execute(ctx, call)
     @assert isa(call, Expr) && call.head == :call
     ctxsym = gensym("context")
     f = call.args[1]
-    call.args[1] = :($Cassette.Intercept($ctxsym, $f))
+    call.args[1] = :($Cassette.Execute($ctxsym, $f))
     replace_match!(x -> :($Cassette.Meta($ctxsym, $(x.args[3:end]...))), ismetamacrocall, call.args)
     return esc(:($ctxsym = $ctx($f); $call))
 end

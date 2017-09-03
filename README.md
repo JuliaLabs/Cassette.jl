@@ -20,7 +20,7 @@ At the time of writing, all of the examples in this README work using Julia comm
 
 - [What is Cassette?](#what-is-cassette)
 - [Why "Cassette"?](#why-cassette)
-- [Cassette's Contextual Call Interception Framework](#cassettes-contextual-call-interceptor)
+- [Cassette's Contextual Code Execution Framework](#cassettes-contextual-code-execution-framework)
 - [Cassette's Contextual Metadata Propagation Framework](#cassettes-contextual-metadata-propagation-framework)
 - [Cassette's Computation Graph Framework](#cassettes-computation-graph-framework)
 - [Similarities to Aspect-Oriented Programming](#similarities-to-aspect-oriented-programming)
@@ -31,7 +31,7 @@ At the time of writing, all of the examples in this README work using Julia comm
 
 Cassette is a Julia package that provides...
 
-- ...a *contextual call interception* framework.
+- ...a *contextual code execution* framework.
 - ...a *contextual metadata propagation* framework.
 - ...a *computation graph framework* with two graph implementations (one for optimized for
 a dynamic regime, the other for a static regime).
@@ -67,10 +67,10 @@ take a second pass at Cassette's design, get tests/benchmarks in place, etc., an
 release the package (planned Winter 2017/2018, assuming Julia's compiler will be sufficient
 by then).
 
-- Contextual Call Interception Framework: Design is complete. Besides some significant
+- Contextual Code Execution Framework: Design is complete. Besides some significant
 details that require more compiler improvements, implementation is complete. Performance
 right now is pretty bad due to fixable compiler issues (specifically JuliaLang/julia#5402).
-Theoretically, once these bugs have been fixed, interception overhead should be quite low
+Theoretically, once these bugs have been fixed, Cassette overhead should be quite low
 (<5% of original program runtime). I have been testing this by measuring the performance of
 Cassette code rewritten to avoid the compiler performance problems (e.g. removing all
 splats), which makes the code pretty horrible and un-generic, but should be representative
@@ -91,7 +91,7 @@ updating any coupled graph code. Once those implementations are complete, I will
 and rebuild the graph framework on top of them. I expect this to take a 2-3 weeks of
 development time (longer in reality, since I have other responsibilities).
 
-## Cassette's Contextual Call Interception Framework
+## Cassette's Contextual Code Execution Framework
 
 [top](#cassette)
 
@@ -102,7 +102,7 @@ defined by Cassette users.
 
 ### Contextual Code Execution
 
-The easiest way to understand Cassette's call interception is via an example:
+The easiest way to understand Cassette's code execution is via an example:
 
 ```julia
 julia> using Cassette: @context, @hook, @execute
@@ -355,15 +355,15 @@ Let's macroexpand our `@execute` call to get a better idea of what's actually go
 
 ```julia
 julia> @macroexpand @execute MyCtx rosenbrock(rand(2))
-:((Cassette.Intercept(MyCtx(rosenbrock), rosenbrock))(rand(2)))
+:((Cassette.Execute(MyCtx(rosenbrock), rosenbrock))(rand(2)))
 ```
 
 For clarity, let's break this into two parts:
 
 ```julia
-# construct callable `Intercept` struct
-julia> f = Cassette.Intercept(MyCtx(rosenbrock), rosenbrock)
-Cassette.Intercept{MyCtx{0xa7c6d08bc9254c7f},#rosenbrock}(MyCtx{12089579548516371583}(), rosenbrock)
+# construct callable `Execute` struct
+julia> f = Cassette.Execute(MyCtx(rosenbrock), rosenbrock)
+Cassette.Execute{MyCtx{0xa7c6d08bc9254c7f},#rosenbrock}(MyCtx{12089579548516371583}(), rosenbrock)
 
 # call `f` on our argument
 julia> f(rand(2))
@@ -376,8 +376,8 @@ OH WOW, NUMERIC ARGUMENTS! -(2, 1)
 
 If everything is inlined aggressively, then the lowered code for `f(rand(2))` will be nearly
 the same as the lowered code for `rosenbrock(rand(2))`, with the key difference that every
-method call within the program has been wrapped in an `Intercept`. Internally, the
-definition of `Intercept` looks similar to the following (this is *not* the real code, but
+method call within the program has been wrapped in an `Execute`. Internally, the
+definition of `Execute` looks similar to the following (this is *not* the real code, but
 hopefully illuminates the kind of thing going on under the hood):
 
 ```julia
@@ -386,33 +386,32 @@ struct Intercept{C<:Context,F}
     func::F
 end
 
-Intercept(e::Enter, f) = Intercept(e.context, f)
+@generated function (i::Intercept)(args...)
+    # I'm not going to show this because it's pretty complicated, but
+    # what this does is run the underlying contextualized method call
+    # with all subcalls wrapped in `Execute`
+end
 
-hook(i::Intercept, args...) = _hook(i.context, i.func, args...)
-
-isprimitive(i::Intercept, args...) = _isprimitive(i.context, i.func, args...)
-
-execute(i::Intercept, args...) = execute(isprimitive(i, args...), i, args...)
-execute(::Val{true}, i::Intercept, args...) = _execution(i.context, i.func, args...)
-execute(::Val{false}, i::Intercept, args...) = Enter(i.context, i.func)(args...)
-
-(i::Intercept)(args...) = (hook(i, args...); execute(i, args...))
-
-struct Enter{C<:Context,F}
+struct Execute{C<:Context,F}
     context::C
     func::F
 end
 
-@generated function (e::Enter)(args...)
-    # I'm not going to show this because it's pretty complicated, but
-    # what this does is run the underlying contextualized method call
-    # with all subcalls wrapped in `Intercept`
-end
+Execute(i::Intercept, f) = Execute(i.context, f)
 
+hook(e::Execute, args...) = _hook(e.context, e.func, args...)
+
+isprimitive(e::Execute, args...) = _isprimitive(e.context, e.func, args...)
+
+execute(e::Execute, args...) = execute(isprimitive(e, args...), e, args...)
+execute(::Val{true}, e::Execute, args...) = _execution(e.context, e.func, args...)
+execute(::Val{false}, e::Execute, args...) = Intercept(e.context, e.func)(args...)
+
+(e::Execute)(args...) = (hook(e, args...); execute(e, args...))
 ```
 
-To further illustrate the interception mechanism, let's look at the lowered code for a normal
-`rosenbrock` call and compare it to the lowered code for a call to an `Enter` struct:
+To further illustrate the execution mechanism, let's look at the lowered code for a normal
+`rosenbrock` call and compare it to the lowered code for a call to an `Intercept` struct:
 
 ```julia
 julia> @code_lowered rosenbrock(rand(2))
@@ -433,8 +432,8 @@ CodeInfo(:(begin
         return result
     end))
 
-julia> f = Cassette.Enter(MyCtx(rosenbrock), rosenbrock)
-Cassette.Enter{MyCtx{0xa7c6d08bc9254c7f},#rosenbrock}(MyCtx{12089579548516371583}(), rosenbrock)
+julia> f = Cassette.Intercept(MyCtx(rosenbrock), rosenbrock)
+Cassette.Intercept{MyCtx{0xa7c6d08bc9254c7f},#rosenbrock}(MyCtx{12089579548516371583}(), rosenbrock)
 
 julia> @code_lowered f(rand(2))
 CodeInfo(:(begin
@@ -442,14 +441,14 @@ CodeInfo(:(begin
         a = 1.0
         b = 100.0
         result = 0.0
-        SSAValue(0) = ((Cassette.Intercept)(#self#, Main.colon))(1, ((Cassette.Intercept)(#self#, Main.-))(((Cassette.Intercept)(#self#, Main.length))(x), 1))
-        #temp# = ((Cassette.Intercept)(#self#, Base.start))(SSAValue(0))
+        SSAValue(0) = ((Cassette.Execute)(#self#, Main.colon))(1, ((Cassette.Execute)(#self#, Main.-))(((Cassette.Execute)(#self#, Main.length))(x), 1))
+        #temp# = ((Cassette.Execute)(#self#, Base.start))(SSAValue(0))
         10:
-        unless ((Cassette.Intercept)(#self#, Base.!))(((Cassette.Intercept)(#self#, Base.done))(SSAValue(0), #temp#)) goto 19
-        SSAValue(1) = ((Cassette.Intercept)(#self#, Base.next))(SSAValue(0), #temp#)
+        unless ((Cassette.Execute)(#self#, Base.!))(((Cassette.Execute)(#self#, Base.done))(SSAValue(0), #temp#)) goto 19
+        SSAValue(1) = ((Cassette.Execute)(#self#, Base.next))(SSAValue(0), #temp#)
         i = (Core.getfield)(SSAValue(1), 1)
         #temp# = (Core.getfield)(SSAValue(1), 2)
-        result = ((Cassette.Intercept)(#self#, Main.+))(result, ((Cassette.Intercept)(#self#, Main.+))(((Cassette.Intercept)(#self#, Base.literal_pow))(Main.^, ((Cassette.Intercept)(#self#, Main.-))(a, ((Cassette.Intercept)(#self#, Main.getindex))(x, i)), ((Cassette.Intercept)(#self#, (Core.apply_type)(Base.Val, 2)))()), ((Cassette.Intercept)(#self#, Main.*))(b, ((Cassette.Intercept)(#self#, Base.literal_pow))(Main.^, ((Cassette.Intercept)(#self#, Main.-))(((Cassette.Intercept)(#self#, Main.getindex))(x, ((Cassette.Intercept)(#self#, Main.+))(i, 1)), ((Cassette.Intercept)(#self#, Base.literal_pow))(Main.^, ((Cassette.Intercept)(#self#, Main.getindex))(x, i), ((Cassette.Intercept)(#self#, (Core.apply_type)(Base.Val, 2)))())), ((Cassette.Intercept)(#self#, (Core.apply_type)(Base.Val, 2)))()))))
+        result = ((Cassette.Execute)(#self#, Main.+))(result, ((Cassette.Execute)(#self#, Main.+))(((Cassette.Execute)(#self#, Base.literal_pow))(Main.^, ((Cassette.Execute)(#self#, Main.-))(a, ((Cassette.Execute)(#self#, Main.getindex))(x, i)), ((Cassette.Execute)(#self#, (Core.apply_type)(Base.Val, 2)))()), ((Cassette.Execute)(#self#, Main.*))(b, ((Cassette.Execute)(#self#, Base.literal_pow))(Main.^, ((Cassette.Execute)(#self#, Main.-))(((Cassette.Execute)(#self#, Main.getindex))(x, ((Cassette.Execute)(#self#, Main.+))(i, 1)), ((Cassette.Execute)(#self#, Base.literal_pow))(Main.^, ((Cassette.Execute)(#self#, Main.getindex))(x, i), ((Cassette.Execute)(#self#, (Core.apply_type)(Base.Val, 2)))())), ((Cassette.Execute)(#self#, (Core.apply_type)(Base.Val, 2)))()))))
         goto 10
         19:
         return result
@@ -471,7 +470,7 @@ There are two separate mechanisms that encompass Cassette's notion of a "primiti
 first mechanism is the definition of a given primitive's execution in a given context. The
 second is a predicate definition that specifies whether a given method is counts as a
 primitive in a given context. Cassette uses this second mechanism to decide when to
-invoke the first mechanism, or to otherwise recursively apply `Enter` to a method call.
+invoke the first mechanism, or to otherwise recursively apply `Intercept` to a method call.
 
 For the first mechanism, Cassette provides the `@execution` macro, which wraps a method
 definition in a similar manner to `@hook`. For the second mechanism, Cassette provides the
@@ -552,7 +551,7 @@ Description coming soon!
 
 Cassette shares many concepts in common with [aspect-oriented programming (AOP)](https://en.wikipedia.org/wiki/Aspect-oriented_programming).
 
-Cassette's call interception framework is similar to an aspect weaver, except that the
+Cassette's code execution framework is similar to an aspect weaver, except that the
 "weaving" is method-local, based on operator-overloading, occurs at runtime, and is JIT
 compiled. Cassette's call hooks can be used to provide at AOP-style "advice", where
 the pointcut is specified via Julia's multiple dispatch mechanism.
