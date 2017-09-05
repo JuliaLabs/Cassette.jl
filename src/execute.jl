@@ -49,11 +49,11 @@ function _lookup_code_info(::Type{S}, arg_names::Vector,
         vararg_tuple = Expr(:call, GlobalRef(Core, :tuple), [SlotNumber(i) for i in nargs:new_nargs]...)
         new_slots = Any[SlotNumber(i) for i in 1:(method.nargs - 1)]
         push!(new_slots, vararg_tuple)
-        Base.Core.Inference.substitute!(body, new_nargs, new_slots, method_signature, static_params, offset)
+        Base.Core.Inference.substitute!(body, new_nargs, new_slots, method_signature, static_params, offset, :propagate)
         code_info.slotnames = new_slotnames
         code_info.slotflags = new_slotflags
     else
-        Base.Core.Inference.substitute!(body, 0, Any[], method_signature, static_params, 0)
+        Base.Core.Inference.substitute!(body, 0, Any[], method_signature, static_params, 0, :propagate)
     end
 
     return method, code_info
