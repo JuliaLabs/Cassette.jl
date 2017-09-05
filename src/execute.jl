@@ -112,16 +112,18 @@ replace_slotnumbers!(f, x) = replace_match!(f, s -> isa(s, SlotNumber), x)
 # Intercept #
 #############
 
-struct Intercept{C<:Context,F,d,w}
+struct Intercept{C<:Context,G,F,d,w}
     context::C
+    config::G
     func::F
     debug::Val{d}
     world::Val{w}
     @inline function Intercept(context::C,
+                               config::G,
                                func::F,
                                debug::Val{d} = Val(false),
-                               world::Val{w} = Val(get_world_age())) where {C<:Context,F,d,w}
-        return new{C,F,d,w}(context, func, debug, world)
+                               world::Val{w} = Val(get_world_age())) where {C<:Context,G,F,d,w}
+        return new{C,G,F,d,w}(context, config, func, debug, world)
     end
 end
 
@@ -162,7 +164,7 @@ for N in 0:MAX_ARGS
     arg_names = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
     arg_types = [:(value(C, $T)) for T in arg_names]
     @eval begin
-        @generated function (i::Intercept{C,F,d,w})($(arg_names...)) where {C<:Context,F,d,w}
+        @generated function (i::Intercept{C,G,F,d,w})($(arg_names...)) where {C<:Context,G,F,d,w}
             code_info = lookup_code_info(Tuple{value(C, F),$(arg_types...)}, $arg_names, d, w)
             body = intercept_calls!(code_info, :i, $arg_names, d)
             return body
@@ -174,32 +176,34 @@ end
 # Execute #
 ###########
 
-struct Execute{C<:Context,F,p,d,w}
+struct Execute{C<:Context,G,F,p,d,w}
     context::C
+    config::G
     func::F
     primitive::Val{p}
     debug::Val{d}
     world::Val{w}
     @inline function Execute(context::C,
+                             config::G,
                              func::F,
                              primitive::Val{p} = Val(false),
                              debug::Val{d} = Val(false),
-                             world::Val{w} = Val(get_world_age())) where {C<:Context,F,d,p,w}
-        return new{C,F,p,d,w}(context, func, primitive, debug, world)
+                             world::Val{w} = Val(get_world_age())) where {C<:Context,G,F,d,p,w}
+        return new{C,G,F,p,d,w}(context, config, func, primitive, debug, world)
     end
 end
 
-@inline Execute(i::Intercept, f) = Execute(i.context, f, Val(false), i.debug, i.world)
+@inline Execute(i::Intercept, f) = Execute(i.context, i.config, f, Val(false), i.debug, i.world)
 
-@inline Execute(i::Intercept) = Execute(i.context, i.func, Val(true), i.debug, i.world)
+@inline Execute(i::Intercept) = Execute(i.context, i.config, i.func, Val(true), i.debug, i.world)
 
-@inline hook(e::Execute, args...) = hook(e.world, e.context, e.func, args...)
+@inline hook(e::Execute, args...) = hook(e.world, e.context, e.config, e.func, args...)
 
-@inline isprimitive(e::Execute{<:Context,<:Any,true}, args...) = Val(true)
-@inline isprimitive(e::Execute{<:Context,<:Any,false}, args...) = isprimitive(e.world, e.context, e.func, args...)
+@inline isprimitive(e::Execute{<:Context,<:Any,<:Any,true}, args...) = Val(true)
+@inline isprimitive(e::Execute{<:Context,<:Any,<:Any,false}, args...) = isprimitive(e.world, e.context, e.config, e.func, args...)
 
 @inline execute(e::Execute, args...) = execute(isprimitive(e, args...), e, args...)
-@inline execute(::Val{true}, e::Execute, args...) = execution(e.world, e.context, e.func, args...)
-@inline execute(::Val{false}, e::Execute, args...) = Intercept(e.context, e.func, e.debug, e.world)(args...)
+@inline execute(::Val{true}, e::Execute, args...) = execution(e.world, e.context, e.config, e.func, args...)
+@inline execute(::Val{false}, e::Execute, args...) = Intercept(e.context, e.config, e.func, e.debug, e.world)(args...)
 
 @inline (e::Execute)(args...) = (hook(e, args...); execute(e, args...))
