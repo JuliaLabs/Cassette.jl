@@ -6,11 +6,10 @@ macro context(Ctx)
     @assert isa(Ctx, Symbol) "context name must be a Symbol"
     name = Expr(:quote, Ctx)
     return esc(quote
-        struct $Ctx{T,M} <: $Cassette.Context{$name,T}
+        struct $Ctx{T} <: $Cassette.Context{$name,T}
             tag::$Cassette.Tag{T}
-            meta::M
         end
-        @inline $Ctx(x, meta = nothing) = $Ctx($Cassette.Tag(x), meta)
+        @inline $Ctx(x) = $Ctx($Cassette.Tag(x))
         $Cassette.@hook $Ctx f(args...) = nothing
         $Cassette.@execution ctx::$Ctx f(args...) = $Cassette.lowercall(f, ctx, args...)
     end)
@@ -20,11 +19,12 @@ end
 # @execute #
 ############
 
-macro execute(ctx, call)
+macro execute(args...)
+    ctx, cfg, call = unpack_contextual_macro_args(nothing, args...)
     @assert isa(call, Expr) && call.head == :call
     ctxsym = gensym("context")
     f = call.args[1]
-    call.args[1] = :($Cassette.Execute($ctxsym, $f))
+    call.args[1] = :($Cassette.Execute($ctxsym, $cfg, $f))
     replace_match!(x -> :($Cassette.Meta($ctxsym, $(x.args[3:end]...))), ismetamacrocall, call.args)
     return esc(:($ctxsym = $ctx($f); $call))
 end
@@ -33,23 +33,26 @@ end
 # @hook #
 #########
 
-macro hook(ctx, def)
-    return contextual_transform!(ctx, :($Cassette._hook), def)
+macro hook(args...)
+    ctx, cfg, def = unpack_contextual_macro_args(:(::Any), args...)
+    return contextual_transform!(ctx, cfg, :($Cassette._hook), def)
 end
 
 ##############
 # @execution #
 ##############
 
-macro execution(ctx, def)
-    return contextual_transform!(ctx, :($Cassette._execution), def)
+macro execution(args...)
+    ctx, cfg, def = unpack_contextual_macro_args(:(::Any), args...)
+    return contextual_transform!(ctx, cfg, :($Cassette._execution), def)
 end
 
 ################
 # @isprimitive #
 ################
 
-macro isprimitive(ctx, signature)
+macro isprimitive(args...)
+    ctx, cfg, signature = unpack_contextual_macro_args(:(::Any), args...)
     body = Expr(:block)
     push!(body.args, :(return Val(true)))
     return contextual_transform!(ctx, :($Cassette._isprimitive), signature, body)
@@ -59,12 +62,13 @@ end
 # @primitive #
 ##############
 
-macro primitive(ctx, def)
+macro primitive(args...)
+    ctx, cfg, def = unpack_contextual_macro_args(:(::Any), args...)
     @assert is_method_definition(def)
     signature = deepcopy(first(def.args))
     return esc(quote
-        $Cassette.@execution $ctx $def
-        $Cassette.@isprimitive $ctx $signature
+        $Cassette.@execution $ctx $cfg $def
+        $Cassette.@isprimitive $ctx $cfg $signature
     end)
 end
 
@@ -72,19 +76,30 @@ end
 # utilities #
 #############
 
+# returns ctx, cfg, def
+function unpack_contextual_macro_args(cfg_default, args...)
+    if length(args) == 2
+        return args[1], cfg_default, args[2]
+    elseif length(args) == 3
+        return args
+    else
+        error("incorrect number of arguments to a contextual definition macros")
+    end
+end
+
 macro Meta(args...)
     error("cannot use @Meta macro outside of the scope of Cassette's other macros (@execute, @execution, @isprimitive, @primitive, @hook)")
 end
 
 ismetamacrocall(x) = isa(x, Expr) && x.head == :macrocall && x.args[1] == Symbol("@Meta")
 
-function contextual_transform!(ctx, f, method)
+function contextual_transform!(ctx, cfg, f, method)
     @assert is_method_definition(method)
     signature, body = method.args
-    return contextual_transform!(ctx, f, signature, body)
+    return contextual_transform!(ctx, cfg, f, signature, body)
 end
 
-function contextual_transform!(ctx, f, signature::Expr, body::Expr)
+function contextual_transform!(ctx, cfg, f, signature::Expr, body::Expr)
     @assert is_valid_ctx_specification(ctx) "invalid context specifier: $ctx. Valid syntax is `ContextType` or `context_name::ContextType`."
 
     if signature.head != :where
@@ -125,7 +140,7 @@ function contextual_transform!(ctx, f, signature::Expr, body::Expr)
         end
     end
 
-    signature.args[1] = Expr(:call, f, ctx, callargs...)
+    signature.args[1] = Expr(:call, f, ctx, cfg, callargs...)
 
     unshift!(body.args, Expr(:meta, :inline))
 
