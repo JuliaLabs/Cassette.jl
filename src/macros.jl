@@ -55,7 +55,7 @@ macro isprimitive(args...)
     ctx, cfg, signature = unpack_contextual_macro_args(:(::Any), args...)
     body = Expr(:block)
     push!(body.args, :(return Val(true)))
-    return contextual_transform!(ctx, :($Cassette._isprimitive), signature, body)
+    return contextual_transform!(ctx, cfg, :($Cassette._isprimitive), signature, body)
 end
 
 ##############
