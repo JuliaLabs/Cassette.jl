@@ -19,39 +19,6 @@ abstract type Context{S,T} end
 
 Base.show(io::IO, ::Context{S,T}) where {S,T} = print(io, "$S{$T}()")
 
-########
-# Meta #
-########
-
-struct Meta{C<:Context,V,M,U}
-    context::C
-    value::V
-    meta::M
-    @inline Meta(context::C, value::V, meta::M = nothing) where {C,V,M} = new{C,V,M,V}(context, value, meta)
-    @inline Meta(context::C, value::Type{V}, meta::M = nothing) where {C,V,M} = new{C,Type{value},M,Type{value}}(context, value, meta)
-    @inline Meta(context::C, value::Meta{<:Context,<:Any,<:Any,U}, meta::M = nothing) where {C,M,U} = new{C,typeof(value),M,U}(context, value, meta)
-end
-
-@inline value(::Context, x) = x
-@inline value(::Type{C}, ::Type{X}) where {C,X} = X
-@inline value(::C, x::Meta{C}) where {C<:Context} = x.value
-@inline value(::Type{C}, ::Type{X}) where {C<:Context,V,X<:Meta{C,V}} = V
-@inline value(::Type{C}, ::Type{Union{}}) where {C<:Context} = Union{}
-@inline value(::Type{Type{C}}, ::Type{Type{X}}) where {C<:Context,X<:Meta} = value(C, X)
-@inline value(::Type{Type{C}}, ::Type{X}) where {C<:Context,X<:Meta} = value(C, X)
-@inline value(::Type{C}, ::Type{Type{X}}) where {C<:Context,X<:Meta} = value(C, X)
-
-@inline meta(::C, x::Meta{C}) where {C<:Context} = x.meta
-@inline meta(ctx::Context) = ctx.meta
-
-@generated function lowercall(f, ctx::Context, args...)
-    valargs = [:(value(ctx, args[$i])) for i in 1:nfields(args)]
-    return quote
-        $(Expr(:meta, :inline))
-        value(ctx, f)($(valargs...))
-    end
-end
-
 ###############################################
 # method stubs for macros (see src/macros.jl) #
 ###############################################
@@ -62,7 +29,7 @@ function _hook end
 
 function _execution end
 
-@inline execution(::Val{world}, ctx::Context, cfg, f, args...) where {world} = _execution(ctx, cfg, f, args...)
+@inline execution(::Val{world}, ctx::Context, cfg, f, args...) where {world} = containerize(_execution(ctx, cfg, f, args...))
 
 @inline _isprimitive(args...) = Val(false)
 
