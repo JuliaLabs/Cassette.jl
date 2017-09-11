@@ -1,30 +1,15 @@
+################
+# AbstractMeta #
+################
 
-abstract type AbstractMeta{C<:Context} end
-
-#############
-# MetaValue #
-#############
-
-struct MetaValue{C<:Context,V,M,U} <: AbstractMeta{C}
-    context::C
-    value::V
-    meta::M
-    @inline MetaValue(context::C, value::V, meta::M = nothing) where {C,V,M} = new{C,V,M,V}(context, value, meta)
-    @inline MetaValue(context::C, value::Type{V}, meta::M = nothing) where {C,V,M} = new{C,Type{value},M,Type{value}}(context, value, meta)
-    @inline MetaValue(context::C, value::MetaValue{<:Context,<:Any,<:Any,U}, meta::M = nothing) where {C,M,U} = new{C,typeof(value),M,U}(context, value, meta)
-end
+abstract type AbstractMeta{C<:Context,V,M,U} end
 
 @inline value(::Context, x) = x
-@inline value(::Type{C}, ::Type{X}) where {C,X} = X
-@inline value(::C, x::MetaValue{C}) where {C<:Context} = x.value
-@inline value(::Type{C}, ::Type{X}) where {C<:Context,V,X<:MetaValue{C,V}} = V
 @inline value(::Type{C}, ::Type{Union{}}) where {C<:Context} = Union{}
-@inline value(::Type{Type{C}}, ::Type{Type{X}}) where {C<:Context,X<:MetaValue} = value(C, X)
-@inline value(::Type{Type{C}}, ::Type{X}) where {C<:Context,X<:MetaValue} = value(C, X)
-@inline value(::Type{C}, ::Type{Type{X}}) where {C<:Context,X<:MetaValue} = value(C, X)
-
-@inline meta(::C, x::MetaValue{C}) where {C<:Context} = x.meta
-@inline meta(ctx::Context) = ctx.meta
+@inline value(::Type{C}, ::Type{X}) where {C<:Context,V,X<:AbstractMeta{C,V}} = V
+@inline value(::Type{Type{C}}, ::Type{Type{X}}) where {C<:Context,X} = value(C, X)
+@inline value(::Type{Type{C}}, ::Type{X}) where {C<:Context,X} = value(C, X)
+@inline value(::Type{C}, ::Type{Type{X}}) where {C<:Context,X} = value(C, X)
 
 @generated function lowercall(f, ctx::Context, args...)
     valargs = [:(value(ctx, args[$i])) for i in 1:nfields(args)]
@@ -34,17 +19,39 @@ end
     end
 end
 
+#############
+# MetaValue #
+#############
+
+struct MetaValue{C<:Context,V,M,U} <: AbstractMeta{C,V,M,U}
+    context::C
+    value::V
+    meta::M
+    @inline MetaValue(context::C, value::V, meta::M = nothing) where {C,V,M} = new{C,V,M,V}(context, value, meta)
+    @inline MetaValue(context::C, value::Type{V}, meta::M = nothing) where {C,V,M} = new{C,Type{value},M,Type{value}}(context, value, meta)
+    @inline MetaValue(context::C, value::MetaValue{<:Context,<:Any,<:Any,U}, meta::M = nothing) where {C,M,U} = new{C,typeof(value),M,U}(context, value, meta)
+end
+
+@inline value(::C, x::MetaValue{C}) where {C<:Context} = x.value
+
+@inline meta(::C, x::MetaValue{C}) where {C<:Context} = x.meta
+@inline meta(ctx::Context) = ctx.meta
+
 #################
 # MetaContainer #
 #################
 
-struct MetaContainer{C<:Context,V,M} <: AbstractMeta{C}
+struct MetaContainer{C<:Context,V,M,U} <: AbstractMeta{C,V,M,U}
     context::C
     value::V
     meta::RefValue{M}
     @inline function MetaContainer(context::C, value::V) where {C,V}
         M = meta_containertype(C, V)
-        return new{C,V,M}(kind, context, value, RefValue{M}())
+        return new{C,V,M,V}(kind, context, value, RefValue{M}())
+    end
+    @inline function MetaContainer(context::C, value::MetaContainer{<:Context,<:Any,<:Any,U}) where {C,U}
+        M = meta_containertype(C, typeof(value))
+        return new{C,typeof(value),M,U}(kind, context, value, RefValue{M}())
     end
 end
 
@@ -77,6 +84,10 @@ end
 @inline meta_arraytype(::Type{<:Array}, ::Type{Void}) = Void
 
 @inline meta_arraytype(::Type{A}, ::Type{M}) where {T,N,A<:Array{T,N},M} = Array{M,N}
+
+@inline meta_arrayref(args...) = Core.arrayref(args...)
+
+@inline meta_arrayset(args...) = Core.arrayset(args...)
 
 @inline meta_arrayref(boundscheck::Bool, x::MetaContainer{<:Context,<:Array,Void}, i) = Core.arrayref(boundscheck, x.value, i)
 

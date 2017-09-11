@@ -206,10 +206,4 @@ end
 @inline execute(::Val{true}, e::Execute, args...) = execution(e.world, e.context, e.config, e.func, args...)
 @inline execute(::Val{false}, e::Execute, args...) = Intercept(e.context, e.config, e.func, e.debug, e.world)(args...)
 
-# TODO: Could this replace MetaContainer{_,<:Array}? Would need to unwrap types of the form Type{Union{A...,M,B...}} --> Type{Union{A...,B...}}
-# @inline function execute(e::Execute{<:Context,<:Any,Type{A}}, args...) where {T,N,A<:Array{T,N}}
-#     M = meta_eltype(e.context, T)
-#     return Array{Union{T,M},N}(args...)
-# end
-
 @inline (e::Execute)(args...) = (hook(e, args...); execute(e, args...))

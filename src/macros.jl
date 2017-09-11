@@ -12,6 +12,8 @@ macro context(Ctx)
         @inline $Ctx(x) = $Ctx($Cassette.Tag(x))
         $Cassette.@hook $Ctx f(args...) = nothing
         $Cassette.@execution ctx::$Ctx f(args...) = $Cassette.lowercall(f, ctx, args...)
+        $Cassette.@execution ctx::$Ctx (::typeof(Core.arrayref))(args...) = $Cassette.meta_arrayref(args...)
+        $Cassette.@execution ctx::$Ctx (::typeof(Core.arrayset))(args...) = $Cassette.meta_arrayset(args...)
     end)
 end
 
@@ -25,7 +27,7 @@ macro execute(args...)
     ctxsym = gensym("context")
     f = call.args[1]
     call.args[1] = :($Cassette.Execute($ctxsym, $cfg, $f))
-    replace_match!(x -> :($Cassette.Meta($ctxsym, $(x.args[3:end]...))), ismetamacrocall, call.args)
+    replace_match!(x -> :($Cassette.MetaValue($ctxsym, $(x.args[3:end]...))), ismetamacrocall, call.args)
     return esc(:($ctxsym = $ctx($f); $call))
 end
 
@@ -87,11 +89,11 @@ function unpack_contextual_macro_args(cfg_default, args...)
     end
 end
 
-macro Meta(args...)
-    error("cannot use @Meta macro outside of the scope of Cassette's other macros (@execute, @execution, @isprimitive, @primitive, @hook)")
+macro MetaValue(args...)
+    error("cannot use @MetaValue macro outside of the scope of Cassette's other macros (@execute, @execution, @isprimitive, @primitive, @hook)")
 end
 
-ismetamacrocall(x) = isa(x, Expr) && x.head == :macrocall && x.args[1] == Symbol("@Meta")
+ismetamacrocall(x) = isa(x, Expr) && x.head == :macrocall && x.args[1] == Symbol("@MetaValue")
 
 function contextual_transform!(ctx, cfg, f, method)
     @assert is_method_definition(method)
@@ -130,11 +132,11 @@ function contextual_transform!(ctx, cfg, f, signature::Expr, body::Expr)
                 elseif length(metaargs) == 2
                     U, M = metaargs
                 else
-                    error("incorrect usage of `@Meta`: $(xtype)")
+                    error("incorrect usage of `@MetaValue`: $(xtype)")
                 end
-                new_xtype = :($Cassette.Meta{$ctxtypevar,<:Any,<:$M,<:$U})
+                new_xtype = :($Cassette.MetaValue{$ctxtypevar,<:Any,<:$M,<:$U})
             else
-                new_xtype = :(Union{$Cassette.Meta{<:Any,<:Any,<:Any,<:$xtype},$xtype})
+                new_xtype = :(Union{$Cassette.MetaValue{<:Any,<:Any,<:Any,<:$xtype},$xtype})
             end
             x.args[end] = new_xtype
         end
