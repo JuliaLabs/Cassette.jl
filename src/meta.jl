@@ -33,9 +33,7 @@ struct MetaValue{C<:Context,V,M,U} <: AbstractMeta{C,V,M,U}
 end
 
 @inline value(::C, x::MetaValue{C}) where {C<:Context} = x.value
-
 @inline meta(::C, x::MetaValue{C}) where {C<:Context} = x.meta
-@inline meta(ctx::Context) = ctx.meta
 
 #################
 # MetaContainer #
@@ -45,24 +43,36 @@ struct MetaContainer{C<:Context,V,M,U} <: AbstractMeta{C,V,M,U}
     context::C
     value::V
     meta::RefValue{M}
-    @inline function MetaContainer(context::C, value::V) where {C,V}
-        M = meta_containertype(C, V)
+    @inline function MetaContainer(context::C, cfg, value::V) where {C,V}
+        M = metacontainertype(context, cfg, V)
         return new{C,V,M,V}(kind, context, value, RefValue{M}())
     end
-    @inline function MetaContainer(context::C, value::MetaContainer{<:Context,<:Any,<:Any,U}) where {C,U}
-        M = meta_containertype(C, typeof(value))
-        return new{C,typeof(value),M,U}(kind, context, value, RefValue{M}())
+    @inline function MetaContainer(context::C, cfg, value::MetaContainer{<:Context,<:Any,<:Any,U}) where {C,U}
+        V = typeof(value)
+        M = metacontainertype(context, cfg, V)
+        return new{C,V,M,U}(kind, context, value, RefValue{M}())
+    end
+end
+
+@inline metatype(ctx::Context, cfg, T) = Void
+
+@inline function metacontainertype(ctx::Context, cfg, ::Type{A}) where {T,N,A<:Array{T,N}}
+    M = metatype(ctx, cfg, T)
+    if M <: Void
+        return Void
+    else
+        return Array{M,N}
     end
 end
 
 # containerize #
 #--------------#
 
-@inline containerize(ctx::Context, x::Tuple) = containerize.(ctx, x)
-@inline containerize(ctx::Context, x::Array) = MetaContainer(ctx, x)
-@inline containerize(ctx::Context, x::MetaContainer) = MetaContainer(ctx, x)
-@inline containerize(ctx::C,       x::MetaContainer{C}) where {C<:Context} = x
-@inline containerize(ctx::Context, x) = x
+@inline containerize(ctx::Context, cfg, x::Tuple) = map(i -> containerize(ctx, cfg, i), x)
+@inline containerize(ctx::Context, cfg, x::Array) = MetaContainer(ctx, cfg, x)
+@inline containerize(ctx::Context, cfg, x::MetaContainer) = MetaContainer(ctx, cfg, x)
+@inline containerize(ctx::C,       cfg, x::MetaContainer{C}) where {C<:Context} = x
+@inline containerize(ctx::Context, cfg, x) = x
 
 # @inline function containerize(ctx::Context, x)
 #     if isimmutable(x)
@@ -72,18 +82,8 @@ end
 #     end
 # end
 
-# MetaContainer{<:Context,<:Array} #
-#----------------------------------#
-
-@inline function meta_containertype(::Type{C}, ::Type{A}) where {C<:Context,T,A<:Array{T}}
-    return meta_arraytype(A, meta_eltype(C, T))
-end
-
-@inline meta_eltype(C, T) = Void
-
-@inline meta_arraytype(::Type{<:Array}, ::Type{Void}) = Void
-
-@inline meta_arraytype(::Type{A}, ::Type{M}) where {T,N,A<:Array{T,N},M} = Array{M,N}
+# arrayref/arrayset #
+#-------------------#
 
 @inline meta_arrayref(args...) = Core.arrayref(args...)
 
