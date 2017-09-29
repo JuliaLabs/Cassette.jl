@@ -89,11 +89,11 @@ function unpack_contextual_macro_args(cfg_default, args...)
     end
 end
 
-macro MetaValue(args...)
-    error("cannot use @MetaValue macro outside of the scope of Cassette's other macros (@execute, @execution, @isprimitive, @primitive, @hook)")
+macro Meta(args...)
+    error("cannot use @Meta macro outside of the scope of Cassette's other macros (@execute, @execution, @isprimitive, @primitive, @hook)")
 end
 
-ismetamacrocall(x) = isa(x, Expr) && x.head == :macrocall && x.args[1] == Symbol("@MetaValue")
+ismetamacrocall(x) = isa(x, Expr) && x.head == :macrocall && x.args[1] == Symbol("@Meta")
 
 function contextual_transform!(ctx, cfg, f, method)
     @assert is_method_definition(method)
@@ -132,7 +132,7 @@ function contextual_transform!(ctx, cfg, f, signature::Expr, body::Expr)
                 elseif length(metaargs) == 2
                     U, M = metaargs
                 else
-                    error("incorrect usage of `@MetaValue`: $(xtype)")
+                    error("incorrect usage of `@Meta`: $(xtype)")
                 end
                 new_xtype = :($Cassette.MetaValue{$ctxtypevar,<:Any,<:$M,<:$U})
             else
