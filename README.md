@@ -76,13 +76,12 @@ Cassette code rewritten to avoid the compiler performance problems (e.g. removin
 splats), which makes the code pretty horrible and un-generic, but should be representative
 of post-fix performance.
 
-- Contextual Metadata Propagation Framework: Design is mostly complete; some details remain
-regarding external state mutation. For the design areas that are complete, implementation is
-mostly complete, though I'm still actively experimenting with alternatives. Besides the
-mutation stuff, all that remains is final integration with the call interceptor (which is
-important, but shouldn't take more than a few days of development at most). Note that the
-same compiler performance problems that affect the call interceptor will affect metadata
-propagation.
+- Contextual Metadata Propagation Framework: Design is mostly complete, and for the
+design areas that are complete, implementation is mostly complete (though I'm still actively
+experimenting with alternatives). The central remaining problem has to do with propagating
+metadata through mutable structures. At this point, I expect this to take several weeks.
+Note that the same compiler performance problems that affect the call interceptor will
+affect metadata propagation.
 
 - Computation Graph Framework: I had a prototype of the graph framework running at JuliaCon
 2017, but I threw the prototype away a couple months ago so that I could focus on nailing
