@@ -11,7 +11,7 @@ abstract type AbstractMeta{C<:Context,V,M,U} end
 @inline value(::Type{Type{C}}, ::Type{X}) where {C<:Context,X} = value(C, X)
 @inline value(::Type{C}, ::Type{Type{X}}) where {C<:Context,X} = value(C, X)
 
-@generated function lowercall(f, ctx::Context, args...)
+@generated function escapecall(f, ctx::Context, args...)
     valargs = [:(value(ctx, args[$i])) for i in 1:nfields(args)]
     return quote
         $(Expr(:meta, :inline))

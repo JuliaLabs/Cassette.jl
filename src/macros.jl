@@ -11,7 +11,7 @@ macro context(Ctx)
         end
         @inline $Ctx(x) = $Ctx($Cassette.Tag(x))
         $Cassette.@hook $Ctx f(args...) = nothing
-        $Cassette.@execution ctx::$Ctx f(args...) = $Cassette.lowercall(f, ctx, args...)
+        $Cassette.@execution ctx::$Ctx f(args...) = $Cassette.escapecall(f, ctx, args...)
         $Cassette.@execution ctx::$Ctx (::typeof(Core.arrayref))(args...) = $Cassette.meta_arrayref(args...)
         $Cassette.@execution ctx::$Ctx (::typeof(Core.arrayset))(args...) = $Cassette.meta_arrayset(args...)
     end)

@@ -224,13 +224,13 @@ struct MyCtx{T} <: Cassette.Context{:MyCtx,T}
 end
 MyCtx(x) = MyCtx(Cassette.Tag(x))
 Cassette.@hook MyCtx f(args...) = nothing
-Cassette.@execution ctx::MyCtx f(args...) = Cassette.lowercall(f, ctx, args...)
+Cassette.@execution ctx::MyCtx f(args...) = Cassette.escapecall(f, ctx, args...)
 ```
 
 This last line is particularly important - it's a fallback definition that describes how
-to execute a function within in `MyCtx`. It uses `Cassette.lowercall`, which is a nifty
+to execute a function within in `MyCtx`. It uses `Cassette.escapecall`, which is a nifty
 function we'll learn more about in the [Contextual Metadata Propagation Framework](#cassettes-contextual-metadata-propagation-framework)
-section. Briefly, `lowercall(f, ctx, args...)` will strip `f` and `args` of any contextual
+section. Briefly, `escapecall(f, ctx, args...)` will strip `f` and `args` of any contextual
 metadata w.r.t. `ctx`, and then call `f(args...)`.
 
 #### 2. We defined a hook
