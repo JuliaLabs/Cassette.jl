@@ -2,6 +2,19 @@
 # AbstractMeta #
 ################
 
+"""
+    AbstractMeta{C<:Context,V,M,U}
+
+The supertype for a variety of metadata wrapper types.
+
+- `C` is the type of the context with which the metadata is associated
+- `V` is the type of the directly wrapped value, i.e. `value(ctx::C, m::AbstractMeta{C,V})::V`
+- `M` is the type of the metadata contained in the wrapper
+- `U` is the type of the fully unwrapped underlying value, e.g. in the case of nested
+contexts/metadata propagation. This is necessary to allow context creators to dispatch
+transparently on the underlying value type, i.e. it ensures that nested metadata wrapping
+doesn't interfere with contextual dispatch.
+"""
 abstract type AbstractMeta{C<:Context,V,M,U} end
 
 @inline value(::Context, x) = x
