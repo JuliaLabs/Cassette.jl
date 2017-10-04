@@ -33,6 +33,15 @@ end
 ###########
 # Wrapper #
 ###########
+# TODO: Should this be made into a `WrapperStruct` type and then have a seperate `Wrapper`
+# type that represents the "base" case (would be equivalent to the current `Wrapper`
+# when `isempty(w.fields)`)? I feel like the answer is yes, but I'm not sure. This current
+# `Wrapper` struct is a bit overpowered - the `meta` field should only be inflated at the
+# base case anyway, and downstream authors should only be able to dispatch on base case
+# `Wrapper`s...
+#
+# ...right?
+
 
 # Field #
 #-------#
