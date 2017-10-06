@@ -129,3 +129,30 @@ end
         getfield(w.value, $fieldname)
     end
 end
+
+############
+# Examples #
+############
+
+#=
+
+struct Foo
+    x::Union{String, Foo}
+    y::Union{Int, Foo}
+end
+
+# old way
+w = Wrapper("v", "m")    ≈ Wrapper("v", "m")
+foo = Foo(w, 1)          ≈ Wrapper(Foo("v", 1), nothing; x => "m")
+foo2 = Foo("ha", foo)    ≈ Wrapper(Foo("ha", Foo("v", 1)), nothing; y => x => "m")
+w2 = Wrapper(foo2, "m2") ≈ Wrapper(Foo("ha", Foo("v", 1)), "m2"; y => x => "m")
+foo3 = Foo(w2, 3)        ≈ Wrapper(Foo(Foo("ha", Foo("v", 1)), 3), nothing; x => y => x => "m", x => "m2")
+
+# new way?
+w = Wrapper("v", "m")    ≈ Wrapper("v", "m")
+foo = Foo(w, 1)          ≈ WrapperStruct(Foo("v", 1); x => "m")
+foo2 = Foo("ha", foo)    ≈ WrapperStruct(Foo("ha", Foo("v", 1)); y => x => "m")
+w2 = Wrapper(foo2, "m2") ≈ Wrapper(WrapperStruct(Foo("ha", Foo("v", 1)); y => x => "m"), "m2")
+foo3 = Foo(w2, 3)        ≈ WrapperStruct(Foo(Foo("ha", Foo("v", 1)), 3); x => y => x => "m", x => "m2")
+
+=#
