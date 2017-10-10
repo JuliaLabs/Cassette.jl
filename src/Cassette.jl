@@ -4,6 +4,8 @@ module Cassette
 
 using Base.RefValue
 
+const Box = Base.RefValue
+
 const MAX_ARGS = 50
 
 include("context.jl")

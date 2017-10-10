@@ -30,38 +30,27 @@ abstract type AbstractWrapper{C<:Context,U,V,M} end
     end
 end
 
-###########
-# Wrapper #
-###########
-# TODO: Should this be made into a `WrapperStruct` type and then have a seperate `Wrapper`
-# type that represents the "base" case (would be equivalent to the current `Wrapper`
-# when `isempty(w.fields)`)? I feel like the answer is yes, but I'm not sure. This current
-# `Wrapper` struct is a bit overpowered - the `meta` field should only be inflated at the
-# base case anyway, and downstream authors should only be able to dispatch on base case
-# `Wrapper`s...
-#
-# ...right?
+#################
+# AbstractField #
+#################
 
+abstract type AbstractField{name} end
 
-# Field #
-#-------#
+const FieldList = Tuple{Vararg{AbstractField}}
 
-# This only exists to work around the inability to specify self-referential parameter
-# contraints in type definitions (i.e. in the `Field` definition below)
-abstract type AbstractField end
-
-struct Field{n,D,C<:Tuple{Vararg{AbstractField}}} <: AbstractField
-    name::Val{n}
+struct Field{name,D,C<:FieldList} <: AbstractField{name}
     data::D
     children::C
+    @inline Field{name}(data::D, children::C = ()) where {name,D,C} = new{name,D,C}(data, children)
 end
 
-name(::Type{<:Field{n}}) where {n} = n
+@inline name(::Type{<:AbstractField{name}}) where {name} = name
 
+###########
 # Wrapper #
-#---------#
+###########
 
-struct Wrapper{C<:Context,U,V,M,F<:Tuple{Vararg{Field}}} <: AbstractWrapper{C,U,V,M}
+struct Wrapper{C<:Context,U,V,M,F<:FieldList} <: AbstractWrapper{C,U,V,M}
     context::C
     value::V
     meta::M
@@ -88,8 +77,8 @@ end
     fnames = fieldnames(T)
     for (i, arg) in enumerate(args)
         if arg <: Wrapper{C}
-            fname = :(Val($(Expr(:quote, fnames[i]))))
-            push!(fields.args, :(Field($fname, args[$i].meta, args[$i].fields)))
+            fname = Expr(:quote, fnames[i])
+            push!(fields.args, :(Field{$fname}(args[$i].meta, args[$i].fields)))
             push!(_new_args, :(args[$i].value))
         else
             push!(_new_args, :(args[$i]))
@@ -100,6 +89,29 @@ end
         Wrapper(ctx, _new(T, $(_new_args...)), meta, $fields)
     end
 end
+
+##################
+# MutableWrapper #
+##################
+
+# struct MutableWrapper{V,M<:Tuple{Vararg{MutableField}}}
+#     value::V
+#     meta::M
+#     @generated function MutableWrapper(value::V) where {V}
+#         meta = Expr(:tuple)
+#         for name in fieldnames(V)
+#             quoted_name = Expr(:quote, name)
+#             push!(meta.args, :(MutableField{$quoted_name}(Box{metatype(value.$name)}()), }()))
+#         end
+#         return quote
+#             $(Expr(:meta, :inline))
+#             meta = $meta
+#             return $(Expr(:new, :(MutableWrapper{V,typeof(meta)}), :value, :meta))
+#         end
+#     end
+# end
+#
+# metatype(x) = Float64
 
 ############################
 # Core Method Replacements #
@@ -112,7 +124,7 @@ end
     end
 end
 
-@inline _getfield(x, ::Val{fieldname}) where {fieldname} = getfield(x, fieldname)
+@inline _getfield(value, ::Val{fieldname}) where {fieldname} = getfield(value, fieldname)
 
 @generated function _getfield(w::Wrapper{C,U,V,M,F}, ::Val{fieldname}) where {C,U,V,M,F,fieldname}
     for (i, fieldtype) in enumerate(F.parameters)
@@ -130,29 +142,91 @@ end
     end
 end
 
-############
-# Examples #
-############
+@inline _setfield!(value, ::Val{fieldname}, x) where {fieldname} = setfield!(value, fieldname, x)
+
+@generated function _setfield!(w::Wrapper{C,U,V,M,F}, ::Val{fieldname}, x) where {C,U,V,M,F,fieldname}
+    if !(x <: Wrapper{C})
+        for (i, fieldtype) in enumerate(F.parameters)
+            if name(fieldtype) == fieldname
+                return quote
+                    $(Expr(:meta, :inline))
+                    # TODO
+                end
+            end
+        end
+        return quote
+            $(Expr(:meta, :inline))
+            setfield!(w.value, $fieldname, x)
+        end
+    else
+
+    end
+end
+
+##################
+# Notes/Examples #
+##################
 
 #=
 
-struct Foo
+# TODO
+
+Q: How to make `Wrapper` suitable for mutable structs?
+
+A: `MutableField{name,D,C} = Field{name,Box{D},C}` + wrapper preallocation for non-isbits
+types using an overloadable `metatype` function. This approach is nice because it could
+also work for per-field mutability, if Julia ever gets that feature in the future.
+
+Some fiddling around will be required to make the various constructors well-behaved; see the
+mocked-up MutableWrapper above.
+
+```
+mutable struct Foo
     x::Union{String, Foo}
     y::Union{Int, Foo}
 end
 
-# old way
-w = Wrapper("v", "m")    ≈ Wrapper("v", "m")
-foo = Foo(w, 1)          ≈ Wrapper(Foo("v", 1), nothing; x => "m")
-foo2 = Foo("ha", foo)    ≈ Wrapper(Foo("ha", Foo("v", 1)), nothing; y => x => "m")
-w2 = Wrapper(foo2, "m2") ≈ Wrapper(Foo("ha", Foo("v", 1)), "m2"; y => x => "m")
-foo3 = Foo(w2, 3)        ≈ Wrapper(Foo(Foo("ha", Foo("v", 1)), 3), nothing; x => y => x => "m", x => "m2")
+w = Wrapper(Foo("v", 1))
+w.x = "v2"
+w == Wrapper(Foo("v2", 1), nothing)
+w.x = Wrapper("v", "m")
+w == Wrapper(Foo("v", 1), nothing; x => "m")
+```
+=#
 
-# new way?
-w = Wrapper("v", "m")    ≈ Wrapper("v", "m")
-foo = Foo(w, 1)          ≈ WrapperStruct(Foo("v", 1); x => "m")
-foo2 = Foo("ha", foo)    ≈ WrapperStruct(Foo("ha", Foo("v", 1)); y => x => "m")
-w2 = Wrapper(foo2, "m2") ≈ Wrapper(WrapperStruct(Foo("ha", Foo("v", 1)); y => x => "m"), "m2")
-foo3 = Foo(w2, 3)        ≈ WrapperStruct(Foo(Foo("ha", Foo("v", 1)), 3); x => y => x => "m", x => "m2")
+#=
 
+Q: Should this be made into a `WrapperStruct` type and then have a seperate
+`Wrapper` type that represents the "base" case (would be equivalent to the current `Wrapper`
+when `isempty(w.fields)`)? I feel like the answer is yes, but I'm not sure. This current
+`Wrapper` struct is a bit overpowered - the `meta` field should only be inflated at the
+base case anyway, and downstream authors should only be able to dispatch on base case
+`Wrapper`s.
+
+A: See the below example. A single `Wrapper` approach is way simpler - this may be a
+case of "make your data structures slightly more complicated in order to vastly simplify
+your algorithms." The point about dispatch is still valid, though. We could just disallow
+dispatch on a metatype of `Void` somehow - maybe add an 'isactive' field that can be
+dispatched on?
+
+```
+mutable struct Foo
+    x::Union{String, Foo}
+    y::Union{Int, Foo}
+end
+
+# current way
+w = Wrapper("v", "m")    # ≈ Wrapper("v", "m")
+foo = Foo(w, 1)          # ≈ Wrapper(Foo("v", 1), nothing; x => "m")
+foo2 = Foo("ha", foo)    # ≈ Wrapper(Foo("ha", Foo("v", 1)), nothing; y => x => "m")
+w2 = Wrapper(foo2, "m2") # ≈ Wrapper(Foo("ha", Foo("v", 1)), "m2"; y => x => "m")
+foo3 = Foo(w2, 3)        # ≈ Wrapper(Foo(Foo("ha", Foo("v", 1)), 3), nothing; x => y => x => "m", x => "m2")
+
+# proposed way
+w = Wrapper("v", "m")    # ≈ Wrapper("v", "m")
+foo = Foo(w, 1)          # ≈ WrapperStruct(Foo("v", 1); x => "m")
+foo2 = Foo("ha", foo)    # ≈ WrapperStruct(Foo("ha", Foo("v", 1)); y => x => "m")
+w2 = Wrapper(foo2, "m2") # ≈ Wrapper(WrapperStruct(Foo("ha", Foo("v", 1)); y => x => "m"), "m2")
+foo3 = Foo(w2, 3)        # ≈ WrapperStruct(Foo(Foo("ha", Foo("v", 1)), 3); x => y => x => "m", x => "m2")
+```
 =#
