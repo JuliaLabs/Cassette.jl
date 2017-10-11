@@ -162,10 +162,10 @@ end
 
 for N in 0:MAX_ARGS
     arg_names = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
-    arg_types = [:(value(C, $T)) for T in arg_names]
+    arg_types = [:(unwrap(C, $T)) for T in arg_names]
     @eval begin
         @generated function (i::Intercept{C,M,F,d,w})($(arg_names...)) where {C<:Context,M,F,d,w}
-            code_info = lookup_code_info(Tuple{value(C, F),$(arg_types...)}, $arg_names, d, w)
+            code_info = lookup_code_info(Tuple{unwrap(C, F),$(arg_types...)}, $arg_names, d, w)
             body = intercept_calls!(code_info, :i, $arg_names, d)
             return body
         end

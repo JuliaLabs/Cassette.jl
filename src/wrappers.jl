@@ -16,7 +16,8 @@ doesn't interfere with contextual dispatch.
 abstract type AbstractWrapper{C<:Context,U,V,M} end
 
 @inline unwrap(::Context, x) = x
-@inline unwrap(::Type{C}, ::Type{Union{}}) where {C<:Context} = Union{}
+@inline unwrap(::Type{<:Context}, ::Type{X}) where {X} = X
+@inline unwrap(::Type{<:Context}, ::Type{Union{}}) = Union{}
 @inline unwrap(::Type{C}, ::Type{<:AbstractWrapper{C,U,V}}) where {C<:Context,U,V} = V
 @inline unwrap(::Type{Type{C}}, ::Type{Type{X}}) where {C<:Context,X} = unwrap(C, X)
 @inline unwrap(::Type{Type{C}}, ::Type{X}) where {C<:Context,X} = unwrap(C, X)

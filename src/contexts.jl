@@ -29,7 +29,7 @@ function _hook end
 
 function _execution end
 
-@inline execution(::Val{world}, ctx::Context, meta, f, args...) where {world} = containerize(_execution(ctx, meta, f, args...))
+@inline execution(::Val{world}, ctx::Context, meta, f, args...) where {world} = _execution(ctx, meta, f, args...)
 
 @inline _isprimitive(args...) = Val(false)
 
