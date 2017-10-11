@@ -13,7 +13,9 @@ function lookup_code_info(::Type{S}, arg_names::Vector,
         println("\tSIGNATURE: ", S)
         println("\tWORLD: ", world)
     end
-    method, code_info = _lookup_code_info(S, arg_names, world)
+    results = _lookup_code_info(S, arg_names, world)
+    results === nothing && return nothing
+    method, code_info = results
     debug && println("LOOKED UP METHOD: ", method)
     debug && println("LOOKED UP CODEINFO: ", code_info)
     return code_info
@@ -83,16 +85,7 @@ end
 
 # Call Replacement
 
-function is_replaceable_call(x)
-    if isa(x, Expr) && (x.head == :call)
-        if isa(x.args[1], GlobalRef)
-            return x.args[1].mod != Core
-        else
-            return true
-        end
-    end
-    return false
-end
+is_replaceable_call(x) = isa(x, Expr) && (x.head == :call)
 
 function transform_call!(f, call::Expr)
     call.args[1] = f(replace_calls!(f, Any[call.args[1]])[])

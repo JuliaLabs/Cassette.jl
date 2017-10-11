@@ -12,8 +12,8 @@ macro context(Ctx)
         @inline $Ctx(x) = $Ctx($Cassette.Tag(x))
         $Cassette.@hook $Ctx f(args...) = nothing
         $Cassette.@execution ctx::$Ctx f(args...) = $Cassette.unwrapcall(f, ctx, args...)
-        # $Cassette.@execution ctx::$Ctx (::typeof(Core.arrayref))(args...) = $Cassette.meta_arrayref(args...)
-        # $Cassette.@execution ctx::$Ctx (::typeof(Core.arrayset))(args...) = $Cassette.meta_arrayset(args...)
+        # $Cassette.@execution $Ctx (::typeof(Core.arrayref))(args...) = $Cassette.meta_arrayref(args...)
+        # $Cassette.@execution $Ctx (::typeof(Core.arrayset))(args...) = $Cassette.meta_arrayset(args...)
     end)
 end
 
@@ -27,7 +27,8 @@ macro execute(args...)
     ctxsym = gensym("context")
     f = call.args[1]
     call.args[1] = :($Cassette.Execute($ctxsym, $cfg, $f))
-    replace_match!(x -> :($Cassette.MetaValue($ctxsym, $(x.args[3:end]...))), ismetamacrocall, call.args)
+    # TODO: re-enable this for new wrapper design
+    # replace_match!(x -> :($Cassette.MetaValue($ctxsym, $(x.args[3:end]...))), ismetamacrocall, call.args)
     return esc(:($ctxsym = $ctx($f); $call))
 end
 
@@ -89,9 +90,10 @@ function unpack_contextual_macro_args(cfg_default, args...)
     end
 end
 
-macro Meta(args...)
-    error("cannot use @Meta macro outside of the scope of Cassette's other macros (@execute, @execution, @isprimitive, @primitive, @hook)")
-end
+# TODO: re-enable this for new wrapper design
+# macro Meta(args...)
+#     error("cannot use @Meta macro outside of the scope of Cassette's other macros (@execute, @execution, @isprimitive, @primitive, @hook)")
+# end
 
 ismetamacrocall(x) = isa(x, Expr) && x.head == :macrocall && x.args[1] == Symbol("@Meta")
 
@@ -119,28 +121,29 @@ function contextual_transform!(ctx, cfg, f, signature::Expr, body::Expr)
     push!(signature.args, :($ctxtypevar <: $ctxtype))
 
     callargs = signature.args[1].args
-    for i in 1:length(callargs)
-        x = callargs[i]
-        if isa(x, Expr) && x.head == :(::)
-            xtype = last(x.args)
-            if ismetamacrocall(xtype)
-                metaargs = xtype.args[3:end]
-                if isempty(metaargs)
-                    U, M = :Any, :Any
-                elseif length(metaargs) == 1
-                    U, M = first(metaargs), :Any
-                elseif length(metaargs) == 2
-                    U, M = metaargs
-                else
-                    error("incorrect usage of `@Meta`: $(xtype)")
-                end
-                new_xtype = :($Cassette.MetaValue{$ctxtypevar,<:Any,<:$M,<:$U})
-            else
-                new_xtype = :(Union{$Cassette.MetaValue{<:Any,<:Any,<:Any,<:$xtype},$xtype})
-            end
-            x.args[end] = new_xtype
-        end
-    end
+    # TODO: re-enable this for new wrapper design
+    # for i in 1:length(callargs)
+    #     x = callargs[i]
+    #     if isa(x, Expr) && x.head == :(::)
+    #         xtype = last(x.args)
+    #         if ismetamacrocall(xtype)
+    #             metaargs = xtype.args[3:end]
+    #             if isempty(metaargs)
+    #                 U, M = :Any, :Any
+    #             elseif length(metaargs) == 1
+    #                 U, M = first(metaargs), :Any
+    #             elseif length(metaargs) == 2
+    #                 U, M = metaargs
+    #             else
+    #                 error("incorrect usage of `@Meta`: $(xtype)")
+    #             end
+    #             new_xtype = :($Cassette.MetaValue{$ctxtypevar,<:Any,<:$M,<:$U})
+    #         else
+    #             new_xtype = :(Union{$Cassette.MetaValue{<:Any,<:Any,<:Any,<:$xtype},$xtype})
+    #         end
+    #         x.args[end] = new_xtype
+    #     end
+    # end
 
     signature.args[1] = Expr(:call, f, ctx, cfg, callargs...)
 
