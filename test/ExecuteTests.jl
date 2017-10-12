@@ -1,6 +1,6 @@
 module ExecuteTests
 
-using Base.Test
+using Test
 using Cassette
 
 function rosenbrock(x::Vector{Float64})

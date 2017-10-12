@@ -1,6 +1,6 @@
 module ContextTests
 
-using Base.Test
+using Test
 using Cassette
 
 # TODO

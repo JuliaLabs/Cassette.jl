@@ -8,6 +8,6 @@ include("anonymous.jl")
 include("contexts.jl")
 # include("wrappers.jl")
 include("execute.jl")
-# include("macros.jl")
+include("macros.jl")
 
 end # module

@@ -21,6 +21,8 @@ end
 
 @inline Base.setindex!(x::Mutable, y) = (x.data = y)
 
+@inline Base.isassigned(x::Mutable) = isdefined(x, :data)
+
 # Immutable #
 #-----------#
 
@@ -31,6 +33,8 @@ end
 @inline Base.getindex(x::Immutable) = x.data
 
 @inline Base.setindex!(x::Immutable, y) = error("cannot mutate immutable field")
+
+@inline Base.isassigned(x::Immutable) = isdefined(x, :data)
 
 #########
 # Field #
@@ -48,6 +52,8 @@ end
 @inline datatype(::Union{Field{n,S},Type{Field{n,S}}}) where {n,S} = datatype(S)
 
 @inline ismutable(::Union{Field{n,S},Type{Field{n,S}}}) where {n,S} = S <: Mutable
+
+@inline Base.isassigned(field::Field) = isassigned(field.storage)
 
 @inline Base.getindex(field::Field) = field.storage[]
 
@@ -105,18 +111,16 @@ end
 # macros #
 ##########
 
-#=
-Valid forms of `expr`:
-- `x = d`
-- `x::T = d`
-- `mut(x = d)`
-- `mut(x::T = d)`
-=#
 function translatefield(expr::Expr)
     if expr.head == :call
-        if expr.args[1] == :mut
+        if expr.args[1] == :mut && length(expr.args) == 2
             S = :Mutable
-            lhs, rhs = expr.args[2].args
+            inner = expr.args[2]
+            if isa(inner, Expr) && inner.head === :kw
+                lhs, rhs = inner.args
+            else
+                lhs, rhs = inner, nothing
+            end
         else
             error("invalid field syntax: $expr")
         end
@@ -125,7 +129,12 @@ function translatefield(expr::Expr)
         lhs, rhs = expr.args
     end
     name, T = (isa(lhs, Expr) && lhs.head == :(::)) ? lhs.args : (lhs, nothing)
-    data = T === nothing ? :($Cassette.$S($rhs)) : :($Cassette.$S{$T}($rhs))
+    if rhs === nothing
+        @assert S === :Mutable
+        data = T === nothing ? :($Cassette.Mutable{Any}()) : :($Cassette.Mutable{$T}())
+    else
+        data = T === nothing ? :($Cassette.$S($rhs)) : :($Cassette.$S{$T}($rhs))
+    end
     return :($Cassette.Field($Cassette.Name{$(Expr(:quote, name))}(), $data))
 end
 
@@ -152,7 +161,8 @@ end
 function Base.show(io::IO, x::Anonymous)
     print(io, "@anon(")
     for (i, field) in enumerate(x.fields)
-        fieldstr = string(nametype(field), "::", datatype(field), " = ", field[])
+        data = isassigned(field) ? field[] : "#undef"
+        fieldstr = string(nametype(field), "::", datatype(field), " = ", data)
         if ismutable(field)
             fieldstr = string("mut(", fieldstr, ")")
         end
