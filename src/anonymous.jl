@@ -73,11 +73,11 @@ end
 # getfield/setfield! #
 ######################
 
-@inline anon_getfield(x, ::Name{n}) where {n} = getfield(x, n)
+@inline _getfield(x, ::Name{n}) where {n} = getfield(x, n)
 
-@generated function anon_getfield(x::Anonymous{F}, ::Name{n}) where {F,n}
+@generated function _getfield(x::Anonymous{F}, ::Name{n}) where {F,n}
     for (i, fieldtype) in enumerate(F.parameters)
-        if nametype(fieldtype) == n
+        if nametype(fieldtype) === n
             return quote
                 $(Expr(:meta, :inline))
                 return (x.fields[$i]::$fieldtype)[]
@@ -90,11 +90,11 @@ end
     end
 end
 
-@inline anon_setfield!(x, ::Name{n}, y) where {n} = setfield!(x, n, y)
+@inline _setfield!(x, ::Name{n}, y) where {n} = setfield!(x, n, y)
 
-@generated function anon_setfield!(x::Anonymous{F}, ::Name{n}, y) where {F,n}
+@generated function _setfield!(x::Anonymous{F}, ::Name{n}, y) where {F,n}
     for (i, fieldtype) in enumerate(F.parameters)
-        if nametype(fieldtype) == n
+        if nametype(fieldtype) === n
             return quote
                 $(Expr(:meta, :inline))
                 return (x.fields[$i]::$fieldtype)[] = y
@@ -143,15 +143,15 @@ macro anon(args...)
     for arg in args
         push!(fields.args, translatefield(arg))
     end
-    return :($Cassette.Anonymous($fields))
+    return esc(:($Cassette.Anonymous($fields)))
 end
 
 macro getfield(x, n)
-    esc(:($Cassette.anon_getfield($x, $Cassette.Name{$(Expr(:quote, n))}())))
+    esc(:($Cassette._getfield($x, $Cassette.Name{$(Expr(:quote, n))}())))
 end
 
 macro setfield!(x, n, y)
-    esc(:($Cassette.anon_setfield!($x, $Cassette.Name{$(Expr(:quote, n))}(), $y)))
+    esc(:($Cassette._setfield!($x, $Cassette.Name{$(Expr(:quote, n))}(), $y)))
 end
 
 ###################
