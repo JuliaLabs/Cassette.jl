@@ -28,65 +28,65 @@ abstract type AbstractWrapper{C<:Context,U,V,M} end
     end
 end
 
-#################
-# AbstractField #
-#################
-
-abstract type AbstractField{name} end
-
-const FieldList = Tuple{Vararg{AbstractField}}
-
-struct Field{name,D,C<:FieldList} <: AbstractField{name}
-    data::D
-    children::C
-    @inline Field{name}(data::D, children::C = ()) where {name,D,C} = new{name,D,C}(data, children)
-end
-
-@inline name(::Type{<:AbstractField{name}}) where {name} = name
-
-###########
-# Wrapper #
-###########
-
-struct Wrapper{C<:Context,U,V,M,F<:FieldList} <: AbstractWrapper{C,U,V,M}
-    context::C
-    value::V
-    meta::M
-    fields::F
-    function Wrapper(context::C, value::V, meta::M, fields::F) where {C,V,M,F}
-        return new{C,V,V,M,F}(context, value, meta, fields)
-    end
-    function Wrapper(context::C, value::Wrapper{<:Context,U}, meta::M, fields::F) where {C,U,M,F}
-        return new{C,U,typeof(value),M,F}(context, value, meta, fields)
-    end
-end
-
-@inline Wrapper(ctx::Context, value, meta = nothing) = Wrapper(ctx, value, meta, ())
-
-@inline unwrap(::C, w::Wrapper{C}) where {C<:Context} = w.value
-
-@inline meta(::C, w::Wrapper{C}) where {C<:Context} = w.meta
-
-# Keep in mind this only works if `T`'s parameters (and `T` itself) are stripped of
-# `Wrapper` types, which hopefully occurs naturally earlier in the call chain anyway.
-@generated function wrapnew(ctx::C, meta, ::Type{T}, args...) where {C<:Context,T}
-    _new_args = Any[]
-    fields = Expr(:tuple)
-    fnames = fieldnames(T)
-    for (i, arg) in enumerate(args)
-        if arg <: Wrapper{C}
-            fname = Expr(:quote, fnames[i])
-            push!(fields.args, :(Field{$fname}(args[$i].meta, args[$i].fields)))
-            push!(_new_args, :(args[$i].value))
-        else
-            push!(_new_args, :(args[$i]))
-        end
-    end
-    return quote
-        $(Expr(:meta, :inline))
-        Wrapper(ctx, _new(T, $(_new_args...)), meta, $fields)
-    end
-end
+# #################
+# # AbstractField #
+# #################
+#
+# abstract type AbstractField{name} end
+#
+# const FieldList = Tuple{Vararg{AbstractField}}
+#
+# struct Field{name,D,C<:FieldList} <: AbstractField{name}
+#     data::D
+#     children::C
+#     @inline Field{name}(data::D, children::C = ()) where {name,D,C} = new{name,D,C}(data, children)
+# end
+#
+# @inline name(::Type{<:AbstractField{name}}) where {name} = name
+#
+# ###########
+# # Wrapper #
+# ###########
+#
+# struct Wrapper{C<:Context,U,V,M,F<:FieldList} <: AbstractWrapper{C,U,V,M}
+#     context::C
+#     value::V
+#     meta::M
+#     fields::F
+#     function Wrapper(context::C, value::V, meta::M, fields::F) where {C,V,M,F}
+#         return new{C,V,V,M,F}(context, value, meta, fields)
+#     end
+#     function Wrapper(context::C, value::Wrapper{<:Context,U}, meta::M, fields::F) where {C,U,M,F}
+#         return new{C,U,typeof(value),M,F}(context, value, meta, fields)
+#     end
+# end
+#
+# @inline Wrapper(ctx::Context, value, meta = nothing) = Wrapper(ctx, value, meta, ())
+#
+# @inline unwrap(::C, w::Wrapper{C}) where {C<:Context} = w.value
+#
+# @inline meta(::C, w::Wrapper{C}) where {C<:Context} = w.meta
+#
+# # Keep in mind this only works if `T`'s parameters (and `T` itself) are stripped of
+# # `Wrapper` types, which hopefully occurs naturally earlier in the call chain anyway.
+# @generated function wrapnew(ctx::C, meta, ::Type{T}, args...) where {C<:Context,T}
+#     _new_args = Any[]
+#     fields = Expr(:tuple)
+#     fnames = fieldnames(T)
+#     for (i, arg) in enumerate(args)
+#         if arg <: Wrapper{C}
+#             fname = Expr(:quote, fnames[i])
+#             push!(fields.args, :(Field{$fname}(args[$i].meta, args[$i].fields)))
+#             push!(_new_args, :(args[$i].value))
+#         else
+#             push!(_new_args, :(args[$i]))
+#         end
+#     end
+#     return quote
+#         $(Expr(:meta, :inline))
+#         Wrapper(ctx, _new(T, $(_new_args...)), meta, $fields)
+#     end
+# end
 
 ##################
 # MutableWrapper #
@@ -115,51 +115,51 @@ end
 # Core Method Replacements #
 ############################
 
-@generated function _new(::Type{T}, args...) where {T}
-    return quote
-        $(Expr(:meta, :inline))
-        $(Expr(:new, T, [:(args[$i]) for i in 1:nfields(args)]...))
-    end
-end
-
-@inline _getfield(value, ::Val{fieldname}) where {fieldname} = getfield(value, fieldname)
-
-@generated function _getfield(w::Wrapper{C,U,V,M,F}, ::Val{fieldname}) where {C,U,V,M,F,fieldname}
-    for (i, fieldtype) in enumerate(F.parameters)
-        if name(fieldtype) == fieldname
-            return quote
-                $(Expr(:meta, :inline))
-                field = w.fields[$i]::$fieldtype
-                Wrapper(getfield(w.value, $fieldname), field.data, field.children)
-            end
-        end
-    end
-    return quote
-        $(Expr(:meta, :inline))
-        getfield(w.value, $fieldname)
-    end
-end
-
-@inline _setfield!(value, ::Val{fieldname}, x) where {fieldname} = setfield!(value, fieldname, x)
-
-@generated function _setfield!(w::Wrapper{C,U,V,M,F}, ::Val{fieldname}, x) where {C,U,V,M,F,fieldname}
-    if !(x <: Wrapper{C})
-        for (i, fieldtype) in enumerate(F.parameters)
-            if name(fieldtype) == fieldname
-                return quote
-                    $(Expr(:meta, :inline))
-                    # TODO
-                end
-            end
-        end
-        return quote
-            $(Expr(:meta, :inline))
-            setfield!(w.value, $fieldname, x)
-        end
-    else
-
-    end
-end
+# @generated function _new(::Type{T}, args...) where {T}
+#     return quote
+#         $(Expr(:meta, :inline))
+#         $(Expr(:new, T, [:(args[$i]) for i in 1:nfields(args)]...))
+#     end
+# end
+#
+# @inline _getfield(value, ::Val{fieldname}) where {fieldname} = getfield(value, fieldname)
+#
+# @generated function _getfield(w::Wrapper{C,U,V,M,F}, ::Val{fieldname}) where {C,U,V,M,F,fieldname}
+#     for (i, fieldtype) in enumerate(F.parameters)
+#         if name(fieldtype) == fieldname
+#             return quote
+#                 $(Expr(:meta, :inline))
+#                 field = w.fields[$i]::$fieldtype
+#                 Wrapper(getfield(w.value, $fieldname), field.data, field.children)
+#             end
+#         end
+#     end
+#     return quote
+#         $(Expr(:meta, :inline))
+#         getfield(w.value, $fieldname)
+#     end
+# end
+#
+# @inline _setfield!(value, ::Val{fieldname}, x) where {fieldname} = setfield!(value, fieldname, x)
+#
+# @generated function _setfield!(w::Wrapper{C,U,V,M,F}, ::Val{fieldname}, x) where {C,U,V,M,F,fieldname}
+#     if !(x <: Wrapper{C})
+#         for (i, fieldtype) in enumerate(F.parameters)
+#             if name(fieldtype) == fieldname
+#                 return quote
+#                     $(Expr(:meta, :inline))
+#                     # TODO
+#                 end
+#             end
+#         end
+#         return quote
+#             $(Expr(:meta, :inline))
+#             setfield!(w.value, $fieldname, x)
+#         end
+#     else
+#
+#     end
+# end
 
 ##################
 # Notes/Examples #

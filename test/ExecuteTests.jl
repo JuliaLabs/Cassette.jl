@@ -19,7 +19,7 @@ Cassette.@context MyCtx
 MESSAGES = String[]
 Cassette.@hook MyCtx f(args...) = push!(MESSAGES, string("calling ", f, args))
 Cassette.@execute MyCtx rosenbrock(x)
-@test length(MESSAGES) == 83
+@test length(MESSAGES) == 94
 
 Cassette.@hook MyCtx cfg f(args...) = push!(cfg, string("calling ", f, args))
 cfg = String[]
