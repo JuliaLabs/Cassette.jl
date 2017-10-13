@@ -2,30 +2,32 @@
 # Wrapper #
 ###########
 
-struct Uninitialized end
+abstract type MetaStatus end
+struct Inactive <: MetaStatus end
+struct Active   <: MetaStatus end
 
-struct Meta{D,F}
+struct Meta{S<:MetaStatus,D,F}
+    status::S
     data::D
     fields::Anonymous{F}
+    Meta(data::D, fields::Anonymous{F}) where {D,F} = new{Inactive,D,F}(Inactive(), data, fields)
+    Meta(data::D, fields::Anonymous{F}) where {D,F<:Tuple{}} = new{Active,D,F}(Active(), data, fields)
 end
 
-Meta(u::Uninitialized, fields::Anonymous) = u
+Base.show(io::IO, m::Meta{S}) where {S} = print(io, "Meta{$(S.name.name)}(", repr(m.data), ", ", m.fields, ")")
 
-Base.show(io::IO, m::Meta) = print(io, "Meta(", repr(m.data), ", ", m.fields, ")")
-
-struct Wrapper{C,U,V,M,F}
+struct Wrapper{C,U,V,S,M,F}
     context::C
     value::V
-    meta::Meta{M,F}
-    function Wrapper(context::C, value::V, meta::Meta{M,F}) where {C<:Context,V,M,F}
-        return new{C,V,V,M,F}(context, value, meta)
+    meta::Meta{S,M,F}
+    function Wrapper(context::C, value::V, meta::Meta{S,M,F}) where {C<:Context,V,S,M,F}
+        return new{C,V,V,S,M,F}(context, value, meta)
     end
-    function Wrapper(context::C, value::Wrapper{<:Context,U}, meta::Meta{M,F}) where {C<:Context,U,M,F}
-        return new{C,U,typeof(value),M,F}(context, value, meta)
+    function Wrapper(context::C, value::Wrapper{<:Context,U}, meta::Meta{S,M,F}) where {C<:Context,U,S,M,F}
+        return new{C,U,typeof(value),S,M,F}(context, value, meta)
     end
 end
 
-Wrapper(context::Context, value, ::Uninitialized) = value
 Wrapper(context::Context, value, metadata = nothing) = Wrapper(context, value, Meta(metadata, @anon()))
 
 Base.show(io::IO, w::Wrapper) = print(io, "Wrapper(", repr(w.value), ", ", w.meta, ")")
@@ -47,14 +49,14 @@ Base.show(io::IO, w::Wrapper) = print(io, "Wrapper(", repr(w.value), ", ", w.met
     end
 end
 
-@inline meta(::C, x::Wrapper{C}) where {C<:Context} = x.meta.data
+@inline meta(::C, x::Wrapper{C,<:Any,<:Any,Active}) where {C<:Context} = x.meta.data
 
 #########
 # `new` #
 #########
 
 # TODO: better metadata types for mutable fields (instead of just `Any`)
-@generated function wrapper_new(ctx::C, meta, ::Type{T}, args...) where {C<:Context,T}
+@generated function wrapper_new(ctx::C, ::Type{T}, args...) where {C<:Context,T}
     _new_args = Any[]
     fields = Any[]
     fnames = fieldnames(T)
@@ -82,7 +84,7 @@ end
     end
     return quote
         $(Expr(:meta, :inline))
-        Wrapper(ctx, _new(T, $(_new_args...)), Meta(meta, @anon($(fields...))))
+        Wrapper(ctx, _new(T, $(_new_args...)), Meta(nothing, @anon($(fields...))))
     end
 end
 
@@ -97,12 +99,19 @@ end
 # `getfield`/`setfield!` #
 ##########################
 
-@generated function _getfield(w::Wrapper{C,U,V,M,F}, name::Name{n}) where {C,U,V,M,F,n}
+struct Uninitialized end
+
+wrapper_from_getfield(ctx, value, meta) = Wrapper(ctx, value, meta)
+wrapper_from_getfield(ctx, value, ::Uninitialized) = value
+
+@generated function _getfield(w::Wrapper{C,U,V,S,M,F}, name::Name{n}) where {C,U,V,S,M,F,n}
     for fieldtype in F.parameters
         if nametype(fieldtype) === n
             return quote
                 $(Expr(:meta, :inline))
-                Wrapper(w.context, _getfield(w.value, name), _getfield(w.meta.fields, name))
+                value = _getfield(w.value, name)
+                meta = _getfield(w.meta.fields, name)
+                wrapper_from_getfield(w.context, value, meta)
             end
         end
     end
@@ -112,7 +121,7 @@ end
     end
 end
 
-@generated function _setfield!(w::Wrapper{C,U,V,M,F}, name::Name{n}, x) where {C,U,V,M,F,n}
+@generated function _setfield!(w::Wrapper{C,U,V,S,M,F}, name::Name{n}, x) where {C,U,V,S,M,F,n}
     if x <: Wrapper{C}
         return quote
             $(Expr(:meta, :inline))
@@ -143,7 +152,7 @@ end
 ##################
 
 #=
-using Cassette: unwrap, @context, Wrapper, wrapper_new, @anon, Meta, @getfield, @setfield!
+using Cassette: Cassette, unwrap, @context, Wrapper, wrapper_new, @anon, Meta, @getfield, @setfield!
 
 struct Bar{X,Y,Z}
     x::X
@@ -160,7 +169,7 @@ end
 
 ctx = Ctx(nothing)
 bar = Wrapper(ctx, Bar(1,2,3), "barmeta")
-foo = wrapper_new(ctx, nothing, Foo, bar, :b)
+foo = wrapper_new(ctx, Foo, bar, :b)
 
 @getfield(foo, a) === bar
 
