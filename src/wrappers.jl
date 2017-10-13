@@ -2,10 +2,14 @@
 # Wrapper #
 ###########
 
+struct Uninitialized end
+
 struct Meta{D,F}
     data::D
     fields::Anonymous{F}
 end
+
+Meta(u::Uninitialized, fields::Anonymous) = u
 
 Base.show(io::IO, m::Meta) = print(io, "Meta(", repr(m.data), ", ", m.fields, ")")
 
@@ -21,6 +25,7 @@ struct Wrapper{C,U,V,M,F}
     end
 end
 
+Wrapper(context::Context, value, ::Uninitialized) = value
 Wrapper(context::Context, value, metadata = nothing) = Wrapper(context, value, Meta(metadata, @anon()))
 
 Base.show(io::IO, w::Wrapper) = print(io, "Wrapper(", repr(w.value), ", ", w.meta, ")")
@@ -92,8 +97,6 @@ end
 # `getfield`/`setfield!` #
 ##########################
 
-struct DontUse end
-
 @generated function _getfield(w::Wrapper{C,U,V,M,F}, name::Name{n}) where {C,U,V,M,F,n}
     for fieldtype in F.parameters
         if nametype(fieldtype) === n
@@ -123,7 +126,7 @@ end
                 return quote
                     $(Expr(:meta, :inline))
                     _setfield!(w.value, name, x)
-                    _setfield!(w.meta.fields, name, DontUse())
+                    _setfield!(w.meta.fields, name, Uninitialized())
                     return x
                 end
             end
@@ -140,7 +143,6 @@ end
 ##################
 
 #=
-
 using Cassette: unwrap, @context, Wrapper, wrapper_new, @anon, Meta, @getfield, @setfield!
 
 struct Bar{X,Y,Z}
@@ -164,7 +166,7 @@ foo = wrapper_new(ctx, nothing, Foo, bar, :b)
 
 @setfield!(foo, a, Bar(4, 5, 6))
 
-unwrap(ctx, @getfield(foo, a)) === Bar(4, 5, 6)
+@getfield(foo, a) === Bar(4, 5, 6)
 
 @setfield!(foo, b, Wrapper(ctx, "ha", "laughmeta"))
 =#
