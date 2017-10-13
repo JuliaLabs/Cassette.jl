@@ -60,9 +60,9 @@ end
     _new_args = Any[]
     fields = Any[]
     fnames = fieldnames(T)
-    if T.mutable
-        for (i, arg) in enumerate(args)
-            fname = fnames[i]
+    for (i, arg) in enumerate(args)
+        fname = fnames[i]
+        if T.mutable
             if arg <: Wrapper{C}
                 push!(fields, :(mut($fname::Any = args[$i].meta)))
                 push!(_new_args, :(args[$i].value))
@@ -70,11 +70,8 @@ end
                 push!(fields, :(mut($fname::Any)))
                 push!(_new_args, :(args[$i]))
             end
-        end
-    else
-        for (i, arg) in enumerate(args)
+        else
             if arg <: Wrapper{C}
-                fname = fnames[i]
                 push!(fields, :($fname = args[$i].meta))
                 push!(_new_args, :(args[$i].value))
             else
@@ -82,9 +79,16 @@ end
             end
         end
     end
-    return quote
-        $(Expr(:meta, :inline))
-        Wrapper(ctx, _new(T, $(_new_args...)), Meta(nothing, @anon($(fields...))))
+    if isempty(fields)
+        return quote
+            $(Expr(:meta, :inline))
+            _new(T, $(_new_args...))
+        end
+    else
+        return quote
+            $(Expr(:meta, :inline))
+            Wrapper(ctx, _new(T, $(_new_args...)), Meta(nothing, @anon($(fields...))))
+        end
     end
 end
 
@@ -101,8 +105,8 @@ end
 
 struct Uninitialized end
 
-wrapper_from_getfield(ctx, value, meta) = Wrapper(ctx, value, meta)
-wrapper_from_getfield(ctx, value, ::Uninitialized) = value
+@inline wrapper_from_getfield(ctx, value, meta) = Wrapper(ctx, value, meta)
+@inline wrapper_from_getfield(ctx, value, ::Uninitialized) = value
 
 @generated function _getfield(w::Wrapper{C,U,V,S,M,F}, name::Name{n}) where {C,U,V,S,M,F,n}
     for fieldtype in F.parameters
