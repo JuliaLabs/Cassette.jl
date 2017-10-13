@@ -35,7 +35,7 @@ function _execution end
 
 # passing world age here forces recompilation
 @generated function isprimitive(::Val{world}, ctx::Context, meta, f::F, args...) where {world,F}
-    if F.name.module == Core || F <: Core.Builtin
+    if F <: Core.Builtin
         body = :(Val(true))
     else
         body = :($Cassette._isprimitive(ctx, meta, f, args...))

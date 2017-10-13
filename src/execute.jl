@@ -94,7 +94,7 @@ struct Intercept{C<:Context,M,F,d,w}
                                func::F,
                                debug::Val{d} = Val(false),
                                world::Val{w} = Val(get_world_age())) where {C<:Context,M,F,d,w}
-        return new{C,M,F,d,w}(context, meta, func, debug, world)
+        return new{C,M,Core.Typeof(func),d,w}(context, meta, func, debug, world)
     end
 end
 
@@ -131,7 +131,7 @@ process_intercepted_body!(x) = x
 # add additional passes/optimizations to intercepted CodeInfo here
 function process_intercepted_body!(code_info::CodeInfo)
     replace_match!(x -> isa(x, Expr) && x.head === :new, code_info) do x
-        ctx = Expr(:call, GlobalRef(Core, :getfield), SlotNumber(1), :context)
+        ctx = Expr(:call, GlobalRef(Core, :getfield), SlotNumber(1), QuoteNode(:context))
         return Expr(:call, GlobalRef(Cassette, :wrapper_new), ctx, x.args...)
     end
     return code_info
@@ -169,7 +169,7 @@ struct Execute{C<:Context,M,F,p,d,w}
                              primitive::Val{p} = Val(false),
                              debug::Val{d} = Val(false),
                              world::Val{w} = Val(get_world_age())) where {C<:Context,M,F,d,p,w}
-        return new{C,M,F,p,d,w}(context, meta, func, primitive, debug, world)
+        return new{C,M,Core.Typeof(func),p,d,w}(context, meta, func, primitive, debug, world)
     end
 end
 
