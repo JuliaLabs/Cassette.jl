@@ -12,8 +12,8 @@ macro context(Ctx)
         @inline $Ctx(x) = $Ctx($Cassette.Tag(x))
         $Cassette.@hook $Ctx f(args...) = nothing
         $Cassette.@execution ctx::$Ctx f(args...) = $Cassette.unwrapcall(f, ctx, args...)
-        # $Cassette.@execution $Ctx (::typeof(Core.arrayref))(args...) = $Cassette.meta_arrayref(args...)
-        # $Cassette.@execution $Ctx (::typeof(Core.arrayset))(args...) = $Cassette.meta_arrayset(args...)
+        $Cassette.@execution ctx::$Ctx (::typeof(Core.getfield))(x, field) = $Cassette._getfield(x, $Cassette.Name{field}())
+        $Cassette.@execution ctx::$Ctx (::typeof(Core.setfield!))(x, field, y) = $Cassette._setfield!(x, $Cassette.Name{field}(), y)
     end)
 end
 
@@ -152,21 +152,6 @@ function contextual_transform!(ctx, cfg, f, signature::Expr, body::Expr)
     return esc(Expr(:function, signature, body))
 end
 
-function is_method_definition(x)
-    if isa(x, Expr)
-        if x.head == :function
-            return true
-        elseif x.head == :(=) && isa(x.args[1], Expr)
-            lhs = x.args[1]
-            if lhs.head == :where
-                lhs = lhs.args[1]
-            end
-            return lhs.head == :call
-        end
-    end
-    return false
-end
-
 function is_valid_ctx_specification(x)
     if isa(x, Expr)
         T = x.head == :(::) ? last(x.args) : x
@@ -177,14 +162,3 @@ end
 
 is_valid_ctx_type(x::Symbol) = true
 is_valid_ctx_type(x) = isa(x, Expr) && x.head == :(.) && is_valid_ctx_type(unquote(last(x.args)))
-
-unquote(x) = x
-unquote(x::QuoteNode) = x.value
-unquote(x::Expr) = x.head == :quote ? first(x.args) : x
-
-function unqualify_name(e::Expr)
-    @assert e.head == :(.)
-    return unqualify_name(last(e.args))
-end
-
-unqualify_name(name::Symbol) = name

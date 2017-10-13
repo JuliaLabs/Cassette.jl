@@ -65,27 +65,7 @@ end
 # Subexpression/CodeInfo Munging #
 ##################################
 
-# Match Replacement
-
-replace_match!(f, ismatch, x) = x
-
-replace_match!(f, ismatch, code_info::CodeInfo) = (replace_match!(f, ismatch, code_info.code); code_info)
-
-function replace_match!(f, ismatch, lines::AbstractArray)
-    for i in eachindex(lines)
-        line = lines[i]
-        if ismatch(line)
-            lines[i] = f(line)
-        elseif isa(line, Expr)
-            replace_match!(f, ismatch, line.args)
-        end
-    end
-    return lines
-end
-
-# Call Replacement
-
-is_replaceable_call(x) = isa(x, Expr) && (x.head == :call)
+is_call(x) = isa(x, Expr) && (x.head == :call)
 
 function transform_call!(f, call::Expr)
     call.args[1] = f(replace_calls!(f, Any[call.args[1]])[])
@@ -95,9 +75,7 @@ function transform_call!(f, call::Expr)
     return call
 end
 
-replace_calls!(f, x) = replace_match!(call -> transform_call!(f, call), is_replaceable_call, x)
-
-# SlotNumber Replacement
+replace_calls!(f, x) = replace_match!(call -> transform_call!(f, call), is_call, x)
 
 replace_slotnumbers!(f, x) = replace_match!(f, s -> isa(s, SlotNumber), x)
 
@@ -120,27 +98,23 @@ struct Intercept{C<:Context,M,F,d,w}
     end
 end
 
-unwrap(i::Intercept) = i.func
-
-function intercept_calls!(code_info, f_name::Symbol, arg_names::Vector, debug::Bool = false)
+function intercept_calls!(code_info, f_name::Symbol, arg_names::Vector)
     if isa(code_info, CodeInfo)
         replace_calls!(code_info) do call
             if !(isa(call, SlotNumber) && call.id == 1)
                 return :($(Cassette.Execute)($(SlotNumber(0)), $call))
-            else
-                return call
             end
+            return call
         end
         replace_slotnumbers!(code_info) do sn
             if sn.id == 1
-                return :($(Cassette.unwrap)($sn))
+                return :($sn.func)
             elseif sn.id == 0
                 return SlotNumber(1)
             else
                 return sn
             end
         end
-        debug && println("RETURNING Intercept(...) BODY: ", code_info)
         code_info.inlineable = true
         return code_info
     else
@@ -148,10 +122,22 @@ function intercept_calls!(code_info, f_name::Symbol, arg_names::Vector, debug::B
             $(Expr(:meta, :inline))
             $(Cassette.Execute)($f_name)($(arg_names...))
         end
-        debug && println("RETURNING Intercept(...) BODY: ", expr)
         return expr
     end
 end
+
+process_intercepted_body!(x) = x
+
+# add additional passes/optimizations to intercepted CodeInfo here
+function process_intercepted_body!(code_info::CodeInfo)
+    replace_match!(x -> isa(x, Expr) && x.head === :new, code_info) do x
+        ctx = Expr(:call, GlobalRef(Core, :getfield), SlotNumber(1), :context)
+        return Expr(:call, GlobalRef(Cassette, :wrapper_new), ctx, x.args...)
+    end
+    return code_info
+end
+
+show_debug_status(body, debug::Bool) = debug && println("RETURNING Intercept(...) BODY: ", body)
 
 for N in 0:MAX_ARGS
     arg_names = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
@@ -159,7 +145,8 @@ for N in 0:MAX_ARGS
     @eval begin
         @generated function (i::Intercept{C,M,F,d,w})($(arg_names...)) where {C<:Context,M,F,d,w}
             code_info = lookup_code_info(Tuple{unwrap(C, F),$(arg_types...)}, $arg_names, d, w)
-            body = intercept_calls!(code_info, :i, $arg_names, d)
+            body = process_intercepted_body!(intercept_calls!(code_info, :i, $arg_names))
+            show_debug_status(body, d)
             return body
         end
     end
