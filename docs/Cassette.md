@@ -2,24 +2,27 @@
 
 Cassette is a Julia package that provides a just-in-time (JIT) pass injection mechanism,
 referred to as an **overdubbing mechanism**, that interleaves external context-specific
-code transformations with Julia's normal JIT-compilation cycle. Drawing inspiration from the
-LLVM community's thriving ecosystem of transformation passes, we hope that Cassette's
-overdubbing mechanism will jump-start an ecosystem of Julia compiler "plugins" - modular
-extensions that implement new compiler optimizations and features external to the
-compiler itself.
-
-On top of its overdubbing mechanism, Cassette provides a **contextual execution framework**
-for the Julia language via the implementation of **contextual dispatch** and **contextual
-metadata propagation**. This framework enables users to define new "contexts" that overlay
-normal Julia methods, which can be dispatched on using Julia's existing operator-overloading
-syntax. Using its overdubbing mechanism, Cassette can instrument context-unaware Julia
-code with contextually defined behaviors, enabling granular method interception and
-metadata propagation within "black-box" user code.
+code transformations with Julia's normal JIT-compilation cycle. On top of this overdubbing
+mechanism, Cassette provides a **contextual execution framework** for the Julia language
+via the implementation of **contextual dispatch** and **contextual metadata propagation**.
+This framework enables users to define new "contexts" that overlay normal Julia methods,
+which can be dispatched on using Julia's existing operator-overloading syntax. Using its
+overdubbing mechanism, Cassette can instrument context-unaware Julia code with contextually
+defined behaviors, enabling granular method interception and metadata propagation within
+"black-box" user code.
 
 Downstream applications for Cassette include automatic differentiation, interval constraint
 programming, dynamic code analysis (e.g. profiling, `rr`-style debugging, etc.), JIT
 transpilation to GPU backends, automatic parallelization/rescheduling, memoization,
 high-level automated memory management and code fuzzing.
+
+Outside of Julia, the LLVM community has long benefitted from the idea of modular compiler
+extensions in the form of the Pass ecosystem. In a similar vein, we hope that Cassette's
+overdubbing mechanism can eventually be used to jump-start an ecosystem of Julia compiler
+"plugins" - modular extensions that implement new compiler optimizations and features
+external to the compiler itself. In fact, there is already [previous work in this
+regime](https://github.com/IntelLabs/ParallelAccelerator.jl) that could drastically benefit
+from a formal, standardized approach to compiler extension.
 
 # Background
 
