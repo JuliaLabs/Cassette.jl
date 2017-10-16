@@ -26,8 +26,8 @@ high-level automated memory management and code fuzzing.
 To understand how Cassette works, one must first have at least a cursory knowledge of
 where Cassette fits into Julia's run-compile cycle, as well as Julia's `@generated`
 function feature. An explanation of the former is given in the following section, while an
-explanation of the latter is given in [Julia's official `@generated` function documentation]
-(https://docs.julialang.org/en/latest/manual/metaprogramming/#Generated-functions-1).
+explanation of the latter is given in [Julia's official `@generated` function
+documentation](https://docs.julialang.org/en/latest/manual/metaprogramming/#Generated-functions-1).
 
 ## Julia's Run-Compile Cycle
 
