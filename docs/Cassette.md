@@ -10,8 +10,11 @@ compiler itself.
 
 On top of its overdubbing mechanism, Cassette provides a **contextual execution framework**
 for the Julia language via the implementation of **contextual dispatch** and **contextual
-metadata propagation**. Using these features, Julia developers can define new "contexts"
-that modify the execution of Cassette-unaware Julia code.
+metadata propagation**. This framework enables users to define new "contexts" that overlay
+normal Julia methods, which can be dispatched on using Julia's existing operator-overloading
+syntax. Using its overdubbing mechanism, Cassette can instrument context-unaware Julia
+code with contextually defined behaviors, enabling granular method interception and
+metadata propagation within "black-box" user code.
 
 Downstream applications for Cassette include automatic differentiation, interval constraint
 programming, dynamic code analysis (e.g. profiling, `rr`-style debugging, etc.), JIT
@@ -20,11 +23,11 @@ high-level automated memory management and code fuzzing.
 
 # Background
 
-To understand how Cassette works, one must first have at least cursory knowledge of where it
-fits into Julia's run-compile cycle, as well as Julia's `@generated` function feature. An
-explanation of the former is given in the following section, while an explanation of the
-latter is given in [Julia's official `@generated` function
-documentation](https://docs.julialang.org/en/latest/manual/metaprogramming/#Generated-functions-1).
+To understand how Cassette works, one must first have at least a cursory knowledge of
+where Cassette fits into Julia's run-compile cycle, as well as Julia's `@generated`
+function feature. An explanation of the former is given in the following section, while an
+explanation of the latter is given in [Julia's official `@generated` function documentation]
+(https://docs.julialang.org/en/latest/manual/metaprogramming/#Generated-functions-1).
 
 ## Julia's Run-Compile Cycle
 
