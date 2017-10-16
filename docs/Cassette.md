@@ -15,11 +15,11 @@ programming, dynamic code analysis (e.g. profiling, `rr`-style debugging, etc.),
 transpilation to GPU backends, automatic parallelization/rescheduling, memoization,
 high-level automated memory management and code fuzzing.
 
-Outside of Julia, the LLVM community has long benefitted from the idea of modular compiler
-extensions in the form of the Pass ecosystem. In a similar vein, we hope that Cassette's
-overdubbing mechanism can eventually be used to jump-start an ecosystem of Julia compiler
-"plugins" - modular extensions that implement new compiler optimizations and features
-external to the compiler itself. In fact, there is already [previous work in this
+Outside of Julia, the LLVM community has long benefitted from modular compiler extensions in
+the form of its Pass ecosystem. In a similar vein, we hope that Cassette's overdubbing
+mechanism can eventually be used to jump-start an ecosystem of Julia compiler "plugins" -
+modular extensions that implement new compiler optimizations and features external to the
+compiler itself. In fact, there is already [previous work in this
 regime](https://github.com/IntelLabs/ParallelAccelerator.jl) that could drastically benefit
 from a formal, standardized approach to compiler extension.
 
