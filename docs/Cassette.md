@@ -88,5 +88,5 @@ phase.
 The generator expansion that occurs during the "Optimization/Inlining" phase serves as the
 injection site for Cassette's overdubbing mechanism. In the case of Cassette's built-in
 contextual execution framework, the overdubbing mechanism facilitates a JIT-rewrite of the
-target method's code in order to propagate the context and any associated metadata to
+target method's code in order to propagate the context type and any associated metadata to
 downstream function calls.
