@@ -1,15 +1,14 @@
 # What is Cassette?
 
 Cassette is a Julia package that provides a just-in-time (JIT) IR pass injection mechanism,
-or **overdubbing mechanism**, that interleaves external context-specific code
-transformations with Julia's normal JIT-compilation cycle. On top of this overdubbing
-mechanism, Cassette provides a **contextual execution framework** for the Julia language via
-the implementation of **contextual dispatch** and **contextual metadata propagation**. This
-framework enables users to define new "contexts" that overlay normal Julia methods, which
-can be dispatched on using Julia's existing operator-overloading syntax. Using its
-overdubbing mechanism, Cassette can instrument context-unaware Julia code with contextually
-defined behaviors, enabling granular method interception and metadata propagation within
-"black-box" user code.
+or **overdubbing mechanism**, that can be used to interleave external code transformations
+with Julia's normal JIT-compilation cycle. On top of this overdubbing mechanism, Cassette
+provides a **contextual execution framework** for the Julia language via the implementation
+of **contextual dispatch** and **contextual metadata propagation**. This framework enables
+users to define new "contexts" that overlay normal Julia methods, which can be dispatched on
+using Julia's existing operator-overloading syntax. Using its overdubbing mechanism,
+Cassette can instrument context-unaware Julia code with contextually defined behaviors,
+enabling granular method interception and metadata propagation within "black-box" user code.
 
 Downstream applications for Cassette include automatic differentiation, interval constraint
 programming, dynamic code analysis (e.g. profiling, `rr`-style debugging, etc.), JIT
