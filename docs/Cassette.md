@@ -20,10 +20,11 @@ high-level automated memory management and code fuzzing.
 
 # Background
 
-This section covers the background information necessary to understand how Cassette works,
-specifically Julia's run-compile cycle and the language's `@generated` function feature.
-We describe the former in the following section, and defer an explanation of the latter to
-[Julia's official `@generated` function documentation](https://docs.julialang.org/en/latest/manual/metaprogramming/#Generated-functions-1).
+To understand how Cassette works, one must first have at least cursory knowledge of where it
+fits into Julia's run-compile cycle, as well as Julia's `@generated` function feature. An
+explanation of the former is given in the following section, while an explanation of the
+latter is given in [Julia's official `@generated` function
+documentation](https://docs.julialang.org/en/latest/manual/metaprogramming/#Generated-functions-1).
 
 ## Julia's Run-Compile Cycle
 
@@ -72,16 +73,17 @@ to another function call, at which point the cycle repeats.
 "parse time" section, which would include Julia AST construction and macro expansion.
 [↩](#f1-anchor)
 
-## Cassette Interaction With Julia's Run-Compile Cycle
+## Where Cassette Fits In The Run-Compile Cycle
 
 As denoted by the red boxes in the run-compile diagram, Cassette interacts with the
 "Function Call" and "Optimizations/Inlining" phases.
 
-Cassette interacts with the "Function Call" phase in the sense that the target function is
+Cassette interacts with the "Function Call" phase in the sense that a target function is
 wrapped in Cassette's special `Execute` callable wrapper and associated with a given
 "context type", thus enabling contextual dispatch. Calling this `Execute` object with the
-target function call's original arguments incurs a call to a ``@generated` function,
-bringing us to Cassette's interaction with "Optimization/Inlining" phase.
+target function call's original arguments incurs a call to a special `@generated` function
+defined within Cassette, bringing us to Cassette's interaction with "Optimization/Inlining"
+phase.
 
 The generator expansion that occurs during the "Optimization/Inlining" phase serves as the
 injection site for Cassette's overdubbing mechanism. In the case of Cassette's built-in
