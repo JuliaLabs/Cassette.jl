@@ -11,10 +11,11 @@ compiler itself.
 On top of its overdubbing mechanism, Cassette provides a **contextual execution framework**
 for the Julia language via the implementation of **contextual dispatch** and **contextual
 metadata propagation**. Using these features, Julia developers can define new "contexts"
-that modify the execution of Cassette-unaware Julia code to achieve a variety of downstream
-applications. For example, such applications include automatic differentiation, interval
-constraint programming, dynamic code analysis (e.g. profiling, `rr`-style debugging, etc.),
-JIT transpilation to GPU backends, automatic parallelization/rescheduling, memoization,
+that modify the execution of Cassette-unaware Julia code.
+
+Downstream applications for Cassette include automatic differentiation, interval constraint
+programming, dynamic code analysis (e.g. profiling, `rr`-style debugging, etc.), JIT
+transpilation to GPU backends, automatic parallelization/rescheduling, memoization,
 high-level automated memory management and code fuzzing.
 
 # Background
