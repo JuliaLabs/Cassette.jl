@@ -21,9 +21,9 @@ high-level automated memory management and code fuzzing.
 
 To understand how Cassette works, one must have at least a superficial understanding of
 Julia's JIT compilation cycle. A diagram of this cycle is shown below. Note that it is
-quite incomplete, but sufficient for the purposes of understanding Cassette [1].
+quite incomplete, but sufficient for the purposes of understanding Cassette<sup id="f1-anchor">[1](#f1)</sup>.
 
 ![Compilation Cycle](compile-cycle.png)
 
-[1] To be considered complete, this diagram would need to also have a "parse time" section,
-which would include Julia AST construction and macro expansion.
+<b id="f1">[1]</b> To be considered complete, this diagram would need to also have a "parse time" section,
+which would include Julia AST construction and macro expansion. [↩](#f1-anchor)
