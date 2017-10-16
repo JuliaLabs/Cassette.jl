@@ -7,8 +7,8 @@ provides a **contextual execution framework** for the Julia language via the imp
 of **contextual dispatch** and **contextual metadata propagation**. This framework enables
 users to define new "contexts" that overlay normal Julia methods, which can be dispatched on
 using Julia's existing operator-overloading syntax. Using its overdubbing mechanism,
-Cassette can instrument context-unaware Julia code with contextually defined behaviors,
-enabling granular method interception and metadata propagation within "black-box" user code.
+Cassette can instrument context-unaware Julia code with contextual behaviors, enabling
+granular method interception and metadata propagation within "black-box" user code.
 
 Downstream applications for Cassette include automatic differentiation, interval constraint
 programming, dynamic code analysis (e.g. profiling, `rr`-style debugging, etc.), JIT
