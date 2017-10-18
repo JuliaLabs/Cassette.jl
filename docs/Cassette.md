@@ -41,9 +41,8 @@ understanding Cassette.
 
 Here, the colored boxes are phases of the run-compile cycle, the arrows denote execution
 flow, and the gray boxes are the input/output of each phase. The red boxes are phases that
-Cassette interacts with directly; we will describe this interaction in detail later on. In
-the meantime, here's an outline of the process described by the diagram, starting at
-"Function Call":
+Cassette interacts with directly. Before we examine these interactions, here's an outline
+of the process described by the diagram, starting at "Function Call":
 
 1. A function call is the application of a callable Julia object (the function) on other
 Julia objects (the arguments). The function call is resolved to its corresponding method
@@ -79,9 +78,6 @@ to another function call, at which point the cycle repeats.
 [↩](#f1-anchor)
 
 ## Where Cassette Fits In The Run-Compile Cycle
-
-Later sections will examine Cassette's overdubbing mechanism in detail, but for now, here
-is a brief overview of where it fits in the run-compile cycle described above.
 
 As denoted by the red boxes in the run-compile diagram, Cassette interacts with the
 "Function Call" and "Optimizations/Inlining" phases. Cassette interacts with the  "Function
@@ -125,9 +121,17 @@ Below is a simplified, mocked-out of version of Cassette's overdubbing mechanism
 only supports transformation pass injection:
 
 ```julia
-# get the current world age within the calling context
+# returns the world age within the current calling context
 get_world_age() = ccall(:jl_get_tls_world_age, UInt, ())
 
+# This callable struct will wrap the target function and every
+# downstream function called by the target function in order to
+# redirect dispatch based on the context.
+#
+# Note the inclusion of the current world age as a type parameter.
+# This is necessary to force re-expansion/re-compilation of the call
+# definition (the `@generated` function below) when the world age
+# updates (for example, when a new method is added to `pass` below).
 struct Overdub{F,C,w}
     func::F
     context::C
@@ -172,8 +176,6 @@ end
     return method_body
 end
 ```
-
-## World-Age Legality
 
 ## Supporting Contextual Dispatch
 
