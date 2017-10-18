@@ -23,7 +23,7 @@ compiler itself. In fact, there is already [previous work in this
 regime](https://github.com/IntelLabs/ParallelAccelerator.jl) that could drastically benefit
 from a formal, standardized approach to compiler extension.
 
-# Background
+# Background: Julia's Compiler
 
 To understand how Cassette works, one must first have at least a cursory knowledge of
 where Cassette fits into Julia's run-compile cycle, as well as Julia's `@generated`
@@ -116,36 +116,58 @@ requests tracking the development of these changes:
 
 As stated earlier, Cassette's overdubbing mechanism works by using a wrapper type whose
 call definition is a `@generated` function that injects context-specific code
-transformations into the compiler's "Optimization/Inlining" phase.
+transformations into the compiler's "Optimization/Inlining" phase. In this section,
+the overdubbing mechanism will be examined in more detail.
 
 ## A Simple Overdubbing Mechanism
 
+Below is a simplified, mocked-out of version of Cassette's overdubbing mechanism that
+only supports transformation pass injection:
+
 ```julia
+# get the current world age within the calling context
+get_world_age() = ccall(:jl_get_tls_world_age, UInt, ())
+
 struct Overdub{F,C,w}
     func::F
     context::C
     world::Val{w}
 end
 
+Overdub(func, context) = Overdub(func, context, Val(get_world_age()))
+
+# Given a context type `C`, returns a transformation pass of the form
+# `f(::Type{S}, ::CodeInfo)::CodeInfo`. This default definition is
+# simply the identity. Downstream code can overload this `pass` function
+# for new context types.
+pass(::Type{C}) where {C} = (signature, method_body) -> method_body
+
+# Return the CodeInfo method body for type signature `S` and the world age `world`,
+# if such a method exists in the method table. Otherwise, return `nothing`.
 function lookup_method_body(::Type{S}, world::UInt) where {S<:Tuple}
-    # Return the CodeInfo method body for signature `S` and `world`,
-    # if it exists in the method table. Otherwise, return nothing.
+    # ...
 end
 
-function overdub_calls(method_body::CodeInfo)
-    # Return method_body with every call expression `f(args...)`
-    # replaced by `Overdub(f, $template_name)(args...)`
+# Return `method_body` with every call expression wrapped in an `Overdub` carrying the
+# same context and world as the caller (i.e. `f` in the `@generated` definition below).
+# By convention, this caller is referenced in `CodeInfo` as `SlotNumber(1)`.
+function overdub_calls!(method_body::CodeInfo)
+    # ...
 end
 
+# This is the call definition for an `Overdub` wrapper.
 @generated function (f::Overdub{F,C,world}})(args...) where {F,C,world}
     signature = Tuple{F,args...}
     method_body = lookup_method_body(signature, world)
     if isa(method_body, CodeInfo)
+        # The `method_body` exists as `CodeInfo`, so we run the context's pass on
+        # `method_body` and then wrap all downstream calls with `Overdub` instances
+        # carrying the same context and world as `f`.
         method_body = overdub_calls!(pass(C)(signature, method_body))
     else
-        method_body = quote
-            f.func(args...)
-        end
+        # There is no retrievable method body, so just call the original function. This will
+        # occur for Julia "built-in" functions, such as `getfield` or `arrayref`.
+        method_body = :(f.func(args...))
     end
     return method_body
 end
