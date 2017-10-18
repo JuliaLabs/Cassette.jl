@@ -1,5 +1,3 @@
-get_world_age() = ccall(:jl_get_tls_world_age, UInt, ()) # ccall(:jl_get_world_counter, UInt, ())
-
 # Return the CodeInfo method body for signature `S` and `world`,
 # if it exists in the method table. Otherwise, return `nothing`.
 function lookup_method_body(::Type{S}, arg_names::Vector,
