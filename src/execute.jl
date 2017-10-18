@@ -91,10 +91,11 @@ struct Intercept{C<:Context,M,F,d,w}
     world::Val{w}
     @inline function Intercept(context::C,
                                meta::M,
-                               func::F,
+                               func,
                                debug::Val{d} = Val(false),
-                               world::Val{w} = Val(get_world_age())) where {C<:Context,M,F,d,w}
-        return new{C,M,Core.Typeof(func),d,w}(context, meta, func, debug, world)
+                               world::Val{w} = Val(get_world_age())) where {C<:Context,M,d,w}
+        F = Core.Typeof(func) # this yields `Type{T}` instead of `UnionAll` for constructors
+        return new{C,M,F,d,w}(context, meta, func, debug, world)
     end
 end
 
@@ -165,11 +166,12 @@ struct Execute{C<:Context,M,F,p,d,w}
     world::Val{w}
     @inline function Execute(context::C,
                              meta::M,
-                             func::F,
+                             func,
                              primitive::Val{p} = Val(false),
                              debug::Val{d} = Val(false),
-                             world::Val{w} = Val(get_world_age())) where {C<:Context,M,F,d,p,w}
-        return new{C,M,Core.Typeof(func),p,d,w}(context, meta, func, primitive, debug, world)
+                             world::Val{w} = Val(get_world_age())) where {C<:Context,M,d,p,w}
+        F = Core.Typeof(func) # this yields `Type{T}` instead of `UnionAll` for constructors
+        return new{C,M,F,p,d,w}(context, meta, func, primitive, debug, world)
     end
 end
 
