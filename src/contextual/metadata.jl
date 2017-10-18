@@ -150,36 +150,3 @@ end
         end
     end
 end
-
-##################
-# Notes/Examples #
-##################
-
-#=
-using Cassette: Cassette, unwrap, @context, Wrapper, wrapper_new, @anon, Meta, @getfield, @setfield!
-
-struct Bar{X,Y,Z}
-    x::X
-    y::Y
-    z::Z
-end
-
-mutable struct Foo
-    a::Bar{Int}
-    b
-end
-
-@context Ctx
-
-ctx = Ctx(nothing)
-bar = Wrapper(ctx, Bar(1,2,3), "barmeta")
-foo = wrapper_new(ctx, Foo, bar, :b)
-
-@getfield(foo, a) === bar
-
-@setfield!(foo, a, Bar(4, 5, 6))
-
-@getfield(foo, a) === Bar(4, 5, 6)
-
-@setfield!(foo, b, Wrapper(ctx, "ha", "laughmeta"))
-=#
