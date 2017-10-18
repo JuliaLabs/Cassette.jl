@@ -50,8 +50,8 @@ Julia objects (the arguments). The function call is resolved to its correspondin
 body by dispatching on the call's type signature. For example, `f(1.0, "a", [1 + im])` has
 the type signature `Tuple{typeof(f),Float64,String,Vector{Complex{Int}}}`.
 
-2. Dispatch occurs via a lookup performed on Julia's internal method table, where the
-call's type signature is kind of key. This method lookup can yield one of two results.
+2. Dispatch occurs via a lookup performed on Julia's internal method table, using the
+call's type signature as a kind of key. This method lookup can yield one of two results.
 If the method body for this function call has already been compiled in the past, and
 the cached native code from that compilation is still valid (a determination made via
 Julia's "world-age" mechanism), then the rest of the compile cycle for this function
