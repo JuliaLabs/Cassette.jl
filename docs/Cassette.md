@@ -2,12 +2,12 @@
 
 Cassette is a Julia package that provides a just-in-time (JIT) IR pass injection mechanism,
 or **overdubbing mechanism**, that can be used to interleave external code transformations
-with Julia's normal JIT-compilation cycle. On top of this overdubbing mechanism, Cassette
+with Julia's normal JIT-compilation cycle. As part of this overdubbing mechanism, Cassette
 provides a **contextual execution framework** for the Julia language via the implementation
 of **contextual dispatch** and **contextual metadata propagation**. This framework enables
-users to define new "contexts" that overlay normal Julia methods, which can be dispatched on
-using Julia's existing operator-overloading syntax. Using its overdubbing mechanism,
-Cassette can instrument context-unaware Julia code with contextual behaviors, enabling
+users to define new "contexts" that overlay normal Julia methods that can then be dispatched
+on using Julia's existing operator-overloading syntax. Using its overdubbing mechanism,
+Cassette can equip context-unaware Julia code with context-specific behaviors, enabling
 granular method interception and metadata propagation within "black-box" user code.
 
 Downstream applications for Cassette include automatic differentiation, interval constraint
@@ -80,18 +80,87 @@ to another function call, at which point the cycle repeats.
 
 ## Where Cassette Fits In The Run-Compile Cycle
 
+Later sections will examine Cassette's overdubbing mechanism in detail, but for now, here
+is a brief overview of where it fits in the run-compile cycle described above.
+
 As denoted by the red boxes in the run-compile diagram, Cassette interacts with the
-"Function Call" and "Optimizations/Inlining" phases.
+"Function Call" and "Optimizations/Inlining" phases. Cassette interacts with the  "Function
+Call" phase by wrapping target functions in a callable `Overdub` wrapper type,  whose call
+definition is a special `@generated` function. This `@generated` function  exploits the
+generator expansion that occurs during the "Optimization/Inlining" phase as an injection
+site for Cassette's overdubbing mechanism. In short, `@generated` call definition for
+`Overdub` performs a method lookup in order to retrieve the original method's code, then
+runs context-specific transformation passes on that code before returning it from the
+generator.
 
-Cassette interacts with the "Function Call" phase in the sense that a target function is
-wrapped in Cassette's special `Execute` callable wrapper and associated with a given
-"context type", thus enabling contextual dispatch. Calling this `Execute` object with the
-target function call's original arguments incurs a call to a special `@generated` function
-defined within Cassette, bringing us to Cassette's interaction with "Optimization/Inlining"
-phase.
+In the case of Cassette's contextual execution framework, this overdubbing mechanism
+facilitates a JIT-rewrite of the target method's code in order to propagate the context
+type and any associated metadata to downstream function calls.
 
-The generator expansion that occurs during the "Optimization/Inlining" phase serves as the
-injection site for Cassette's overdubbing mechanism. In the case of Cassette's built-in
-contextual execution framework, the overdubbing mechanism facilitates a JIT-rewrite of the
-target method's code in order to propagate the context type and any associated metadata to
-downstream function calls.
+## Changes to Julia's Compiler
+
+To facilitate the development of Cassette, several changes to the compiler have been
+made, and several more are planned. Below is a list of relevant GitHub issues and pull
+requests tracking the development of these changes:
+
+- [JuliaLang/julia#22440](https://github.com/JuliaLang/julia/pull/22440): Allow `CodeInfo` objects to be returned directly from `@generated` functions
+- [JuliaLang/julia#22938](https://github.com/JuliaLang/julia/pull/22938): Add a `CodeInfo` validator to Base
+- [JuliaLang/julia#22979](https://github.com/JuliaLang/julia/pull/22979): Enable generator expansion for code reflection methods
+- [JuliaLang/julia#22877](https://github.com/JuliaLang/julia/pull/22877): Improve performance of certain varargs functions
+- [jrevels/Cassette#5](https://github.com/jrevels/Cassette/issues/5): Optimization of "pass-through" varargs functions
+- [jrevels/Cassette#6](https://github.com/jrevels/Cassette/issues/6): World-age validation for certain kinds of `@generated` functions
+- [jrevels/Cassette#7](https://github.com/jrevels/Cassette/issues/7): Generated `CodeInfo` inlining should occur in Base rather than in Cassette
+- [jrevels/Cassette#9](https://github.com/jrevels/Cassette/issues/9): `getfield` projection overhead
+
+# Cassette's Overdubbing Mechanism and Contextual Dispatch
+
+As stated earlier, Cassette's overdubbing mechanism works by using a wrapper type whose
+call definition is a `@generated` function that injects context-specific code
+transformations into the compiler's "Optimization/Inlining" phase.
+
+## A Simple Overdubbing Mechanism
+
+```julia
+struct Overdub{F,C,w}
+    func::F
+    context::C
+    world::Val{w}
+end
+
+function lookup_method_body(::Type{S}, world::UInt) where {S<:Tuple}
+    # Return the CodeInfo method body for signature `S` and `world`,
+    # if it exists in the method table. Otherwise, return nothing.
+end
+
+function overdub_calls(method_body::CodeInfo)
+    # Return method_body with every call expression `f(args...)`
+    # replaced by `Overdub(f, $template_name)(args...)`
+end
+
+@generated function (f::Overdub{F,C,world}})(args...) where {F,C,world}
+    signature = Tuple{F,args...}
+    method_body = lookup_method_body(signature, world)
+    if isa(method_body, CodeInfo)
+        method_body = overdub_calls!(pass(C)(signature, method_body))
+    else
+        method_body = quote
+            f.func(args...)
+        end
+    end
+    return method_body
+end
+```
+
+## World-Age Legality
+
+## Supporting Contextual Dispatch
+
+## Dispatch Granularity and Contextual Primitives
+
+# Cassette's Contextual Metadata Propagation
+
+## Extensions to the Overdubbing Mechanism
+
+## Avoiding Metadata Confusion
+
+## Lifting Over Type Constraints
