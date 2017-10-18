@@ -15,8 +15,8 @@ programming, dynamic code analysis (e.g. profiling, `rr`-style debugging, etc.),
 transpilation to GPU backends, automatic parallelization/rescheduling, memoization,
 high-level automated memory management and code fuzzing.
 
-Outside of Julia, the LLVM community has long benefitted from modular compiler extensions in
-the form of its Pass ecosystem. In a similar vein, we hope that Cassette's overdubbing
+Outside of Julia, the LLVM ecosystem has long benefitted from modular compiler extensions in
+the form of the LLVM Pass Framework. In a similar vein, we hope that Cassette's overdubbing
 mechanism can eventually be used to jump-start an ecosystem of Julia compiler "plugins" -
 modular extensions that implement new compiler optimizations and features external to the
 compiler itself. In fact, there is already [previous work in this
