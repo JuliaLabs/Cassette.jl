@@ -177,13 +177,48 @@ end
 end
 ```
 
-## Supporting Contextual Dispatch
+## Overdubbing vs. Method Overloading
+
+As demonstrated above, the contextual passes injected by Cassette's overdubbing mechanism
+are functions from a type signature and an original method body to a new method body.
+Experienced Julia developers might note here that Julia actually already *has* a convenient
+mechanism for emitting specialized method bodies from type signatures: method overloading
+with multiple dispatch. So, then, what is the advantage of Cassette?
+
+To answer this question, we need only examine the alternative pattern currently dominating
+the Julia ecosystem: creating new argument types, and explicitly overloading methods on
+these types. This pattern, while central to idiomatic Julia programming for most cases,
+exhibits a few significant problems when applied as an alternative to Cassette's overdubbing
+mechanism:
+
+1. New subtypes must implement an informal/unchecked interface of their supertype,
+regardless of the interface's (ir)relevance to the desired contextual transformation.
+
+2. Type constraints in target code drastically limit the domain of applicable code.
+
+3. Naive application of the pattern results in difficult-to-resolve dispatch ambiguities
+
+4. Even with the aid of metaprogramming, explicit method overloading can only reflect
+on extant methods, potentially causing problems due to load order dependencies.
+
+5. Important built-in methods are not overloadable (e.g. `getfield`, `arrayset`).
+
+6. Functions of variable arity can be difficult to intercept correctly.
+
+<!-- "Metadata determination" must be computed across arguments, which can be ambiguous/costly TODO: Move this problem to metadata section -->
+
+Cassette's advantage over Julia's built-in method overloading is that it allows
+context-specific method body transformations to proliferate throughout *any* code
+running in the contextual "environment" without requiring explicit overloads to occur
+for all downstream function calls.
+
+## Overdubbing Without CodeInfo: Contextual Dispatch
 
 ## Dispatch Granularity and Contextual Primitives
 
 # Cassette's Contextual Metadata Propagation
 
-## Extensions to the Overdubbing Mechanism
+## Extending the Overdubbing Mechanism
 
 ## Avoiding Metadata Confusion
 
