@@ -218,7 +218,6 @@ code must also be written generically). For a real-world example, see
 [JuliaStats/Distributions.jl#511](https://github.com/JuliaStats/Distributions.jl/pull/511).
 
 *Naive application of the pattern results in difficult-to-resolve dispatch ambiguities.*
-
 More accurately, module-local information is not sufficient to easily discover and resolve
 ambiguities between two different subtypes of the same supertype when extending a
 multi-arity method on the supertype. Take the following example, imagining that
@@ -272,7 +271,6 @@ For a real-world example of this problem, see [JuliaDiff/ReverseDiff.jl#64](http
 
 *Even with the aid of metaprogramming, explicit method overloading can only reflect
 on extant types/methods, potentially causing problems due to load order dependencies.*
-
 Imagine that the hypothetical module authors in our previous scenario were aware of this
 ambiguity problem, but still not aware of each other. They might then attempt to resolve
 the ambiguities via a bit of metaprogramming:
