@@ -191,7 +191,7 @@ these types. This pattern, while central to idiomatic Julia programming for most
 exhibits a few significant problems when applied as an alternative to Cassette's overdubbing
 mechanism:
 
-*New subtypes must implement an informal/unchecked interface of their supertype,
+- *New subtypes must implement an informal/unchecked interface of their supertype,
 regardless of the interface's (ir)relevance to the desired contextual transformation.* This
 problem is evident when defining a new subtype requires implementing complex
 conversion/promotion rules. These rules can rely on [subtle, unchecked behaviors](https://github.com/JuliaLang/julia/issues/17559),
