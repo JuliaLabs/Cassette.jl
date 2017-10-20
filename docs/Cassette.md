@@ -191,23 +191,131 @@ these types. This pattern, while central to idiomatic Julia programming for most
 exhibits a few significant problems when applied as an alternative to Cassette's overdubbing
 mechanism:
 
-1. New subtypes must implement an informal/unchecked interface of their supertype,
-regardless of the interface's (ir)relevance to the desired contextual transformation.
+1. *New subtypes must implement an informal/unchecked interface of their supertype,
+regardless of the interface's (ir)relevance to the desired contextual transformation.* This
+problem is evident when defining a new subtype requires implementing complex
+conversion/promotion rules. These rules can rely on [subtle, unchecked behaviors](https://github.com/JuliaLang/julia/issues/17559),
+and the required method overloads are not always evident given only a supertype. For a
+real-world example, see [ForwardDiff's `Dual` number implementation](https://github.com/JuliaDiff/ForwardDiff.jl/blob/dd692d2f5c8014167a4d85c31d10d834361887fb/src/dual.jl#L306).
 
-2. Type constraints in target code drastically limit the domain of applicable code.
+2. *Type constraints in target programs drastically limit the domain of applicable code.*
+Overly-strict type constraints are unavoidable in real-world code. Users and developers
+often define methods with overly-strict type signatures to simplify development, or to
+prevent code misuse. For example, if the goal was to intercept numeric code, then one
+might define
 
-3. Naive application of the pattern results in difficult-to-resolve dispatch ambiguities
+```julia
+struct Foo{T<:Number} <: Number
+    x::T
+end
+```
 
-4. Even with the aid of metaprogramming, explicit method overloading can only reflect
-on extant methods, potentially causing problems due to load order dependencies.
+and intercept methods on `Foo`. Any methods of the form `f(::AbstractFloat)`, then,
+would be un-interceptable. Furthermore, even when one has access to target code and
+is allowed to modify it, post-hoc refactoring to loosen type restrictions can be
+quite an arduous task, and can even increase future maintenance burden (since future
+code must also be written generically). For a real-world example, see
+[JuliaStats/Distributions.jl#511](https://github.com/JuliaStats/Distributions.jl/pull/511).
 
-5. Important built-in methods are not overloadable (e.g. `getfield`, `arrayset`).
+3. *Naive application of the pattern results in difficult-to-resolve dispatch ambiguities.*
 
-6. Functions of variable arity can be difficult to intercept correctly.
+More accurately, module-local information is not sufficient to easily discover and resolve
+ambiguities between two different subtypes of the same supertype when extending a
+multi-arity method on the supertype. Take the following example, imagining that
+all three modules were written by different authors, and that`MA`'s author and
+`MB`'s author are unaware of each other:
+
+```julia
+module M
+    abstract type T end
+    f(::T, ::T) = "hello"
+end
+
+module MA
+    using Main.M
+    struct A <: M.T end
+    M.f(::A, ::A)= 1
+    M.f(::A, ::M.T) = 1
+    M.f(::M.T, ::A) = 1
+end
+
+module MB
+    using Main.M
+    struct B <: M.T end
+    M.f(::B, ::B) = 2
+    M.f(::B, ::M.T) = 2
+    M.f(::M.T, ::B) = 2
+end
+```
+
+In practice, this scenario can commonly when two non-Base packages each implement a subtype
+of the same Base supertype and extend the same Base method as part of implementing the
+supertype's interface.
+
+If a user tried to compose these modules, they'd be in for a nasty surprise:
+
+```julia
+julia> M.f(MA.A(), MB.B())
+ERROR: MethodError: Main.M.f(::Main.MA.A, ::Main.MB.B) is ambiguous. Candidates:
+  f(::Main.M.T, ::Main.MB.B) in Main.MB at REPL[3]:6
+  f(::Main.MA.A, ::Main.M.T) in Main.MA at REPL[2]:5
+Possible fix, define
+  f(::Main.MA.A, ::Main.MB.B)
+```
+
+For `Number` types, Julia's solution to this problem is to apply a map from the multiple
+dispatch case to the single dispatch case via it's conversion/promotion mechanism. However,
+this mechanism is only sensible in regimes where conversion between subtypes is cheap
+and well-defined.
+
+For a real-world example of this problem, see [JuliaDiff/ReverseDiff.jl#64](https://github.com/JuliaDiff/ReverseDiff.jl/issues/64).
+
+4. *Even with the aid of metaprogramming, explicit method overloading can only reflect
+on extant types/methods, potentially causing problems due to load order dependencies.*
+
+Imagine that the hypothetical module authors in our previous scenario were aware of this
+ambiguity problem, but still not aware of each other. They might then attempt to resolve
+the ambiguities via a bit of metaprogramming:
+
+```julia
+module MA
+    using Main.M
+    struct A <: M.T end
+    for S in (M.T, subtypes(M.T)...)
+        @eval begin
+            M.f(::A, ::A)= 1
+            M.f(::A, ::$S) = 1
+            M.f(::$S, ::A) = 1
+        end
+    end
+end
+
+module MB
+    using Main.M
+    struct B <: M.T end
+    for S in (M.T, subtypes(M.T)...)
+        @eval begin
+            M.f(::B, ::B)= 2
+            M.f(::B, ::$S) = 2
+            M.f(::$S, ::B) = 2
+        end
+    end
+end
+```
+
+This solution, while naively appealing since it gets rid of the error, is actually in some
+sense worse than the original problem. If one loads `MA` before `MB`, then
+`M.f(MA.A(), MB.B()) == 2`. If one loads `MB` before `MA`, then `M.f(MA.A(), MB.B()) == 1`.
+In other words, downstream code becomes "silently" load-order dependent!
+
+5. *Important built-in methods are not overloadable (e.g. `getfield`, `arrayset`).*
+
+6. *Functions of variable arity are non-trivial to intercept correctly.* See, for example,
+[denizyuret/Knet.jl#112](https://github.com/denizyuret/Knet.jl/issues/112).
 
 <!-- "Metadata determination" must be computed across arguments, which can be ambiguous/costly TODO: Move this problem to metadata section -->
 
-Cassette's advantage over Julia's built-in method overloading is that it allows
+In summary, Cassette's advantage over Julia's built-in method overloading is that it allows
 context-specific method body transformations to proliferate throughout *any* code
 running in the contextual "environment" without requiring explicit overloads to occur
 for all downstream function calls.
