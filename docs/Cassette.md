@@ -191,14 +191,14 @@ these types. This pattern, while central to idiomatic Julia programming for most
 exhibits a few significant problems when applied as an alternative to Cassette's overdubbing
 mechanism:
 
-1. *New subtypes must implement an informal/unchecked interface of their supertype,
+*New subtypes must implement an informal/unchecked interface of their supertype,
 regardless of the interface's (ir)relevance to the desired contextual transformation.* This
 problem is evident when defining a new subtype requires implementing complex
 conversion/promotion rules. These rules can rely on [subtle, unchecked behaviors](https://github.com/JuliaLang/julia/issues/17559),
 and the required method overloads are not always evident given only a supertype. For a
 real-world example, see [ForwardDiff's `Dual` number implementation](https://github.com/JuliaDiff/ForwardDiff.jl/blob/dd692d2f5c8014167a4d85c31d10d834361887fb/src/dual.jl#L306).
 
-2. *Type constraints in target programs drastically limit the domain of applicable code.*
+*Type constraints in target programs drastically limit the domain of applicable code.*
 Overly-strict type constraints are unavoidable in real-world code. Users and developers
 often define methods with overly-strict type signatures to simplify development, or to
 prevent code misuse. For example, if the goal was to intercept numeric code, then one
@@ -217,7 +217,7 @@ quite an arduous task, and can even increase future maintenance burden (since fu
 code must also be written generically). For a real-world example, see
 [JuliaStats/Distributions.jl#511](https://github.com/JuliaStats/Distributions.jl/pull/511).
 
-3. *Naive application of the pattern results in difficult-to-resolve dispatch ambiguities.*
+*Naive application of the pattern results in difficult-to-resolve dispatch ambiguities.*
 
 More accurately, module-local information is not sufficient to easily discover and resolve
 ambiguities between two different subtypes of the same supertype when extending a
@@ -270,7 +270,7 @@ and well-defined.
 
 For a real-world example of this problem, see [JuliaDiff/ReverseDiff.jl#64](https://github.com/JuliaDiff/ReverseDiff.jl/issues/64).
 
-4. *Even with the aid of metaprogramming, explicit method overloading can only reflect
+*Even with the aid of metaprogramming, explicit method overloading can only reflect
 on extant types/methods, potentially causing problems due to load order dependencies.*
 
 Imagine that the hypothetical module authors in our previous scenario were aware of this
@@ -308,9 +308,9 @@ sense worse than the original problem. If one loads `MA` before `MB`, then
 `M.f(MA.A(), MB.B()) == 2`. If one loads `MB` before `MA`, then `M.f(MA.A(), MB.B()) == 1`.
 In other words, downstream code becomes "silently" load-order dependent!
 
-5. *Important built-in methods are not overloadable (e.g. `getfield`, `arrayset`).*
+*Important built-in methods are not overloadable (e.g. `getfield`, `arrayset`).*
 
-6. *Functions of variable arity are non-trivial to intercept correctly.* See, for example,
+*Functions of variable arity are non-trivial to intercept correctly.* See, for example,
 [denizyuret/Knet.jl#112](https://github.com/denizyuret/Knet.jl/issues/112).
 
 <!-- "Metadata determination" must be computed across arguments, which can be ambiguous/costly TODO: Move this problem to metadata section -->
