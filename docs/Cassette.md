@@ -312,7 +312,14 @@ context-specific method body transformations to proliferate throughout *any* cod
 running in the contextual "environment" without requiring explicit overloads to occur
 for all downstream function calls.
 
-## Overdubbing Without CodeInfo: Contextual Dispatch
+## Contextual Dispatch
+
+As an alternative to implementing overdub passes directly, Cassette provides an additional
+dispatch layer on top of Julia's existing multiple dispatch mechanism. This "contextual
+dispatch" layer enables the use of Julia's normal method overloading semantics to inject
+new behaviors, while solving many of the method overloading problems listed in the previous
+section. When possible, Cassette's contextual dispatch can be far easier and safer to use
+than implementing the equivalent code transformation pass by hand.
 
 ## Dispatch Granularity and Contextual Primitives
 
