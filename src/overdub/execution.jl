@@ -1,12 +1,12 @@
-###########
-# Purpose #
-###########
+########
+# Mode #
+########
 
-abstract type Purpose end
+abstract type Mode end
 
-struct Execute <: Purpose end
+struct Execute <: Mode end
 
-struct Intercept <: Purpose end
+struct Intercept <: Mode end
 
 ############
 # Settings #
@@ -51,13 +51,13 @@ end
 # Overdub #
 ###########
 
-struct Overdub{P<:Purpose,F,S<:Settings}
-    purpose::P
+struct Overdub{M<:Mode,F,S<:Settings}
+    mode::M
     func::F
     settings::S
-    function Overdub(purpose::P, func, settings::S) where {P,S}
+    function Overdub(mode::M, func, settings::S) where {M,S}
         F = Core.Typeof(func) # this yields `Type{T}` instead of `UnionAll` for constructors
-        return new{P,F,S}(func, settings)
+        return new{M,F,S}(func, settings)
     end
 end
 
