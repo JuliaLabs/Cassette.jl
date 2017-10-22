@@ -35,16 +35,8 @@ end
     return execution(settings.context, settings.metadata, f, args...)
 end
 
-@generated function isprimitive(settings::Settings{C,M,w}, f::F, args...) where {C,M,w,F}
-    if F <: Core.Builtin
-        body = :(Val(true))
-    else
-        body = :($Cassette.isprimitive(settings.context, settings.metadata, f, args...))
-    end
-    return quote
-        $(Expr(:meta, :inline))
-        $(body)
-    end
+@inline function isprimitive(settings::Settings{C,M,w}, f, args...) where {C,M,w}
+    return isprimitive(settings.context, settings.metadata, f, args...)
 end
 
 ###########
@@ -60,6 +52,10 @@ struct Overdub{M<:Mode,F,S<:Settings}
         return new{M,F,S}(mode, func, settings)
     end
 end
+
+debugdub(ctx, f, meta = nothing) = Overdub(Execute(), f, Settings(ctx, meta, Val(get_world_age()), Val(true)))
+
+@inline intercept(o::Overdub{Intercept}, f) = Overdub(Execute(), f, o.settings)
 
 @inline context(o::Overdub) = o.settings.context
 
@@ -79,8 +75,7 @@ end
 function overdub_calls!(method_body::CodeInfo)
     replace_calls!(method_body) do call
         if !(isa(call, SlotNumber) && call.id == 1)
-            settings = Expr(:call, GlobalRef(Core, :getfield), SlotNumber(0), QuoteNode(:settings))
-            return :($(GlobalRef(Cassette, :Overdub))($(Execute()), $call, $settings))
+            return :($(GlobalRef(Cassette, :intercept))($(SlotNumber(0)), $call))
         end
         return call
     end
@@ -123,9 +118,10 @@ for N in 0:MAX_ARGS
                 method_body = overdub_new!(overdub_calls!(pass(C, M)(signature, method_body)))
                 method_body.inlineable = true
             else
+                arg_names = $arg_names
                 method_body = quote
                     $(Expr(:meta, :inline))
-                    $Cassette.Overdub($(Execute()), $f.func, $f.settings)($(arg_names...))
+                    $Cassette.execute(Val(true), f, $(arg_names...))
                 end
             end
             debug && println("RETURNING Overdub(...) BODY: ", method_body)

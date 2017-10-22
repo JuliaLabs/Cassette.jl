@@ -1,7 +1,6 @@
 module ExecuteTests
 
-using Test
-using Cassette
+using Test, Cassette
 
 function rosenbrock(x::Vector{Float64})
     a = 1.0
@@ -33,6 +32,18 @@ Cassette.@execute MyCtx meta rosenbrock(x)
 for args in meta
     @test all(x -> isa(x, Number), args)
 end
+
+x = rand()
+sin_plus_cos(x) = sin(x) + cos(x)
+Cassette.@context SinCtx
+@test Cassette.@execute(SinCtx, sin_plus_cos(x)) === sin_plus_cos(x)
+Cassette.@primitive SinCtx (::typeof(sin))(x) = cos(x)
+@test Cassette.@execute(SinCtx, sin_plus_cos(x)) === (2 * cos(x))
+
+x = 2
+foldmul(x, args...) = Core._apply(Base.afoldl, (*, x), args...)
+Cassette.@context FoldCtx
+@test Cassette.@execute(FoldCtx, foldmul(x)) === foldmul(x)
 
 ############################################################################################
 
