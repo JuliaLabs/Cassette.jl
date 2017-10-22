@@ -19,7 +19,7 @@ struct Settings{C<:Context,M,w,d}
     debug::Val{d}
     function Settings(context::C,
                       metadata::M = nothing,
-                      world::Val{w} = Val(get_world_age())
+                      world::Val{w} = Val(get_world_age()),
                       debug::Val{d} = Val(false)) where {C,M,w,d}
         return new{C,M,w,d}(context, metadata, world, debug)
     end
@@ -27,19 +27,19 @@ end
 
 get_world_age() = ccall(:jl_get_tls_world_age, UInt, ()) # ccall(:jl_get_world_counter, UInt, ())
 
-@inline hook(settings::Settings{C,M,w}, f, args...) where {C,M,w}
-    return hook(settings.context, settings.meta, f, args...)
+@inline function hook(settings::Settings{C,M,w}, f, args...) where {C,M,w}
+    return hook(settings.context, settings.metadata, f, args...)
 end
 
-@inline execution(settings::Settings{C,M,w}, f, args...) where {C,M,w}
-    return execution(settings.context, settings.meta, f, args...)
+@inline function execution(settings::Settings{C,M,w}, f, args...) where {C,M,w}
+    return execution(settings.context, settings.metadata, f, args...)
 end
 
 @generated function isprimitive(settings::Settings{C,M,w}, f::F, args...) where {C,M,w,F}
     if F <: Core.Builtin
         body = :(Val(true))
     else
-        body = :($Cassette.isprimitive(settings.context, settings.meta, f, args...))
+        body = :($Cassette.isprimitive(settings.context, settings.metadata, f, args...))
     end
     return quote
         $(Expr(:meta, :inline))
@@ -57,9 +57,11 @@ struct Overdub{M<:Mode,F,S<:Settings}
     settings::S
     function Overdub(mode::M, func, settings::S) where {M,S}
         F = Core.Typeof(func) # this yields `Type{T}` instead of `UnionAll` for constructors
-        return new{M,F,S}(func, settings)
+        return new{M,F,S}(mode, func, settings)
     end
 end
+
+@inline context(o::Overdub) = o.settings.context
 
 @inline hook(o::Overdub, args...) = hook(o.settings, o.func, args...)
 
@@ -77,7 +79,8 @@ end
 function overdub_calls!(method_body::CodeInfo)
     replace_calls!(method_body) do call
         if !(isa(call, SlotNumber) && call.id == 1)
-            return :($Cassette.Overdub($(Execute()), $(call), $(SlotNumber(0)).settings))
+            settings = Expr(:call, GlobalRef(Core, :getfield), SlotNumber(0), QuoteNode(:settings))
+            return :($(GlobalRef(Cassette, :Overdub))($(Execute()), $call, $settings))
         end
         return call
     end
@@ -96,7 +99,7 @@ end
 # replace all `new` expressions with calls to `Cassette.wrapper_new`
 function overdub_new!(method_body::CodeInfo)
     replace_match!(x -> isa(x, Expr) && x.head === :new, method_body) do x
-        ctx = Expr(:call, GlobalRef(Core, :getfield), SlotNumber(1), QuoteNode(:context))
+        ctx = Expr(:call, GlobalRef(Cassette, :context), SlotNumber(1))
         return Expr(:call, GlobalRef(Cassette, :wrapper_new), ctx, x.args...)
     end
     return method_body

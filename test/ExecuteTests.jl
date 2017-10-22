@@ -21,16 +21,16 @@ Cassette.@hook MyCtx f(args...) = push!(MESSAGES, string("calling ", f, args))
 Cassette.@execute MyCtx rosenbrock(x)
 @test length(MESSAGES) == 126
 
-Cassette.@hook MyCtx cfg f(args...) = push!(cfg, string("calling ", f, args))
-cfg = String[]
-Cassette.@execute MyCtx cfg rosenbrock(x)
-@test MESSAGES == cfg
+Cassette.@hook MyCtx meta f(args...) = push!(meta, string("calling ", f, args))
+meta = String[]
+Cassette.@execute MyCtx meta rosenbrock(x)
+@test MESSAGES == meta
 
-Cassette.@hook MyCtx cfg f(args...) = nothing
-Cassette.@hook MyCtx cfg f(args::Number...) = push!(cfg, args)
-cfg = Any[]
-Cassette.@execute MyCtx cfg rosenbrock(x)
-for args in cfg
+Cassette.@hook MyCtx meta f(args...) = nothing
+Cassette.@hook MyCtx meta f(args::Number...) = push!(meta, args)
+meta = Any[]
+Cassette.@execute MyCtx meta rosenbrock(x)
+for args in meta
     @test all(x -> isa(x, Number), args)
 end
 

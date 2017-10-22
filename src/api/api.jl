@@ -10,6 +10,7 @@ macro context(Ctx)
             tag::$Cassette.Tag{T}
         end
         @inline $Ctx(x) = $Ctx($Cassette.Tag(x))
+        $Cassette.isprimitive(::$Ctx, ::Any...) = Val(false)
         $Cassette.@hook $Ctx f(args...) = nothing
         $Cassette.@execution ctx::$Ctx f(args...) = $Cassette.unwrapcall(f, ctx, args...)
         $Cassette.@execution ctx::$Ctx (::typeof(Core.getfield))(x, field) = $Cassette._getfield(x, $Cassette.Name{field}())
@@ -22,11 +23,11 @@ end
 ############
 
 macro execute(args...)
-    ctx, cfg, call = unpack_contextual_macro_args(nothing, args...)
+    ctx, meta, call = unpack_contextual_macro_args(nothing, args...)
     @assert isa(call, Expr) && call.head == :call
     ctxsym = gensym("context")
     f = call.args[1]
-    call.args[1] = :($Cassette.Execute($ctxsym, $cfg, $f))
+    call.args[1] = :($Cassette.Overdub($(Execute()), $f, $Cassette.Settings($ctxsym, $meta)))
     replace_match!(x -> :($Cassette.Wrapper($ctxsym, $(x.args[3:end]...))), iswrappermacrocall, call.args)
     return esc(:($ctxsym = $ctx($f); $call))
 end
@@ -36,8 +37,8 @@ end
 #########
 
 macro hook(args...)
-    ctx, cfg, def = unpack_contextual_macro_args(:(::Any), args...)
-    return contextual_transform!(ctx, cfg, :($Cassette._hook), def)
+    ctx, meta, def = unpack_contextual_macro_args(:(::Any), args...)
+    return contextual_transform!(ctx, meta, :($Cassette.hook), def)
 end
 
 ##############
@@ -45,8 +46,8 @@ end
 ##############
 
 macro execution(args...)
-    ctx, cfg, def = unpack_contextual_macro_args(:(::Any), args...)
-    return contextual_transform!(ctx, cfg, :($Cassette._execution), def)
+    ctx, meta, def = unpack_contextual_macro_args(:(::Any), args...)
+    return contextual_transform!(ctx, meta, :($Cassette.execution), def)
 end
 
 ################
@@ -54,10 +55,10 @@ end
 ################
 
 macro isprimitive(args...)
-    ctx, cfg, signature = unpack_contextual_macro_args(:(::Any), args...)
+    ctx, meta, signature = unpack_contextual_macro_args(:(::Any), args...)
     body = Expr(:block)
     push!(body.args, :(return Val(true)))
-    return contextual_transform!(ctx, cfg, :($Cassette._isprimitive), signature, body)
+    return contextual_transform!(ctx, meta, :($Cassette.isprimitive), signature, body)
 end
 
 ##############
@@ -65,12 +66,12 @@ end
 ##############
 
 macro primitive(args...)
-    ctx, cfg, def = unpack_contextual_macro_args(:(::Any), args...)
+    ctx, meta, def = unpack_contextual_macro_args(:(::Any), args...)
     @assert is_method_definition(def)
     signature = deepcopy(first(def.args))
     return esc(quote
-        $Cassette.@execution $ctx $cfg $def
-        $Cassette.@isprimitive $ctx $cfg $signature
+        $Cassette.@execution $ctx $meta $def
+        $Cassette.@isprimitive $ctx $meta $signature
     end)
 end
 
@@ -78,10 +79,10 @@ end
 # utilities #
 #############
 
-# returns ctx, cfg, def
-function unpack_contextual_macro_args(cfg_default, args...)
+# returns ctx, meta, def
+function unpack_contextual_macro_args(meta_default, args...)
     if length(args) == 2
-        return args[1], cfg_default, args[2]
+        return args[1], meta_default, args[2]
     elseif length(args) == 3
         return args
     else
@@ -90,18 +91,18 @@ function unpack_contextual_macro_args(cfg_default, args...)
 end
 
 macro Wrapper(args...)
-    error("cannot use @Wrapper macro outside of the scope of Cassette's other macros (@execute, @execution, @isprimitive, @primitive, @hook)")
+    error("cannot use @Wrapper macro outside of the scope of Cassette's contextual macros (@execute, @execution, @isprimitive, @primitive, @hook)")
 end
 
 iswrappermacrocall(x) = isa(x, Expr) && x.head == :macrocall && x.args[1] == Symbol("@Wrapper")
 
-function contextual_transform!(ctx, cfg, f, method)
+function contextual_transform!(ctx, meta, f, method)
     @assert is_method_definition(method)
     signature, body = method.args
-    return contextual_transform!(ctx, cfg, f, signature, body)
+    return contextual_transform!(ctx, meta, f, signature, body)
 end
 
-function contextual_transform!(ctx, cfg, f, signature::Expr, body::Expr)
+function contextual_transform!(ctx, meta, f, signature::Expr, body::Expr)
     @assert is_valid_ctx_specification(ctx) "invalid context specifier: $ctx. Valid syntax is `ContextType` or `context_name::ContextType`."
 
     if signature.head != :where
@@ -142,7 +143,7 @@ function contextual_transform!(ctx, cfg, f, signature::Expr, body::Expr)
         end
     end
 
-    signature.args[1] = Expr(:call, f, ctx, cfg, callargs...)
+    signature.args[1] = Expr(:call, f, ctx, meta, callargs...)
 
     unshift!(body.args, Expr(:meta, :inline))
 

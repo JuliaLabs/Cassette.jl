@@ -321,6 +321,47 @@ new behaviors, while solving many of the method overloading problems listed in t
 section. When possible, Cassette's contextual dispatch can be far easier and safer to use
 than implementing the equivalent code transformation pass by hand.
 
+Here is an example demonstrating how contextual dispatch can be used to print out all
+functions that are called in a context, and replace all `sin` calls with `cos` calls:
+
+```julia
+using Cassette: @context, @hook, @execute
+
+# Define a new context type called "MyCtx"
+@context MyCtx
+
+# Define a hook method that will be called as a side-effect
+# for every matching method called during contextual execution.
+# Note that this form (along with all other contextual dispatch
+# macros) uses Julia's built-in generic syntax for
+# method overloading, so we could use any of Julia's normal
+# dispatch features (function dispatch, argument dispatch type
+# variables, etc.) here if we so desired.
+@hook MyCtx f(args...) = println("calling ", f, args)
+
+# Define the execution behavior of `sin` in `MyCtx`.
+@execution MyCtx (::typeof(sin))(x) = cos(x)
+
+# Mark the method with this signature as a Cassette primitive.
+# If we don't do this, our `@execution` definition will never
+# get called, because Cassette will just recursively overdub
+# `sin` calls rather than treating them as primitives.
+@isprimitive MyCtx (::typeof(sin))(x)
+
+# This is sugar for defining `@execution` and `@isprimitive` at the same time
+@primitive MyCtx (::typeof(sin))(x) = cos(x)
+```
+
+After making the above definitions, we can run some code within the `MyCtx` context
+and see the result:
+
+
+
+
+Contextual dispatch is implemented by altering the  the overdubbing mechanism to wrap every
+downstream
+
+
 ## Dispatch Granularity and Contextual Primitives
 
 # Cassette's Contextual Metadata Propagation
