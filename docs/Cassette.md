@@ -177,7 +177,7 @@ end
 end
 ```
 
-## Overdubbing vs. Method Overloading
+### Overdubbing vs. Method Overloading
 
 As demonstrated above, the contextual passes injected by Cassette's overdubbing mechanism
 are functions from a type signature and an original method body to a new method body.
@@ -325,7 +325,7 @@ Here is an example demonstrating how contextual dispatch can be used to print ou
 functions that are called in a context, and replace all `sin` calls with `cos` calls:
 
 ```julia
-using Cassette: @context, @hook, @execute
+using Cassette: @context, @hook, @execute, @execution, @isprimitive, @primitive
 
 # Define a new context type called "MyCtx"
 @context MyCtx
@@ -352,17 +352,104 @@ using Cassette: @context, @hook, @execute
 @primitive MyCtx (::typeof(sin))(x) = cos(x)
 ```
 
-After making the above definitions, we can run some code within the `MyCtx` context
-and see the result:
+After making the above definitions, we can execute code within the `MyCtx` context and
+see the result:
 
+```julia
+julia> f(x) = sin(x) + cos(x)
+f (generic function with 1 method)
 
+julia> result = @execute MyCtx f(1.0)
+calling f(1.0,)
+calling sin(1.0,)
+calling cos(1.0,)
+calling abs(1.0,)
+calling abs_float(1.0,)
+calling Float64(π = 3.1415926535897...,)
+calling convert(Float64, π = 3.1415926535897...)
+calling typeassert(3.141592653589793, Float64)
+calling /(3.141592653589793, 4)
+calling promote(3.141592653589793, 4)
+⋮ # there are around 200 more calls in this trace, but we elide them for brevity
+1.0806046117886654
 
+julia> result === 2 * cos(1.0)
+true
+```
 
-Contextual dispatch is implemented by altering the  the overdubbing mechanism to wrap every
-downstream
+### Extending the Overdub Mechanism to Support Contextual Dispatch
 
+Contextual dispatch is implemented by breaking the overdub mechanism up into two "phases",
+the interception phase and the execution phase. The interception phase serves the same
+function as the previously shown overdub mechanism; a call is intercepted, its lowered form
+is retrieved, a contextual transformation pass is run on it, and the mechanism is
+propagated to downstream calls by wrapping them in the `Overdub` wrapper. However, instead
+of immediately repeating the cycle, the `Overdub` wrappers redirect to an execution phase.
 
-## Dispatch Granularity and Contextual Primitives
+During this phase, Cassette calls the `@hook` on the method (which is a no-op by default).
+Then, Cassette checks the underlying method's type signature to see whether or not it is
+defined as a "primitive" for the context. If so, Cassette's special `execution` method is
+called in place of the original call (this is the method overloaded by the `@execution `).
+Otherwise, Cassette redirects the call to the interception phase, and the cycle starts
+again, continuing recursively until a primitive or unreflectable call is reached.
+
+For clarity's sake, let's reexamine our previous pseudo-implementation of the overdub
+mechanism, and extend it to support contextual dispatch (unchanged code from the previous
+example is elided for brevity):
+
+```julia
+abstract type Phase end
+struct Execute <: Phase end
+struct Intercept <: Phase end
+
+# Here, we've added a `phase::<:Phase` field and type parameter for later dispatch.
+struct Overdub{P<:Phase,F,C,w}
+    phase::P
+    func::F
+    context::C
+    world::Val{w}
+end
+
+Overdub(phase, func, context) = Overdub(phase, func, context, Val(get_world_age()))
+
+# `hook` is overloaded for different context types via Cassette's `@hook` macro
+hook(o::Overdub, args...) = hook(o.context, o.func, args...)
+
+# `isprimitive` is overloaded for different context types via Cassette's `@isprimitive` macro
+isprimitive(o::Overdub, args...) = isprimitive(o.context, o.func, args...)
+
+# Here, call `execution` if `isprimitive` returns `Val(true)`, otherwise call the underlying
+# function wrapped in an `Intercept`-phase `Overdub` wrapper. `execution` is overloaded for
+# different context types via Cassette's `@execution` macro.
+execute(o::Overdub, args...) = execute(isprimitive(o, args...), o, args...)
+execute(::Val{true}, o::Overdub, args...) = execution(o.context, o.func, args...)
+execute(::Val{false}, o::Overdub, args...) = Overdub(Intercept(), o.func, o.context, o.world)(args...)
+
+# In other words, instead of replacing `g` with `Overdub(g, f.context, f.world)`,
+# `g` is replaced with `Overdub(Execute(), g, f.context, f.world)` (where `f` is
+# `SlotNumber(1)`).
+function overdub_calls!(method_body::CodeInfo)
+    # ...
+end
+
+# This is nearly the same call definition as before, but is dispatch-restricted to the
+# `Intercept` phase. Note the change in the non-reflectable case.
+@generated function (f::Overdub{Intercept,F,C,world}})(args...) where {F,C,world}
+    signature = Tuple{F,args...}
+    method_body = lookup_method_body(signature, world)
+    if isa(method_body, CodeInfo)
+        method_body = overdub_calls!(pass(C)(signature, method_body))
+    else
+        # Instead of calling the function directly as we did previously,
+        # we call it as a contextual primitive via the `execute` method.
+        method_body = :(execute(Val(true), f, args...))
+    end
+    return method_body
+end
+
+# The call definition for `Overdub{Execute}` simply calls `hook` and `execute`.
+(o::Overdub{Execute})(args...) = (hook(o, args...); execute(o, args...))
+```
 
 # Cassette's Contextual Metadata Propagation
 
