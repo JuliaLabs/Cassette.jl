@@ -192,9 +192,9 @@ exhibits a few significant problems when applied as an alternative to Cassette's
 mechanism**:
 
 - *New subtypes must implement an informal/unchecked interface of their supertype,
-regardless of the interface's (ir)relevance to the desired contextual transformation.* This
-problem is evident when defining a new subtype requires implementing complex
-conversion/promotion rules. These rules can rely on [subtle, unchecked behaviors](https://github.com/JuliaLang/julia/issues/17559),
+regardless of the interface's (ir)relevance to the desired contextual transformation.* For
+instance, this problem is evident when defining a new subtype requires implementing complex
+conversion/promotion rules. These rules can exhibit and depend on [subtle behaviors](https://github.com/JuliaLang/julia/issues/17559),
 and the required method overloads are not always evident given only a supertype. For a
 real-world example, see [ForwardDiff's `Dual` number implementation](https://github.com/JuliaDiff/ForwardDiff.jl/blob/dd692d2f5c8014167a4d85c31d10d834361887fb/src/dual.jl#L306).
 
