@@ -379,30 +379,33 @@ true
 
 ### Extending the Overdub Mechanism to Support Contextual Dispatch
 
-Contextual dispatch is implemented by breaking the overdub mechanism up into two "phases",
-the interception phase and the execution phase. The interception phase serves the same
-function as the previously shown overdub mechanism; a call is intercepted, its lowered form
-is retrieved, a contextual transformation pass is run on it, and the mechanism is
-propagated to downstream calls by wrapping them in the `Overdub` wrapper. However, instead
-of immediately repeating the cycle, the `Overdub` wrappers redirect to an execution phase.
+Contextual dispatch is implemented by breaking the overdub mechanism up into two "phases":
+the interception phase and the execution phase.
 
-During this phase, Cassette calls the `@hook` on the method (which is a no-op by default).
-Then, Cassette checks the underlying method's type signature to see whether or not it is
-defined as a "primitive" for the context. If so, Cassette's special `execution` method is
-called in place of the original call (this is the method overloaded by the `@execution `).
-Otherwise, Cassette redirects the call to the interception phase, and the cycle starts
+The interception phase is nearly the same as the previously shown pseudo-implementation of
+`Overdub`; during the interception phase, a call is intercepted, its lowered form is
+retrieved, a contextual transformation pass is run on it, and the mechanism is propagated
+to downstream calls by wrapping them in the `Overdub` wrapper. The interception phase
+differs from the previous `Overdub` implementation in that downstream `Overdub` calls
+redirect to an execution phase rather than cycling back through the interception phase.
+
+During the execution phase, Cassette calls the context's hook method (defined via `@hook`,
+and a no-op by default), then checks the underlying method's type signature to see whether
+or not it was defined as a "primitive" for the context via `@isprimitive`. If so, Cassette's
+special `execution` method (overloaded via `@execution`) is called in place of the original
+call. Otherwise, Cassette redirects the call to the interception phase, and the cycle starts
 again, continuing recursively until a primitive or unreflectable call is reached.
 
-For clarity's sake, let's reexamine our previous pseudo-implementation of the overdub
-mechanism, and extend it to support contextual dispatch (unchanged code from the previous
-example is elided for brevity):
+For clarity's sake, let's extend our previous `Overdub` pseudo-implementation to support
+contextual dispatch (code that remains unchanged from the previous example will be elided
+for brevity):
 
 ```julia
 abstract type Phase end
 struct Execute <: Phase end
 struct Intercept <: Phase end
 
-# Here, we've added a `phase::<:Phase` field and type parameter for later dispatch.
+# Here, we've added the `phase::P<:Phase` field, which we'll use for dispatch later.
 struct Overdub{P<:Phase,F,C,w}
     phase::P
     func::F
