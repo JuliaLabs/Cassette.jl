@@ -345,7 +345,7 @@ using Cassette: @context, @hook, @execute, @execution, @isprimitive, @primitive
 # Mark the method with this signature as a Cassette primitive.
 # If we don't do this, our `@execution` definition will never
 # get called, because Cassette will just recursively overdub
-# `sin` calls rather than treating them as primitives.
+# `sin` calls rather than treat them as primitives.
 @isprimitive MyCtx (::typeof(sin))(x)
 
 # This is sugar for defining `@execution` and `@isprimitive` at the same time
