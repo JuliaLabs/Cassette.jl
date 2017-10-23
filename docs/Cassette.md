@@ -318,8 +318,8 @@ As an alternative to implementing overdub passes directly, Cassette provides an 
 dispatch layer on top of Julia's existing multiple dispatch mechanism. This "contextual
 dispatch" layer enables the use of Julia's normal method overloading semantics to inject
 new behaviors, while solving many of the method overloading problems listed in the previous
-section. When possible, Cassette's contextual dispatch can be far easier and safer to use
-than implementing the equivalent code transformation pass by hand.
+section. When applicable, Cassette's contextual dispatch is usually far easier and safer to
+use than implementing the equivalent overdub pass manually.
 
 Here is an example demonstrating how contextual dispatch can be used to print out all
 functions that are called in a context, and replace all `sin` calls with `cos` calls:
