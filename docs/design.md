@@ -1,5 +1,6 @@
-At the time of writing, all of the examples in the document work using Julia commit 4247bba
-(Version 0.7.0-DEV.2125) and Cassette commit 2f342d2.
+At the time of writing, all examples in this document work using Julia commit
+4247bbafe650930b9f6da4feecf0a7dcc37e5204 (Version 0.7.0-DEV.2125) and Cassette commit
+c23c6e56ed3fcbcc3af4d801780502e3d33e8c2b.
 
 # What is Cassette?
 
