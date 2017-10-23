@@ -84,7 +84,7 @@ As denoted by the red boxes in the run-compile diagram, Cassette interacts with 
 Call" phase by wrapping target functions in a callable `Overdub` wrapper type,  whose call
 definition is a special `@generated` function. This `@generated` function  exploits the
 generator expansion that occurs during the "Optimization/Inlining" phase as an injection
-site for Cassette's overdubbing mechanism. In short, `@generated` call definition for
+site for Cassette's overdubbing mechanism. In short, the `@generated` call definition for
 `Overdub` performs a method lookup in order to retrieve the original method's code, then
 runs context-specific transformation passes on that code before returning it from the
 generator.
