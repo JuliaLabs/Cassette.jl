@@ -187,9 +187,9 @@ with multiple dispatch. So, then, what is the advantage of Cassette?
 
 To answer this question, we need only examine the alternative pattern currently dominating
 the Julia ecosystem: creating new argument types, and explicitly overloading methods on
-these types. This pattern, while central to idiomatic Julia programming for most cases,
+these types. **This pattern, while vital to idiomatic Julia programming in most cases,
 exhibits a few significant problems when applied as an alternative to Cassette's overdubbing
-mechanism:
+mechanism**:
 
 - *New subtypes must implement an informal/unchecked interface of their supertype,
 regardless of the interface's (ir)relevance to the desired contextual transformation.* This
