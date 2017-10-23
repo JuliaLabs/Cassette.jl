@@ -335,8 +335,8 @@ using Cassette: @context, @hook, @execute, @execution, @isprimitive, @primitive
 # Note that this form (along with all other contextual dispatch
 # macros) uses Julia's built-in generic syntax for
 # method overloading, so we could use any of Julia's normal
-# dispatch features (function dispatch, argument dispatch type
-# variables, etc.) here if we so desired.
+# dispatch features (function/argument dispatch, type variables,
+# etc.) here if we so desired.
 @hook MyCtx f(args...) = println("calling ", f, args)
 
 # Define the execution behavior of `sin` in `MyCtx`.
