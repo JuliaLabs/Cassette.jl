@@ -1,3 +1,6 @@
+At the time of writing, all of the examples in the document work using Julia commit 4247bba
+(Version 0.7.0-DEV.2125) and Cassette commit 2f342d2.
+
 # What is Cassette?
 
 Cassette is a Julia package that provides a just-in-time (JIT) IR pass injection mechanism,
@@ -463,14 +466,14 @@ differentiation, convexity detection, and interval constraint propagation. Tradi
 the Julia landscape, this regime has encountered the same problems covered by the earlier
 section on [Overdubbing vs. Method Overloading](#overdubbing-vs-method-overloading).
 
+<!--
+TODO: new sections
+
 ## Extending the Overdubbing Mechanism
 
 ## Avoiding Metadata Confusion
 
 ## Lifting Over Type Constraints
-
-<!--
-TODO: new sections
 
 # Application Examples
 
@@ -481,7 +484,16 @@ the mechanisms that enable these solutions. This section was written to convey t
 hurdles/goals that were overcome during development, the most significant of which was
 achieving nestability and composability for independent contexts.
 
-# Relation to Functional and Aspect-Oriented Programming
+# Relation to Other Programming Paradigms
+
+## Functional Programming
+
+## Aspect-Oriented Programming
+
+Cassette's contextual dispatch is conceptually similar to the "aspect weaver" defined by
+[aspect-oriented programming (AOP)](https://en.wikipedia.org/wiki/Aspect-oriented_programming).
+Cassette's call hooks can be used to provide at AOP-style "advice", where the pointcut is
+specified via Julia's multiple dispatch mechanism.
 
 # Future Work
 
