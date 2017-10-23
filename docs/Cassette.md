@@ -211,7 +211,7 @@ might define
     and intercept methods on `Foo`. Any methods of the form `f(::AbstractFloat)`, then,
     would be un-interceptable. Furthermore, even when one has access to target code and
     is allowed to modify it, post-hoc refactoring to loosen type restrictions can be
-    quite an arduous task, and can even increase future maintenance burden (since future
+    quite an arduous task, and add to future maintenance burden (since future
     code must also be written generically). For a real-world example, see
     [JuliaStats/Distributions.jl#511](https://github.com/JuliaStats/Distributions.jl/pull/511).
 
