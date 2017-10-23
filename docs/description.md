@@ -305,8 +305,6 @@ ambiguities via a bit of metaprogramming:
 - *Functions of variable arity are non-trivial to intercept correctly.* See, for example,
 [denizyuret/Knet.jl#112](https://github.com/denizyuret/Knet.jl/issues/112).
 
-<!-- "Metadata determination" must be computed across arguments, which can be ambiguous/costly TODO: Move this problem to metadata section -->
-
 In summary, Cassette's advantage over Julia's built-in method overloading is that it allows
 context-specific method body transformations to proliferate throughout *any* code
 running in the contextual "environment" without requiring explicit overloads to occur
@@ -456,8 +454,35 @@ end
 
 # Cassette's Contextual Metadata Propagation
 
+Until this section, our focus has been on using Cassette to inject context-specific
+*functional behaviors* that can either transparently overlay or invasively redirect the
+functional behaviors of underlying target programs. In this section, our focus shifts
+towards using Cassette to inject context-specific *state*, or metadata, that similarly can
+overlay or interact with target program state. Use cases in this regime include automatic
+differentiation, convexity detection, and interval constraint propagation. Traditionally in
+the Julia landscape, this regime has encountered the same problems covered by the earlier
+section on [Overdubbing vs. Method Overloading](#overdubbing-vs-method-overloading).
+
 ## Extending the Overdubbing Mechanism
 
 ## Avoiding Metadata Confusion
 
 ## Lifting Over Type Constraints
+
+<!--
+TODO: new sections
+
+# Application Examples
+
+# Design Goals and Hurdles
+
+This document's focus so far has been on describing Cassette, the problems it solves, and
+the mechanisms that enable these solutions. This section was written to convey the design
+hurdles/goals that were overcome during development, the most significant of which was
+achieving nestability and composability for independent contexts.
+
+# Relation to Functional and Aspect-Oriented Programming
+
+# Future Work
+
+-->
