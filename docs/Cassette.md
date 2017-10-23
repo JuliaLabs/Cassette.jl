@@ -106,7 +106,7 @@ requests tracking the development of these changes:
 - [jrevels/Cassette#5](https://github.com/jrevels/Cassette/issues/5): Optimization of "pass-through" varargs functions
 - [jrevels/Cassette#6](https://github.com/jrevels/Cassette/issues/6): World-age validation for certain kinds of `@generated` functions
 - [jrevels/Cassette#7](https://github.com/jrevels/Cassette/issues/7): Generated `CodeInfo` inlining should occur in Base rather than in Cassette
-- [jrevels/Cassette#9](https://github.com/jrevels/Cassette/issues/9): `getfield` projection overhead
+- [jrevels/Cassette#9](https://github.com/jrevels/Cassette/issues/9): Performance overhead of `getfield` type-domain projection
 
 # Cassette's Overdubbing Mechanism and Contextual Dispatch
 
