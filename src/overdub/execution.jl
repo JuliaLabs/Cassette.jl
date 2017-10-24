@@ -62,7 +62,7 @@ struct Overdub{P<:Phase,F,S<:Settings}
     end
 end
 
-debugdub(ctx, f, meta = nothing) = Overdub(Execute(), f, Settings(ctx, meta, Val(get_world_age()), Val(true)))
+debugdub(ctx, f, meta = nothing) = Overdub(Execute(), f, Settings(ctx, meta, World(), Val(true)))
 
 @inline intercept(o::Overdub{Intercept}, f) = Overdub(Execute(), f, o.settings)
 
@@ -90,7 +90,7 @@ function overdub_calls!(method_body::CodeInfo)
     end
     replace_slotnumbers!(method_body) do sn
         if sn.id == 1
-            return :($(sn).func)
+            return Expr(:call, GlobalRef(Core, :getfield), sn, QuoteNode(:func))
         elseif sn.id == 0
             return SlotNumber(1)
         else
