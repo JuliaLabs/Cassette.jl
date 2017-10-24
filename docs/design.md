@@ -467,6 +467,105 @@ differentiation, convexity detection, and interval constraint propagation. Tradi
 the Julia landscape, this regime has encountered the same problems covered by the earlier
 section on [Overdubbing vs. Method Overloading](#overdubbing-vs-method-overloading).
 
+## Trace-Level Metadata
+
+The simplest component of Cassette's contextual metadata propagation system is "trace-level"
+metadata, or metadata that propagates as a single instance throughout the contextual
+execution of a program, and is accessible at every point of contextual dispatch in the
+execution trace.
+
+For example, the following code uses trace-level metadata to count the number of calls
+where all argument types are `<:Number`:
+
+```julia
+julia> using Cassette: @context, @hook, @execute
+
+julia> @context CountCtx
+
+# This expands to something like
+#
+#     Cassette.hook(::CountCtx, c, f, args::Number...) = ...
+#
+# ...where the `c` argument propagates via a field of the `Overdub`
+# wrapper that calls `hook`. Note that since `c` is a normal argument,
+# you can also dispatch on its type.
+julia> @hook CountCtx c f(::Number, ::Number...) = (c[] += 1; println("count is now ", c[], " due to ", f))
+
+julia> count = Ref(0) # this will be our trace-level metadata
+Base.RefValue{Int64}(0)
+
+julia> @execute CountCtx count sin(1)
+count is now 1 due to sin
+count is now 2 due to float
+count is now 3 due to sin
+count is now 4 due to abs
+⋮ # elided for brevity
+count is now 140 due to +
+count is now 141 due to add_float
+count is now 142 due to +
+count is now 143 due to add_float
+0.8414709848078965
+
+julia> count
+Base.RefValue{Int64}(143)
+```
+
+Below is a more involved example, similar to the above in that only functions of certain
+argument types are counted. Here, however, we use dispatch to make the intercepted argument
+type a configurable parameter:
+
+```julia
+julia> using Cassette: @context, @hook, @execute
+
+julia> mutable struct Count{T}
+           x::Int
+       end
+
+julia> @context CountCtx
+
+julia> @hook CountCtx c::Count{T} function f(::T, ::T...) where {T}
+            c.x += 1
+            println("count is now ", c.x, " due to ", f)
+       end
+
+julia> count = Count{String}(0)
+Count{String}(0)
+
+julia> @execute CountCtx count repr(rand(10))
+count is now 1 due to Array{UInt8,1}
+count is now 2 due to pointer
+count is now 3 due to pointer_from_objref
+count is now 4 due to sizeof
+count is now 5 due to Core.sizeof
+count is now 6 due to Array{UInt8,1}
+"[0.850452, 0.0270932, 0.442993, 0.585945, 0.734315, 0.642504, 0.665375, 0.168887, 0.985633, 0.916614]"
+
+julia> count
+Count{String}(6)
+
+# now let's count the number of calls to `f(::Number...)` functions
+julia> count = Count{Number}(0)
+Count{Number}(0)
+
+julia> @execute CountCtx count repr(rand(10))
+count is now 1 due to Base.GenericIOBuffer{Array{UInt8,1}}
+count is now 2 due to Base.StringVector
+⋮ # elided for brevity
+count is now 209 due to ==
+count is now 210 due to ===
+"[0.670988, 0.176888, 0.586795, 0.596653, 0.257753, 0.439668, 0.374046, 0.104243, 0.441718, 0.927184]"
+
+julia> count
+Count{Number}(210)
+```
+
+## Value-Level Metadata
+
+### Mutation and Lifting Over Type Constraints
+
+### Metadata Confusion
+
+
 <!--
 TODO: new sections
 
