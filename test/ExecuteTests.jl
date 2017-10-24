@@ -45,6 +45,15 @@ foldmul(x, args...) = Core._apply(Base.afoldl, (*, x), args...)
 Cassette.@context FoldCtx
 @test Cassette.@execute(FoldCtx, foldmul(x)) === foldmul(x)
 
+Cassette.@context CountCtx
+count1 = Ref(0)
+Cassette.@hook CountCtx count f(args::Number...) = (count[] += 1)
+Cassette.@execute CountCtx count1 sin(1)
+Cassette.@hook CountCtx count f(args::Number...) = (count[] += 2)
+count2 = Ref(0)
+Cassette.@execute CountCtx count2 sin(1)
+Cassette.@test (2 * count1[]) === count2[]
+
 ############################################################################################
 
 struct Bar{X,Y,Z}

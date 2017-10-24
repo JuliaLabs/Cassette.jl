@@ -8,6 +8,16 @@ struct Execute <: Phase end
 
 struct Intercept <: Phase end
 
+#########
+# World #
+#########
+
+struct World{w} end
+
+World() = World{get_world_age()}()
+
+get_world_age() = ccall(:jl_get_tls_world_age, UInt, ()) # ccall(:jl_get_world_counter, UInt, ())
+
 ############
 # Settings #
 ############
@@ -15,29 +25,28 @@ struct Intercept <: Phase end
 struct Settings{C<:Context,M,w,d}
     context::C
     metadata::M
-    world::Val{w}
+    world::World{w}
     debug::Val{d}
     function Settings(context::C,
                       metadata::M = nothing,
-                      world::Val{w} = Val(get_world_age()),
+                      world::World{w} = World(),
                       debug::Val{d} = Val(false)) where {C,M,w,d}
         return new{C,M,w,d}(context, metadata, world, debug)
     end
 end
 
-get_world_age() = ccall(:jl_get_tls_world_age, UInt, ()) # ccall(:jl_get_world_counter, UInt, ())
+#####################
+# Execution Methods #
+#####################
 
-@inline function hook(settings::Settings{C,M,w}, f, args...) where {C,M,w}
-    return hook(settings.context, settings.metadata, f, args...)
-end
+@inline _hook(::World{w}, args...) where {w} = nothing
+@inline hook(settings::Settings{C,M,w}, f, args...) where {C,M,w} = _hook(settings.world, settings.context, settings.metadata, f, args...)
 
-@inline function execution(settings::Settings{C,M,w}, f, args...) where {C,M,w}
-    return execution(settings.context, settings.metadata, f, args...)
-end
+@inline _execution(::World{w}, ctx, meta, f, args...) where {w} = Cassette.unwrapcall(f, ctx, args...)
+@inline execution(settings::Settings{C,M,w}, f, args...) where {C,M,w} = _execution(settings.world, settings.context, settings.metadata, f, args...)
 
-@inline function isprimitive(settings::Settings{C,M,w}, f, args...) where {C,M,w}
-    return isprimitive(settings.context, settings.metadata, f, args...)
-end
+@inline _isprimitive(::World{w}, args...) where {w} = Val(false)
+@inline isprimitive(settings::Settings{C,M,w}, f, args...) where {C,M,w} = _isprimitive(settings.world, settings.context, settings.metadata, f, args...)
 
 ###########
 # Overdub #
@@ -104,6 +113,11 @@ end
 # Overdub Call Definitions #
 ############################
 
+# Overdub{Execute} #
+#------------------#
+
+@inline (o::Overdub{Execute})(args...) = (hook(o, args...); execute(o, args...))
+
 # Overdub{Intercept} #
 #--------------------#
 
@@ -129,8 +143,3 @@ for N in 0:MAX_ARGS
         end
     end
 end
-
-# Overdub{Execute} #
-#------------------#
-
-@inline (o::Overdub{Execute})(args...) = (hook(o, args...); execute(o, args...))

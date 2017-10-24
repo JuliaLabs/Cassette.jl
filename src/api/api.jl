@@ -10,9 +10,6 @@ macro context(Ctx)
             tag::$Cassette.Tag{T}
         end
         @inline $Ctx(x) = $Ctx($Cassette.Tag(x))
-        $Cassette.isprimitive(::$Ctx, ::Any...) = Val(false)
-        $Cassette.@hook $Ctx f(args...) = nothing
-        $Cassette.@execution ctx::$Ctx f(args...) = $Cassette.unwrapcall(f, ctx, args...)
         $Cassette.@execution ctx::$Ctx (::typeof(Core.getfield))(x, field) = $Cassette._getfield(x, $Cassette.Name{field}())
         $Cassette.@execution ctx::$Ctx (::typeof(Core.setfield!))(x, field, y) = $Cassette._setfield!(x, $Cassette.Name{field}(), y)
     end)
@@ -38,7 +35,7 @@ end
 
 macro hook(args...)
     ctx, meta, def = unpack_contextual_macro_args(:(::Any), args...)
-    return contextual_transform!(ctx, meta, :($Cassette.hook), def)
+    return contextual_transform!(ctx, meta, :($Cassette._hook), def)
 end
 
 ##############
@@ -47,7 +44,7 @@ end
 
 macro execution(args...)
     ctx, meta, def = unpack_contextual_macro_args(:(::Any), args...)
-    return contextual_transform!(ctx, meta, :($Cassette.execution), def)
+    return contextual_transform!(ctx, meta, :($Cassette._execution), def)
 end
 
 ################
@@ -58,7 +55,7 @@ macro isprimitive(args...)
     ctx, meta, signature = unpack_contextual_macro_args(:(::Any), args...)
     body = Expr(:block)
     push!(body.args, :(return Val(true)))
-    return contextual_transform!(ctx, meta, :($Cassette.isprimitive), signature, body)
+    return contextual_transform!(ctx, meta, :($Cassette._isprimitive), signature, body)
 end
 
 ##############
@@ -119,6 +116,10 @@ function contextual_transform!(ctx, meta, f, signature::Expr, body::Expr)
     end
     push!(signature.args, :($ctxtypevar <: $ctxtype))
 
+    worldtypevar = gensym("world")
+    push!(signature.args, :($worldtypevar))
+    world = :(::$Cassette.World{$worldtypevar})
+
     callargs = signature.args[1].args
     for i in 1:length(callargs)
         x = callargs[i]
@@ -143,7 +144,7 @@ function contextual_transform!(ctx, meta, f, signature::Expr, body::Expr)
         end
     end
 
-    signature.args[1] = Expr(:call, f, ctx, meta, callargs...)
+    signature.args[1] = Expr(:call, f, world, ctx, meta, callargs...)
 
     unshift!(body.args, Expr(:meta, :inline))
 
