@@ -2,7 +2,7 @@ __precompile__(false)
 
 module Cassette
 
-const MAX_ARGS = 50
+const MAX_ARGS = 20
 
 include("utilities/metaprogramming.jl")
 include("utilities/anonymous.jl")
