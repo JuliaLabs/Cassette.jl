@@ -2,6 +2,8 @@ module ExecuteTests
 
 using Test, Cassette
 
+############################################################################################
+
 function rosenbrock(x::Vector{Float64})
     a = 1.0
     b = 100.0
@@ -14,16 +16,22 @@ end
 
 x = rand(2)
 
+############################################################################################
+
 Cassette.@context MyCtx
 MESSAGES = String[]
 Cassette.@hook MyCtx f(args...) = push!(MESSAGES, string("calling ", f, args))
 Cassette.@execute MyCtx rosenbrock(x)
 @test length(MESSAGES) == 126
 
+############################################################################################
+
 Cassette.@hook MyCtx meta f(args...) = push!(meta, string("calling ", f, args))
 meta = String[]
 Cassette.@execute MyCtx meta rosenbrock(x)
 @test MESSAGES == meta
+
+############################################################################################
 
 Cassette.@hook MyCtx meta f(args...) = nothing
 Cassette.@hook MyCtx meta f(args::Number...) = push!(meta, args)
@@ -33,6 +41,8 @@ for args in meta
     @test all(x -> isa(x, Number), args)
 end
 
+############################################################################################
+
 x = rand()
 sin_plus_cos(x) = sin(x) + cos(x)
 Cassette.@context SinCtx
@@ -40,10 +50,14 @@ Cassette.@context SinCtx
 Cassette.@primitive SinCtx (::typeof(sin))(x) = cos(x)
 @test Cassette.@execute(SinCtx, sin_plus_cos(x)) === (2 * cos(x))
 
+############################################################################################
+
 x = 2
 foldmul(x, args...) = Core._apply(Base.afoldl, (*, x), args...)
 Cassette.@context FoldCtx
 @test Cassette.@execute(FoldCtx, foldmul(x)) === foldmul(x)
+
+############################################################################################
 
 Cassette.@context CountCtx
 count1 = Ref(0)
@@ -53,6 +67,21 @@ Cassette.@hook CountCtx count f(args::Number...) = (count[] += 2)
 count2 = Ref(0)
 Cassette.@execute CountCtx count2 sin(1)
 @test (2 * count1[]) === count2[]
+
+############################################################################################
+
+struct Baz
+    x::Int
+    y::Float64
+    z::String
+end
+
+baz_identity(x::Int) = Baz(x, float(x), "$x").x
+
+Cassette.@context BazCtx
+n = rand()
+result = Cassette.@execute BazCtx baz_identity(@Wrapper(1, n))
+@test result === Cassette.Wrapper(BazCtx(baz_identity), 1, n)
 
 ############################################################################################
 
@@ -67,7 +96,7 @@ mutable struct Foo
     b
 end
 
-function f(x)
+function foo_bar_identity(x)
     bar = Bar(x, x + 1, x + 2)
     foo = Foo(bar, "ha")
     foo.b = bar
@@ -76,9 +105,9 @@ function f(x)
     foo2.b.x
 end
 
-Cassette.@context MyCtx2
+Cassette.@context FooBarCtx
 n = rand()
-result = Cassette.@execute MyCtx2 f(@Wrapper(1, n))
-@test result === Cassette.Wrapper(MyCtx2(f), 1, n)
+result = Cassette.@execute FooBarCtx foo_bar_identity(@Wrapper(1, n))
+@test result === Cassette.Wrapper(FooBarCtx(foo_bar_identity), 1, n)
 
 end # module InterceptTests
