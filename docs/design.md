@@ -728,16 +728,13 @@ description.
 #### Metadata Confusion
 
 
+
 <!--
 TODO: new sections
 
-## Extending the Overdubbing Mechanism
-
-## Avoiding Metadata Confusion
-
-## Lifting Over Type Constraints
-
 # Application Examples
+
+## Forward-Mode Automatic Differentiation
 
 # Design Goals and Hurdles
 
@@ -746,17 +743,21 @@ the mechanisms that enable these solutions. This section was written to convey t
 hurdles/goals that were overcome during development, the most significant of which was
 achieving nestability and composability for independent contexts.
 
-# Relation to Other Programming Paradigms
-
-## Functional Programming
-
-## Aspect-Oriented Programming
-
-Cassette's contextual dispatch is conceptually similar to the "aspect weaver" defined by
-[aspect-oriented programming (AOP)](https://en.wikipedia.org/wiki/Aspect-oriented_programming).
-Cassette's call hooks can be used to provide at AOP-style "advice", where the pointcut is
-specified via Julia's multiple dispatch mechanism.
-
 # Future Work
 
 -->
+# Relation to Other Programming Paradigms
+
+Cassette's contextual dispatch is conceptually similar to the "aspect weaver" defined by
+[aspect-oriented programming (AOP)](https://en.wikipedia.org/wiki/Aspect-oriented_programming).
+Cassette's call hooks can be used to provide AOP-style "advice", where pointcuts are
+specified via Julia's multiple dispatch mechanism.
+
+Cassette's contextual metadata propagation system is heavily inspired by the functional
+data propagation idioms made popular by languages like Haskell, specifically the pattern
+of arranging concerns and managing state via layering functors. This particular style of
+programming was [recently dubbed "functor-oriented programming" by Russel O'Connor](http://r6.ca/blog/20171010T001746Z.html).
+
+For more work concerning the combination of aspect-oriented and functional programming
+techniques, De Meuter's "Monads as a theoretical foundation for AOP" (1997) is a [useful
+starting place](https://scholar.google.com/scholar?start=0&hl=en&as_sdt=0,22&sciodt=0,22&cites=3110450170580690333&scipsc=).
