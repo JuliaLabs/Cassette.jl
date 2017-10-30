@@ -748,10 +748,10 @@ achieving nestability and composability for independent contexts.
 -->
 # Relation to Other Programming Paradigms
 
-Cassette's contextual dispatch is conceptually similar to the "aspect weaver" defined by
-[aspect-oriented programming (AOP)](https://en.wikipedia.org/wiki/Aspect-oriented_programming).
-Cassette's call hooks can be used to provide AOP-style "advice", where pointcuts are
-specified via Julia's multiple dispatch mechanism.
+Cassette's contextual dispatch seems conceptually similar to the mechanisms that
+underlie "aspect weaving" as defined by [aspect-oriented programming (AOP)](https://en.wikipedia.org/wiki/Aspect-oriented_programming).
+In some sense, Cassette's call hooks can be used to provide AOP-style "advice", where
+the pointcuts are specified via Julia's multiple dispatch mechanism.
 
 Cassette's contextual metadata propagation system is heavily inspired by the functional
 data propagation idioms made popular by languages like Haskell, specifically the pattern
