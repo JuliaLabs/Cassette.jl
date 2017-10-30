@@ -610,15 +610,15 @@ dispatch constraints on both the target function (`baz_identity`) and downstream
 Propagation through dispatch constraints is naturally achieved via the additional dispatch
 layer granted by the overdubbing mechanism. That is, underlying dispatch constraints never
 interfere with `Wrapper` propagation because dispatch-constrained methods (like
-`baz_identity`) are never directly called. Instead, Cassette executes the call method for
-the `Overdub` type, and this method has no dispatch constraints.<sup id="f2-anchor">[2](#f2)</sup>
+`baz_identity`) are never directly called. Instead, Cassette is executing the previously
+described `Overdub` call method, which has no such dispatch constraints.<sup id="f2-anchor">[2](#f2)</sup>
 
-In this way, `Wrapper` instances can naturally pass through overdubbed code, and only need
-to be explicitly handled at the primitive execution sites where `Cassette.execution`
-is called. Recall that the default behavior of `Cassette.execution` is to simply call the
-underlying function with the original arguments. We can easily modify this behavior to
-support `Wrapper` arguments by unwrapping all values before calling the function, using
-code similar to the following:
+Since all downstream function calls are wrapped in `Overdub`, `Wrapper` instances can
+naturally pass through overdubbed code, and only need to be explicitly handled at the
+primitive execution sites where `Cassette.execution` is called. Recall that the default
+behavior of `Cassette.execution` is to simply call the underlying function with the original
+arguments. We can easily modify this behavior to support `Wrapper` arguments by unwrapping
+all values before calling the function, using code similar to the following:
 
 ```julia
 # contextually extract wrapped values
