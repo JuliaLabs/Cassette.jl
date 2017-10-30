@@ -646,7 +646,7 @@ original method body. Following our example, given the type signature
 Cassette will perform a method body lookup with the type signature `Tuple{typeof(baz_identity),Int64}`.
 [↩](#f2-anchor)
 
-### Propagation Through Field Type Constraints
+### Propagation Through Structural Type Constraints
 
 Consider this more complex version of the previous section's example:
 
@@ -677,55 +677,55 @@ Baz(1, 1.0, "1")
 Wrapper(1, Meta{Active}(0.7041067151514468, @anon()))
 ```
 
-<!-- In this example, Cassette is bypassing two different constraints on `x`: `baz_identity`'s
-`x` dispatch constraint, and `Baz`'s `x` field constraint.
+In this example, Cassette is bypassing two different constraints on `x`: the dispatch
+constraints of the target and downstream functions, and the structural `Int` constraint
+on `Baz`'s `x` field. We covered the former in the previous section, so here we will
+describe how Cassette achieves the latter.
 
-Now that we have covered the `baz_identity`, we shall examine the field constraint.
+The central idea enabling this ability is that a `Wrapper` always persists metadata
+at the outermost "strutural layer." In other words, a `Wrapper` instance is never contained
+within an outer structure. If a new type instance is constructed with `Wrapper` values
+as the field arguments, these values are instead unwrapped and any associated metadata
+is "bubbled up" to a new outer `Wrapper` that persists the metadata in an external "field
+map". This is implemented by hijacking Julia's built-in `new` constructor, which isn't a
+normal function, but rather a special kind of `Expr` defined for use in Julia's IR.
 
+As part of the overdubbing process, Cassette extends the built-in AST pass described in
+earlier sections to replace all `new` nodes in reflected method bodies with calls to
+`Cassette.wrapper_new`. This replacement constructor intercepts all `Wrapper` arguments,
+calls the original constructor on the arguments' unwrapped values, then wraps the newly
+constructed instance in a fresh `Wrapper` with the arguments' metadata intact.
 
-unwrapping requires passing in the context that the wrapper is associated
-with. If one tried called `unwrap`
+For example, during contextual execution, `Baz(Wrapper(x, n), y, Wrapper(z, m))` would
+resolve to something like `Wrapper(Baz(x, y, z); x = n, z = m)`, where the keyword argument
+notation denotes the field mapping persisted by the outermost `Wrapper`. This field map
+is implemented via [Cassette's internal "anonymous type" implementation](https://github.com/jrevels/Cassette.jl/blob/master/src/utilities/anonymous.jl),
+which allows `Wrapper`s to directly mirror the field structure of their underlying values.
 
- With the addition
-of the `Wrapper` type,
+In addition to hijacking `new`, Cassette also intercepts `getfield` and `setfield!`, such
+that field accesses on `Wrapper`s will return correctly (un)wrapped values, e.g.
+`Wrapper(Baz(x, y, z); x = n, z = m).z` must yield `Wrapper(z, m)`. Since `getfield` and
+`setfield!` are actual Julia functions (though built-ins), they can be contextually
+dispatched on. Thus, for every new context type `Ctx`, Cassette automatically defines:
 
- A default
-definition of `Cassette.execution` is
-
+```julia
+@execution ctx::$Ctx (::typeof(Core.getfield))(x, field) = Cassette._getfield(x, field)
+@execution ctx::$Ctx (::typeof(Core.setfield!))(x, field, y) = Cassette._setfield!(x, field, y)
 ```
-execution(o.context, o.func, args...)
-```
 
-This way, `Wrapper` instances need only be explicitly handled at primitive callsites
+where `Cassette._getfield` and `Cassette._setfield!` are `Wrapper`-aware and behave as one
+would expect.
 
-Once a primitive is reached, then rappers must be
+Note that the strategy described here also works for Julia's built-in `Array`s, but the
+Cassette implementation for this strategy is not yet complete. Theoretically, it is
+similar enough to the `struct` wrapping strategy that it does not merit its own
+description.
 
+### Implementing Wrappers With Anonymous Types
 
-In order to understand how Cassette was able to achieve this, first recall that Cassette is
-wrapping all downstream function calls in the `Overdub` type; technically, the original
-program isn't really run at all, until reflectable methods are reached.
+### Dispatching on Wrappers
 
-
-original program is  and not calling the original
-functions until a  
-
-
-C f -> C x -> C f x -->
-
-<!-- By default, contextual execution is defined to unwrap and rewrap
-these instances as necessary to preserve the execution semantics of the original program. -->
-
-
-<!-- The `Wrapper` type is a monadic, persistent data structure that associates
-metadata with underlying program values without modifying of the original program's
-type constraints.
-
-
-preserves metadata -->
-
-
-
-### Metadata Confusion
+#### Metadata Confusion
 
 
 <!--
