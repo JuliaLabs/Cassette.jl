@@ -705,7 +705,7 @@ constructed instance in a fresh `Wrapper` with the arguments' metadata intact.
 For example, during contextual execution, `Baz(Wrapper(x, n), y, Wrapper(z, m))` would
 resolve to something like `Wrapper(Baz(x, y, z); x = n, z = m)`, where the keyword argument
 notation denotes the field mapping persisted by the outermost `Wrapper`. This field map
-is implemented via [Cassette's internal "anonymous type" implementation](https://github.com/jrevels/Cassette.jl/blob/master/src/utilities/anonymous.jl),
+is implemented on top of [Cassette's internal "anonymous type" functionality](https://github.com/jrevels/Cassette.jl/blob/master/src/utilities/anonymous.jl),
 which allows `Wrapper`s to directly mirror the field structure of their underlying values.
 
 In addition to hijacking `new`, Cassette also intercepts `getfield` and `setfield!`, such
