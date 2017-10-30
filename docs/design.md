@@ -566,6 +566,12 @@ julia> count
 Count{Number}(210)
 ```
 
+In order to support trace-level metadata, the `Overdub` type must carry and propagate an
+additional `metadata` field. The new `metadata` field essentially follows the `context`
+field, and is passed around to all the same functions, e.g. `hook`, `execution`,
+`isprimitive` etc. This implementation change is simple enough that it is not recreated
+here.
+
 ## Argument-Level Metadata
 
 There are many use cases, such as forward-mode automatic differentiation, where metadata is
