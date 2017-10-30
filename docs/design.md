@@ -136,7 +136,7 @@ get_world_age() = ccall(:jl_get_tls_world_age, UInt, ())
 # This is necessary to force re-expansion/re-compilation of the call
 # definition (the `@generated` function below) when the world age
 # updates (for example, when a new method is added to `pass` below).
-struct Overdub{F,C,w}
+struct Overdub{F,C<:Context,w}
     func::F
     context::C
     world::Val{w}
@@ -408,7 +408,7 @@ struct Execute <: Phase end
 struct Intercept <: Phase end
 
 # Here, we've added the `phase::P<:Phase` field, which we'll use for dispatch later.
-struct Overdub{P<:Phase,F,C,w}
+struct Overdub{P<:Phase,F,C<:Context,w}
     phase::P
     func::F
     context::C
@@ -417,15 +417,22 @@ end
 
 Overdub(phase, func, context) = Overdub(phase, func, context, Val(get_world_age()))
 
-# `hook` is overloaded for different context types via Cassette's `@hook` macro
+# `hook` is overloaded for different context types via Cassette's `@hook` macro.
+# It returns `nothing` by default.
 hook(o::Overdub, args...) = hook(o.context, o.func, args...)
+hook(::Context, f, args...) = nothing
 
 # `isprimitive` is overloaded for different context types via Cassette's `@isprimitive` macro
+# It returns `Val(false)` by default.
 isprimitive(o::Overdub, args...) = isprimitive(o.context, o.func, args...)
+isprimitive(::Context, f, args...) = Val(false)
+
+# `execution` is overloaded for different context types via Cassette's `@execution` macro
+# It simply executes the original function by default.
+execution(::Context, f, args...) = f(args...)
 
 # Here, call `execution` if `isprimitive` returns `Val(true)`, otherwise call the underlying
-# function wrapped in an `Intercept`-phase `Overdub` wrapper. `execution` is overloaded for
-# different context types via Cassette's `@execution` macro.
+# function wrapped in an `Intercept`-phase `Overdub` wrapper.
 execute(o::Overdub, args...) = execute(isprimitive(o, args...), o, args...)
 execute(::Val{true}, o::Overdub, args...) = execution(o.context, o.func, args...)
 execute(::Val{false}, o::Overdub, args...) = Overdub(Intercept(), o.func, o.context, o.world)(args...)
@@ -559,9 +566,164 @@ julia> count
 Count{Number}(210)
 ```
 
-## Value-Level Metadata
+## Argument-Level Metadata
 
-### Mutation and Lifting Over Type Constraints
+There are many use cases, such as forward-mode automatic differentiation, where metadata is
+associated with local arguments rather than global traces. To facilitate these cases,
+Cassette provides a special `Wrapper` functor type which stores underlying values and their
+associated metadata. `Wrapper` type instances are tied to the contexts in which they are
+constructed, enabling Cassette to employ contextual dispatch to propagate `Wrapper`s
+through underlying program state, even in the presence of type constraints that
+would normally disallow such propagation.
+
+### Propagation Through Dispatch Type Constraints
+
+Consider the following example:
+
+```julia
+julia> using Cassette: @context, @execute
+
+# This is just an identity function with a side-effect. Note the `x::Int` restriction.
+julia> baz_identity(x::Int) = (println((x + x) * sin(x)); x)
+baz_identity (generic function with 1 method)
+
+# We'll use this as our metadata
+julia> n = rand()
+0.513223968007092
+
+julia> @context BazCtx
+
+# Here, we use Cassette's `@Wrapper` macro to associate the metadata `n` with an underlying
+# value `1`, then contextually call `baz_identity` on the wrapped instance. Note that the
+# result is still wrapped, and is `===` to the input (as we'd expect from an identity
+# function like `baz_identity`), proving that Cassette is able to propagate metadata
+# through dispatch type constraints.
+julia> @execute BazCtx baz_identity(@Wrapper(1, n))
+1.682941969615793
+Wrapper(1, Meta{Active}(0.513223968007092, @anon()))
+```
+
+In this example, the `Wrapper` instance propagates through the computation despite the
+dispatch constraints on both the target function (`baz_identity`) and downstream functions
+(`+`, `*`, `sin`).
+
+Propagation through dispatch constraints is naturally achieved via the additional dispatch
+layer granted by the overdubbing mechanism. That is, underlying dispatch constraints never
+interfere with `Wrapper` propagation because dispatch-constrained methods (like
+`baz_identity`) are never directly called. Instead, Cassette executes the call method for
+the `Overdub` type, and this method has no dispatch constraints.<sup id="f2-anchor">[2](#f2)</sup>
+
+In this way, `Wrapper` instances can naturally pass through overdubbed code, and only need
+to be explicitly handled at the primitive execution sites where `Cassette.execution`
+is called. Recall that the default behavior of `Cassette.execution` is to simply call the
+underlying function with the original arguments. We can easily modify this behavior to
+support `Wrapper` arguments by unwrapping all values before calling the function, using
+code similar to the following:
+
+```julia
+# contextually extract wrapped values
+unwrap(::Context, x) = x
+unwrap(::C,       x::Wrapper{C}) where {C<:Context} = x.value
+
+# call `f` with all arguments unwrapped w.r.t. `ctx`
+unwrapcall(f, ctx::Context, args...) = unwrap(ctx, f)(map(x -> unwrap(ctx, x), args)...)
+
+# the new execution method uses `unwrapcall` instead of calling the function directly
+execution(ctx::Context, f, args...) = unwrapcall(f, ctx::Context, args...)
+```
+
+Note that the `unwrap` is written such that `Wrappers` can only be unwrapped with respect to
+their associated context. For example, if one calls `unwrap(::A, w::Wrapper{B})` where
+context `A` and `B` are unequal, then `w` is simply returned unchanged, since `w` is nothing
+more than an underlying program value from the perspective of context `A`. These  kinds of
+semantics are essential for solving a class of problems known as [Metadata Confusion](#metadata-confusion),
+which will be described in a later section.
+
+<b id="f2">[2]</b> Bypassing dispatch constraints at this point does not break underlying
+program semantics, since Cassette still uses the original type signature to look up the
+original method body. Following our example, given the type signature
+`Tuple{Overdub{Intercept,typeof(baz_identity),Ctx{0xb5b36b77685cfd1d}},Wrapper{Ctx{0xb5b36b77685cfd1d},Int64,Float64}}`
+Cassette will perform a method body lookup with the type signature `Tuple{typeof(baz_identity),Int64}`.
+[↩](#f2-anchor)
+
+### Propagation Through Field Type Constraints
+
+Consider this more complex version of the previous section's example:
+
+```julia
+julia> using Cassette: @context, @execute
+
+# Baz's fields are restricted to concrete leaf type
+julia> struct Baz
+           x::Int
+           y::Float64
+           z::String
+       end
+
+# A different version of `baz_identity`, which constructs and prints a `Baz` instance before
+# returning the original input.
+julia> baz_identity(x::Int) = (baz = Baz(x, float(x), "$x"); println(baz); baz.x)
+baz_identity (generic function with 1 method)
+
+# once again, we'll use a random Float64 as our metadata
+julia> n = rand()
+0.7041067151514468
+
+julia> @context BazCtx
+
+# Just like before, the result is correctly `===` to the original input.
+julia> @execute BazCtx baz_identity(@Wrapper(1, n))
+Baz(1, 1.0, "1")
+Wrapper(1, Meta{Active}(0.7041067151514468, @anon()))
+```
+
+<!-- In this example, Cassette is bypassing two different constraints on `x`: `baz_identity`'s
+`x` dispatch constraint, and `Baz`'s `x` field constraint.
+
+Now that we have covered the `baz_identity`, we shall examine the field constraint.
+
+
+unwrapping requires passing in the context that the wrapper is associated
+with. If one tried called `unwrap`
+
+ With the addition
+of the `Wrapper` type,
+
+ A default
+definition of `Cassette.execution` is
+
+```
+execution(o.context, o.func, args...)
+```
+
+This way, `Wrapper` instances need only be explicitly handled at primitive callsites
+
+Once a primitive is reached, then rappers must be
+
+
+In order to understand how Cassette was able to achieve this, first recall that Cassette is
+wrapping all downstream function calls in the `Overdub` type; technically, the original
+program isn't really run at all, until reflectable methods are reached.
+
+
+original program is  and not calling the original
+functions until a  
+
+
+C f -> C x -> C f x -->
+
+<!-- By default, contextual execution is defined to unwrap and rewrap
+these instances as necessary to preserve the execution semantics of the original program. -->
+
+
+<!-- The `Wrapper` type is a monadic, persistent data structure that associates
+metadata with underlying program values without modifying of the original program's
+type constraints.
+
+
+preserves metadata -->
+
+
 
 ### Metadata Confusion
 
