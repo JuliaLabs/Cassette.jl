@@ -1,13 +1,3 @@
-# Cassette - A Julia Package for Metadata Propagation with Application to Automatic Differentiation
-
-*Jarrett Revels, Massachusetts Institute of Technology*
-
-*Juan Pablo Vielma, Massachusetts Institute of Technology*
-
-*Cosmin G. Petra, Lawrence Livermore National Laboratory*
-
-10/31/2017
-
 ## Introduction to Cassette and Metadata Propagation
 
 Cassette is a Julia package that provides a just-in-time (JIT) IR pass injection mechanism,
