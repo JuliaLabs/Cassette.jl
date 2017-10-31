@@ -1,6 +1,6 @@
 At the time of writing, all examples in this document work using Julia commit
 4247bbafe650930b9f6da4feecf0a7dcc37e5204 (Version 0.7.0-DEV.2125) and Cassette commit
-c23c6e56ed3fcbcc3af4d801780502e3d33e8c2b.
+6bf9fab39de6f364f76860a3cb5d9a01939d925f.
 
 # What is Cassette?
 
@@ -727,6 +727,8 @@ Cassette implementation for this strategy is not yet complete. Theoretically, it
 similar enough to the `struct` wrapping strategy that it does not merit its own
 description.
 
+<!--
+
 ### Implementing Wrappers With Anonymous Types
 
 ### Dispatching on Wrappers
@@ -735,7 +737,6 @@ description.
 
 
 
-<!--
 TODO: new sections
 
 # Application Examples
