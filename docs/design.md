@@ -1,8 +1,10 @@
 # Cassette - A Julia Package for Metadata Propagation with Application to Automatic Differentiation
 
-Jarrett Revels, Massachusetts Institute of Technology
-Juan Pablo Vielma, Massachusetts Institute of Technology
-Cosmin Petra, Lawrence Livermore National Lab
+*Jarrett Revels, Massachusetts Institute of Technology*
+
+*Juan Pablo Vielma, Massachusetts Institute of Technology*
+
+*Cosmin G. Petra, Lawrence Livermore National Laboratory*
 
 10/31/2017
 
