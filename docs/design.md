@@ -768,3 +768,72 @@ programming was [recently dubbed "functor-oriented programming" by Russel O'Conn
 For more work concerning the combination of aspect-oriented and functional programming
 techniques, De Meuter's "Monads as a theoretical foundation for AOP" (1997) is a [useful
 starting place](https://scholar.google.com/scholar?start=0&hl=en&as_sdt=0,22&sciodt=0,22&cites=3110450170580690333&scipsc=).
+
+# The Heilmeier Catechism
+
+The [Heilmeier Catechism](https://www.darpa.mil/work-with-us/heilmeier-catechism) is a
+useful set of questions for researchers to address when describing new work. Here, we
+answer a few of these questions with regard to Cassette.
+
+1. *What are you trying to do? Articulate your objectives using absolutely no jargon.*
+
+We seek to develop a tool that allows new features/optimizations to be automatically
+injected into arbitrary Julia programs while they are running, despite the fact that
+these programs may have originally been written without any knowledge of these new
+features/optimizations. If we had such a tool, we could...
+
+- ...create new kinds of tools for Julia developers to help them quickly identify bugs and
+performance problems.
+- ...enable Julia programmers to rapidly prototype new language features without having
+to modify Julia's internal structure.
+- ...inject additional computations alongside the program's original computations, like
+computing numerical derivatives. This application is paramount to the solving problems in
+optimization and machine learning.
+- ...translate programs to run on specialized hardware, potentially resulting in speed-ups
+over the original program's target hardware.
+
+2. *How is it done today, and what are the limits of current practice?*
+
+TODO
+
+3. *What is new in your approach and why do you think it will be successful?*
+
+TODO
+
+4. *Who cares? If you are successful, what difference will it make?*
+
+Cassette's audience includes...
+
+- ...compiler researchers, since Cassette could allow them to rapidly prototype new language
+features and optimizations without modifying Julia internals. This includes formal
+verification and synthesis research. An example is the Intel team behind
+[ParallelAccelerator](https://github.com/IntelLabs/ParallelAccelerator.jl).
+
+- ...Julia core developers, who are affected in the sense that many planned features,
+such as method-overlay tables, will no longer require hardcoded compiler support. This
+also would allow them to rapidly prototype compiler research as mentioned earlier.
+
+- ...Julia package authors, who can use Cassette to implement specific language features
+that enable their tools. This includes developer-facing tools for debugging and profiling,
+as well as user-facing tools for automatic differentiation, interval constraint
+programming, and auto-parallelization.
+
+- ...downstream Julia users (especially those in the fields of optimization and machine
+learning) who will not interact with Cassette directly, but will benefit from the speedups
+and new features made possible by Cassette.
+
+5. *What are the risks?*
+
+TODO
+
+6. *How much will it cost?*
+
+TODO
+
+7. *How long will it take?*
+
+TODO
+
+8. *What are the mid-term and final “exams” to check for success?*
+
+TODO
