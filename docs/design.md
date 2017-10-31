@@ -1,8 +1,12 @@
-At the time of writing, all examples in this document work using Julia commit
-4247bbafe650930b9f6da4feecf0a7dcc37e5204 (Version 0.7.0-DEV.2125) and Cassette commit
-6bf9fab39de6f364f76860a3cb5d9a01939d925f.
+# Cassette - A Julia Package for Metadata Propagation with Application to Automatic Differentiation
 
-# What is Cassette?
+Jarrett Revels, Massachusetts Institute of Technology
+Juan Pablo Vielma, Massachusetts Institute of Technology
+Cosmin Petra, Lawrence Livermore National Lab
+
+10/31/2017
+
+## Introduction to Cassette and Metadata Propagation
 
 Cassette is a Julia package that provides a just-in-time (JIT) IR pass injection mechanism,
 or **overdubbing mechanism**, that can be used to interleave external code transformations
@@ -27,7 +31,7 @@ compiler itself. In fact, there is already [previous work in this
 regime](https://github.com/IntelLabs/ParallelAccelerator.jl) that could drastically benefit
 from a formal, standardized approach to compiler extension.
 
-# Background: Julia's Compiler
+## Background: Julia's Compiler
 
 To understand how Cassette works, one must first have at least a cursory knowledge of
 where Cassette fits into Julia's run-compile cycle, as well as Julia's `@generated`
@@ -35,7 +39,7 @@ function feature. An explanation of the former is given in the following section
 explanation of the latter is given in [Julia's official `@generated` function
 documentation](https://docs.julialang.org/en/latest/manual/metaprogramming/#Generated-functions-1).
 
-## Julia's Run-Compile Cycle
+### Julia's Run-Compile Cycle
 
 A diagram of Julia's run-compile cycle is shown below. While this diagram is quite
 incomplete<sup id="f1-anchor">[1](#f1)</sup>, it is sufficient for the purposes of
@@ -81,7 +85,7 @@ to another function call, at which point the cycle repeats.
 "parse time" section, which would include Julia AST construction and macro expansion.
 [↩](#f1-anchor)
 
-## Where Cassette Fits In The Run-Compile Cycle
+### Where Cassette Fits In The Run-Compile Cycle
 
 As denoted by the red boxes in the run-compile diagram, Cassette interacts with the
 "Function Call" and "Optimizations/Inlining" phases. Cassette interacts with the  "Function
@@ -97,7 +101,7 @@ In the case of Cassette's contextual execution framework, this overdubbing mecha
 facilitates a JIT-rewrite of the target method's code in order to propagate the context
 type and any associated metadata to downstream function calls.
 
-## Changes to Julia's Compiler
+### Changes to Julia's Compiler
 
 To facilitate the development of Cassette, several changes to the compiler have been
 made, and several more are planned. Below is a list of relevant GitHub issues and pull
@@ -112,14 +116,14 @@ requests tracking the development of these changes:
 - [jrevels/Cassette#7](https://github.com/jrevels/Cassette/issues/7): Generated `CodeInfo` inlining should occur in Base rather than in Cassette
 - [jrevels/Cassette#9](https://github.com/jrevels/Cassette/issues/9): Performance overhead of `getfield` type-domain projection
 
-# Cassette's Overdubbing Mechanism and Contextual Dispatch
+## Cassette's Overdubbing Mechanism and Contextual Dispatch
 
 As stated earlier, Cassette's overdubbing mechanism works by using a wrapper type whose
 call definition is a `@generated` function that injects context-specific code
 transformations into the compiler's "Optimization/Inlining" phase. In this section,
 the overdubbing mechanism will be examined in more detail.
 
-## A Simple Overdubbing Mechanism
+### A Simple Overdubbing Mechanism
 
 Below is a simplified, mocked-out of version of Cassette's overdubbing mechanism that
 only supports transformation pass injection:
@@ -181,7 +185,7 @@ end
 end
 ```
 
-### Overdubbing vs. Method Overloading
+#### Overdubbing vs. Method Overloading
 
 As demonstrated above, the contextual passes injected by Cassette's overdubbing mechanism
 are functions from a type signature and an original method body to a new method body.
@@ -314,7 +318,7 @@ context-specific method body transformations to proliferate throughout *any* cod
 running in the contextual "environment" without requiring explicit overloads to occur
 for all downstream function calls.
 
-## Contextual Dispatch
+### Contextual Dispatch
 
 As an alternative to implementing overdub passes directly, Cassette provides an additional
 dispatch layer on top of Julia's existing multiple dispatch mechanism. This "contextual
@@ -379,7 +383,7 @@ julia> result === 2 * cos(1.0)
 true
 ```
 
-### Extending the Overdub Mechanism to Support Contextual Dispatch
+#### Extending the Overdub Mechanism to Support Contextual Dispatch
 
 Contextual dispatch is implemented by breaking the overdub mechanism up into two "phases":
 the interception phase and the execution phase.
@@ -463,7 +467,7 @@ end
 (o::Overdub{Execute})(args...) = (hook(o, args...); execute(o, args...))
 ```
 
-# Cassette's Contextual Metadata Propagation
+## Cassette's Contextual Metadata Propagation
 
 Until this section, our focus has been on using Cassette to inject context-specific
 *functional behaviors* that can either transparently overlay or invasively redirect the
@@ -474,7 +478,7 @@ differentiation, convexity detection, and interval constraint propagation. Tradi
 the Julia landscape, this regime has encountered the same problems covered by the earlier
 section on [Overdubbing vs. Method Overloading](#overdubbing-vs-method-overloading).
 
-## Trace-Level Metadata
+### Trace-Level Metadata
 
 The simplest component of Cassette's contextual metadata propagation system is "trace-level"
 metadata, or metadata that propagates as a single instance throughout the contextual
@@ -572,7 +576,7 @@ field, and is passed around to all the same functions, e.g. `hook`, `execution`,
 `isprimitive` etc. This implementation change is simple enough that it is not recreated
 here.
 
-## Argument-Level Metadata
+### Argument-Level Metadata
 
 There are many use cases, such as forward-mode automatic differentiation, where metadata is
 associated with local arguments rather than global traces. To facilitate these cases,
@@ -582,7 +586,7 @@ constructed, enabling Cassette to employ contextual dispatch to propagate `Wrapp
 through underlying program state, even in the presence of type constraints that
 would normally disallow such propagation.
 
-### Propagation Through Dispatch Type Constraints
+#### Propagation Through Dispatch Type Constraints
 
 Consider the following example:
 
@@ -652,7 +656,7 @@ original method body. Following our example, given the type signature
 Cassette will perform a method body lookup with the type signature `Tuple{typeof(baz_identity),Int64}`.
 [↩](#f2-anchor)
 
-### Propagation Through Structural Type Constraints
+#### Propagation Through Structural Type Constraints
 
 Consider this more complex version of the previous section's example:
 
@@ -753,7 +757,7 @@ achieving nestability and composability for independent contexts.
 # Future Work
 
 -->
-# Relation to Other Programming Paradigms
+## Relation to Other Programming Paradigms
 
 Cassette's contextual dispatch seems conceptually similar to the mechanisms that
 underlie "aspect weaving" as defined by [aspect-oriented programming (AOP)](https://en.wikipedia.org/wiki/Aspect-oriented_programming).
