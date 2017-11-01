@@ -839,10 +839,10 @@ TODO
 
 Cassette's audience includes...
 
-- ...compiler researchers, since Cassette could allow them to rapidly prototype new language
-features and optimizations without modifying Julia internals. This includes formal
-verification and synthesis research. An example is the Intel team behind
-[ParallelAccelerator](https://github.com/IntelLabs/ParallelAccelerator.jl).
+- ...programming language researchers, since Cassette could allow them to rapidly prototype
+new language features and compiler optimizations without modifying Julia internals. This
+includes formal verification and synthesis research. An example of a group in this audience
+is the Intel team that developed [ParallelAccelerator](https://github.com/IntelLabs/ParallelAccelerator.jl).
 
 - ...Julia core developers, who are affected in the sense that many planned features,
 such as method-overlay tables, will no longer require hardcoded compiler support. This
