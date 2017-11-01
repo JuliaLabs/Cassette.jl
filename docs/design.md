@@ -753,7 +753,10 @@ achieving nestability and composability for independent contexts.
 # Future Work
 
 -->
-# Relation to Other Programming Paradigms
+
+# Appendix
+
+## 1. Relation to Other Programming Paradigms
 
 Cassette's contextual dispatch seems conceptually similar to the mechanisms that
 underlie "aspect weaving" as defined by [aspect-oriented programming (AOP)](https://en.wikipedia.org/wiki/Aspect-oriented_programming).
@@ -769,7 +772,7 @@ For more work concerning the combination of aspect-oriented and functional progr
 techniques, De Meuter's "Monads as a theoretical foundation for AOP" (1997) is a [useful
 starting place](https://scholar.google.com/scholar?start=0&hl=en&as_sdt=0,22&sciodt=0,22&cites=3110450170580690333&scipsc=).
 
-# The Heilmeier Catechism
+## 2. The Heilmeier Catechism
 
 The [Heilmeier Catechism](https://www.darpa.mil/work-with-us/heilmeier-catechism) is a
 useful set of questions for researchers to address when describing new work. Here, we
@@ -794,13 +797,16 @@ over the original program's target hardware.
 
 2. *How is it done today, and what are the limits of current practice?*
 
-Similar frameworks in other compiled languages, like the [Checker Framework for Java](https://checkerframework.org/),
-cannot generally make use of runtime type information, and are purpose-built for static
-verification rather than arbitrary language feature injection. For example, it would be
-an abuse of the Checker Framework to use its compiler plugin mechanism to implement
-automatic differentiation or interval constraint programming TODO: verify this statement.
+Similar frameworks in other compiled languages, like the [Checker Framework for
+Java](https://checkerframework.org/), cannot generally make use of runtime type information,
+and so often require extensive user-provided annotations in order to instrument programs in
+a statically inferrable manner. As such, most of these frameworks are purpose-built for
+type-based static verification  rather than dynamic injection of arbitrary language
+features. For example, it would be an abuse of the Checker Framework to use its compiler
+plugin mechanism to implement automatic differentiation or interval constraint programming.
 
-For a more Julia-centric answer, see the earlier section on [Overdubbing vs. Method Overloading](#overdubbing-vs-method-overloading).
+For a more Julia-centric answer to this question, see the earlier section on [Overdubbing
+vs. Method Overloading](#overdubbing-vs-method-overloading).
 
 In addition to the limitations of the type-based approach described in that section,
 Cassette also addresses several limitations relevant to Julia compiler pass development.
@@ -819,9 +825,10 @@ the upfront cost of development and review are deemed worthwhile, a new feature/
 can still be rejected due to its projected maintenance cost and its potential to interfere
 with future fundamental compiler work.
 
-Cassette solves these issues by...
+Cassette overcomes these limitations by...
 
-- ...providing a clear method-local injection site for new compiler passes.
+- ...providing a clear method-local injection site with full run-time type information for
+external compiler passes.
 - ...providing a context system that allows passes to be written and composed modularly.
 - ...allowing compiler passes to be developed externally to the core compiler codebase.
 
@@ -833,29 +840,39 @@ compiler passes are de facto dependencies of all Julia code.
 
 3. *What is new in your approach and why do you think it will be successful?*
 
-TODO
+Cassette differs from previous approaches (both in Julia and other languages) in that...
+
+- ...it allows external compiler passes to utilize full run-time type information.
+- ...it works on black-box, unannotated, Cassette-unaware Julia code.
+- ...it can propagate context-specific metadata through dispatch and structural type constraints.
+- ...application sites for context-specific transforms can be specified using the multiple
+dispatch semantics provided by the underlying language
+- ...if transforms are method-local, they need not be expressed in terms of complicated,
+boilerplate-laden compiler passes.
+- ...context-specific transformations/metadata can be unambiguously composed and layered.
 
 4. *Who cares? If you are successful, what difference will it make?*
 
 Cassette's audience includes...
 
 - ...programming language researchers, since Cassette could allow them to rapidly prototype
-new language features and compiler optimizations without modifying Julia internals. This
-includes formal verification and synthesis research. An example of a group in this audience
-is the Intel team that developed [ParallelAccelerator](https://github.com/IntelLabs/ParallelAccelerator.jl).
+new language features and compiler optimizations without modifying Julia internals. Applicable
+domains include automatic parallelization (e.g. [ParallelAccelerator](https://github.com/IntelLabs/ParallelAccelerator.jl).),
+formal verification (e.g. [the Checker Framework](https://checkerframework.org/manual/)),
+and approximate computing (e.g. [EnerJ](https://sampa.cs.washington.edu/new/research/approximation/enerj.html)).
 
 - ...Julia core developers, who are affected in the sense that many planned features,
 such as method-overlay tables, will no longer require hardcoded compiler support. This
 also would allow them to rapidly prototype compiler research as mentioned earlier.
 
 - ...Julia package authors, who can use Cassette to implement specific language features
-that enable their tools. This includes developer-facing tools for debugging and profiling,
-as well as user-facing tools for automatic differentiation, interval constraint
-programming, and auto-parallelization.
+that enable their tools. This includes developer-facing tools for debugging, profiling,
+and verification, as well as user-facing tools for automatic differentiation, interval
+constraint programming, and auto-parallelization.
 
 - ...downstream Julia users (especially those in the fields of optimization and machine
-learning) who will not interact with Cassette directly, but will benefit from the speedups
-and new features made possible by Cassette.
+learning) who will not interact with Cassette directly, but will benefit from speedups
+and new language-level features made possible by Cassette.
 
 5. *What are the risks?*
 
