@@ -778,7 +778,7 @@ The [Heilmeier Catechism](https://www.darpa.mil/work-with-us/heilmeier-catechism
 useful set of questions for researchers to address when describing new work. Here, we
 answer a few of these questions with regard to Cassette.
 
-1. *What are you trying to do? Articulate your objectives using absolutely no jargon.*
+### What are you trying to do? Articulate your objectives using absolutely no jargon.
 
 We seek to develop a tool that allows new features/optimizations to be automatically
 injected into arbitrary Julia programs while they are running, despite the fact that
@@ -795,7 +795,7 @@ optimization and machine learning.
 - ...translate programs to run on specialized hardware, potentially resulting in speed-ups
 over the original program's target hardware.
 
-2. *How is it done today, and what are the limits of current practice?*
+### How is it done today, and what are the limits of current practice?
 
 Similar frameworks in other compiled languages, like the [Checker Framework for
 Java](https://checkerframework.org/), cannot generally make use of runtime type information,
@@ -838,7 +838,7 @@ extensions are appropriate to take on as dependencies. This limits error propaga
 simplifies program analysis, as opposed to the current situation where all "hardcoded"
 compiler passes are de facto dependencies of all Julia code.
 
-3. *What is new in your approach and why do you think it will be successful?*
+### What is new in your approach and why do you think it will be successful?
 
 Cassette differs from previous approaches (both in Julia and other languages) in that...
 
@@ -851,7 +851,7 @@ dispatch semantics provided by the underlying language
 boilerplate-laden compiler passes.
 - ...context-specific transformations/metadata can be unambiguously composed and layered.
 
-4. *Who cares? If you are successful, what difference will it make?*
+### Who cares? If you are successful, what difference will it make?
 
 Cassette's audience includes...
 
@@ -874,18 +874,18 @@ constraint programming, and auto-parallelization.
 learning) who will not interact with Cassette directly, but will benefit from speedups
 and new language-level features made possible by Cassette.
 
-5. *What are the risks?*
+### What are the risks?
 
 TODO
 
-6. *How much will it cost?*
+### How much will it cost?
 
 TODO
 
-7. *How long will it take?*
+### How long will it take?
 
 TODO
 
-8. *What are the mid-term and final “exams” to check for success?*
+### What are the mid-term and final “exams” to check for success?
 
 TODO
