@@ -794,7 +794,42 @@ over the original program's target hardware.
 
 2. *How is it done today, and what are the limits of current practice?*
 
-TODO
+Similar frameworks in other compiled languages, like the [Checker Framework for Java](https://checkerframework.org/),
+cannot generally make use of runtime type information, and are purpose-built for static
+verification rather than arbitrary language feature injection. For example, it would be
+an abuse of the Checker Framework to use its compiler plugin mechanism to implement
+automatic differentiation or interval constraint programming TODO: verify this statement.
+
+For a more Julia-centric answer, see the earlier section on [Overdubbing vs. Method Overloading](#overdubbing-vs-method-overloading).
+
+In addition to the limitations of the type-based approach described in that section,
+Cassette also addresses several limitations relevant to Julia compiler pass development.
+
+Adding new compiler-level features and optimization passes currently involves modifying
+Julia's internal compiler code directly. This is a substantial barrier to prototyping
+compiler passes, as it requires the developer to have thorough knowledge of the other
+intertwined compiler passes with which new passes must integrate.
+
+Furthermore, actually merging new compiler passes into the codebase carries a large
+development cost for Julia's core compiler team. Code reviews for new compiler features
+can have long turnaround times, and require intense effort from the reviewers. This is
+because number of qualified reviewers is small and the stakes are high - any mistakes could
+introduce esoteric "undebuggable" errors into all downstream Julia applications. Even if
+the upfront cost of development and review are deemed worthwhile, a new feature/optimization
+can still be rejected due to its projected maintenance cost and its potential to interfere
+with future fundamental compiler work.
+
+Cassette solves these issues by...
+
+- ...providing a clear method-local injection site for new compiler passes.
+- ...providing a context system that allows passes to be written and composed modularly.
+- ...allowing compiler passes to be developed externally to the core compiler codebase.
+
+The final point, specifically, is key; not only does it alleviate the development costs
+discussed above, but it also allows Julia packages to explicitly select which compiler
+extensions are appropriate to take on as dependencies. This limits error propagation and
+simplifies program analysis, as opposed to the current situation where all "hardcoded"
+compiler passes are de facto dependencies of all Julia code.
 
 3. *What is new in your approach and why do you think it will be successful?*
 
