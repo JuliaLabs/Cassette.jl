@@ -74,7 +74,7 @@ formed between "Type Inference" and "Optimizations/Inlining".
 code generator, where the IR is converted into LLVM bitcode, which is in turn converted
 to executable native code.
 
-6. The native code is executed, potentially returning runtime values that are then fed
+6. The native code is executed, potentially returning run-time values that are then fed
 to another function call, at which point the cycle repeats.
 
 <b id="f1">[1]</b> To be considered complete, this diagram would need to also have a
@@ -798,7 +798,7 @@ over the original program's target hardware.
 ### How is it done today, and what are the limits of current practice?
 
 Similar frameworks in other compiled languages, like the [Checker Framework for
-Java](https://checkerframework.org/), cannot generally make use of runtime type information,
+Java](https://checkerframework.org/), cannot usually make use of run-time type information,
 and so often require extensive user-provided annotations in order to instrument programs in
 a statically inferrable manner. As such, most of these frameworks are purpose-built for
 type-based static verification  rather than dynamic injection of arbitrary language
