@@ -2,7 +2,7 @@ At the time of writing, all examples in this document work using Julia commit
 4247bbafe650930b9f6da4feecf0a7dcc37e5204 (Version 0.7.0-DEV.2125) and Cassette commit
 6bf9fab39de6f364f76860a3cb5d9a01939d925f.
 
-# What is Cassette?
+# Introduction
 
 Cassette is a Julia package that provides a just-in-time (JIT) IR pass injection mechanism,
 or **overdubbing mechanism**, that can be used to interleave external code transformations
@@ -18,14 +18,6 @@ Downstream applications for Cassette include automatic differentiation, interval
 programming, dynamic code analysis (e.g. profiling, `rr`-style debugging, etc.), JIT
 transpilation to GPU backends, automatic parallelization/rescheduling, memoization,
 high-level automated memory management and code fuzzing.
-
-Outside of Julia, the LLVM ecosystem has long benefitted from modular compiler extensions in
-the form of the LLVM Pass Framework. In a similar vein, we hope that Cassette's overdubbing
-mechanism can eventually be used to jump-start an ecosystem of Julia compiler "plugins" -
-modular extensions that implement new compiler optimizations and features external to the
-compiler itself. In fact, there is already [previous work in this
-regime](https://github.com/IntelLabs/ParallelAccelerator.jl) that could drastically benefit
-from a formal, standardized approach to compiler extension.
 
 # Background: Julia's Compiler
 
@@ -780,7 +772,12 @@ answer a few of these questions with regard to Cassette.
 
 ### What are you trying to do? Articulate your objectives using absolutely no jargon.
 
-We seek to develop a tool that allows new features/optimizations to be automatically
+We seek to develop a tool that allows arbitrary Julia programs to be imbued with
+new features/optimizations
+
+
+
+allows  to be automatically
 injected into arbitrary Julia programs while they are running, despite the fact that
 these programs may have originally been written without any knowledge of these new
 features/optimizations. If we had such a tool, we could...
@@ -790,7 +787,7 @@ performance problems.
 - ...enable Julia programmers to rapidly prototype new language features without having
 to modify Julia's internal structure.
 - ...inject additional computations alongside the program's original computations, like
-computing numerical derivatives. This application is paramount to the solving problems in
+computing numerical derivatives. This application is paramount to solving problems in
 optimization and machine learning.
 - ...translate programs to run on specialized hardware, potentially resulting in speed-ups
 over the original program's target hardware.
@@ -798,12 +795,13 @@ over the original program's target hardware.
 ### How is it done today, and what are the limits of current practice?
 
 Similar frameworks in other compiled languages, like the [Checker Framework for
-Java](https://checkerframework.org/), cannot usually make use of run-time type information,
-and so often require extensive user-provided annotations in order to instrument programs in
-a statically inferrable manner. As such, most of these frameworks are purpose-built for
-type-based static verification  rather than dynamic injection of arbitrary language
-features. For example, it would be an abuse of the Checker Framework to use its compiler
-plugin mechanism to implement automatic differentiation or interval constraint programming.
+Java](https://checkerframework.org/) or OCaml's extension points, cannot usually
+make use of run-time type information, and so often require extensive user-provided
+annotations in order to instrument programs in a statically inferrable manner. As such,
+most of these frameworks are purpose-built for type-based static verification or
+syntax extension rather than dynamic injection of arbitrary language features. For
+example, it would be an abuse of the Checker Framework to use its compiler plugin
+mechanism to implement automatic differentiation or interval constraint programming.
 
 For a more Julia-centric answer to this question, see the earlier section on [Overdubbing
 vs. Method Overloading](#overdubbing-vs-method-overloading).
@@ -853,13 +851,7 @@ boilerplate-laden compiler passes.
 
 ### Who cares? If you are successful, what difference will it make?
 
-Cassette's audience includes...
-
-- ...programming language researchers, since Cassette could allow them to rapidly prototype
-new language features and compiler optimizations without modifying Julia internals. Applicable
-domains include automatic parallelization (e.g. [ParallelAccelerator](https://github.com/IntelLabs/ParallelAccelerator.jl).),
-formal verification (e.g. [the Checker Framework](https://checkerframework.org/manual/)),
-and approximate computing (e.g. [EnerJ](https://sampa.cs.washington.edu/new/research/approximation/enerj.html)).
+Cassette's Julia-based audience includes...
 
 - ...Julia core developers, who are affected in the sense that many planned features,
 such as method-overlay tables, will no longer require hardcoded compiler support. This
@@ -873,6 +865,31 @@ constraint programming, and auto-parallelization.
 - ...downstream Julia users (especially those in the fields of optimization and machine
 learning) who will not interact with Cassette directly, but will benefit from speedups
 and new language-level features made possible by Cassette.
+
+- ...programming language researchers who wish to implement research prototypes in a
+practical setting.
+
+Outside of Julia, modular compiler extension tools (like Clang/LLVM's Pass framework) have
+jump-started compiler research by providing programming language researchers with the
+ability to rapidly prototype language features/optimizations without needing to develop
+their own DSLs. Furthermore, developing research prototypes on top of real-world technology
+often allows the prototype to be quickly be adapted for practical use, benefitting the
+software community as a whole.
+
+<!--
+
+TODO finish this
+
+- ..., since Cassette could allow them to  needmodifying Julia internals.  Applicable
+domains include automatic parallelization (e.g. [ParallelAccelerator](https://github.com/IntelLabs/ParallelAccelerator.jl).),
+formal verification (e.g. [the Checker Framework](https://checkerframework.org/manual/)),
+and approximate computing (e.g. [EnerJ](https://sampa.cs.washington.edu/new/research/approximation/enerj.html)).
+
+
+
+Outside of Julia,  In a similar vein, we hope that Cassette be used to
+jump-start an ecosystem of Julia compiler "plugins" - modular extensions that implement new
+compiler optimizations and features external to the compiler itself. -->
 
 ### What are the risks?
 
