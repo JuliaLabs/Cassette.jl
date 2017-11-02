@@ -20,11 +20,14 @@ end
 ############
 
 macro execute(args...)
+    isdebug = last(args) == :debug
+    args = isdebug ? args[1:end-1] : args
     ctx, meta, call = unpack_contextual_macro_args(nothing, args...)
     @assert isa(call, Expr) && call.head == :call
     ctxsym = gensym("context")
     f = call.args[1]
-    call.args[1] = :($Cassette.Overdub($(Execute()), $f, $Cassette.Settings($ctxsym, $meta)))
+    settings = isdebug ? :($Cassette.Settings($ctxsym, $meta, Cassette.World(), Val(true))) : :($Cassette.Settings($ctxsym, $meta))
+    call.args[1] = :($Cassette.Overdub($(Execute()), $f, $settings))
     replace_match!(x -> :($Cassette.Wrapper($ctxsym, $(x.args[3:end]...))), iswrappermacrocall, call.args)
     return esc(:($ctxsym = $ctx($f); $call))
 end

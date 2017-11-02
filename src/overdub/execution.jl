@@ -62,8 +62,6 @@ struct Overdub{P<:Phase,F,S<:Settings}
     end
 end
 
-debugdub(ctx, f, meta = nothing) = Overdub(Execute(), f, Settings(ctx, meta, World(), Val(true)))
-
 @inline intercept(o::Overdub{Intercept}, f) = Overdub(Execute(), f, o.settings)
 
 @inline context(o::Overdub) = o.settings.context
