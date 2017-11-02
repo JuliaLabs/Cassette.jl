@@ -15,4 +15,6 @@ include("overdub/execution.jl")
 
 include("api/api.jl")
 
+include("workarounds.jl")
+
 end # module
