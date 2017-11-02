@@ -1,6 +1,36 @@
+This document describes Cassette, the problems it solves, and the mechanisms that enable
+those solutions.
+
+If you're not a Julia developer (or at least a very knowledgeable Julia user), this document
+will likely be difficult to read; I suggest these readers start with the
+[Heilmeier Catechism](#the-heilmeier-catechism) section of the appendix.
+
 At the time of writing, all examples in this document work using Julia commit
 4247bbafe650930b9f6da4feecf0a7dcc37e5204 (Version 0.7.0-DEV.2125) and Cassette commit
 6bf9fab39de6f364f76860a3cb5d9a01939d925f.
+
+# Table of Contents
+
+- [Introduction](#introduction)
+- [Background](#background)
+    - [Julia's Run-Compile Cycle](#julias-run-compile-cycle)
+    - [Where Cassette Fits In The Run-Compile Cycle](#where-cassette-fits-in-the-run-compile-cycle)
+    - [Changes to Julia's Compiler](#changes-to-julias-compiler)
+- [The Overdubbing Mechanism and Contextual Dispatch](#the-overdubbing-mechanism-and-contextual-dispatch)
+    - [A Simple Overdubbing Mechanism](#a-simple-overdubbing-mechanism)
+        - [Overdubbing vs. Method Overloading](#overdubbing-vs-method-overloading)
+    - [Contextual Dispatch](#contextual-dispatch)
+        - [Extending the Overdub Mechanism to Support Contextual Dispatch](#extending-the-overdub-mechanism-to-support-contextual-dispatch)
+- [Contextual Metadata Propagation](#contextual-metadata-propagation)
+    - [Trace-Level Metadata](#trace-level-metadata)
+    - [Argument-Level Metadata](#argument-level-metadata)
+        - [Propagation Through Dispatch Type Constraints](#propagation-through-dispatch-type-constraints)
+        - [Propagation Through Structural Type Constraints](#propagation-through-structural-type-constraints)
+        - [Anonymous Types](#anonymous-types) (TODO)
+        - [Dispatching On Metadata Wrappers](#dispatching-on-metadata-wrappers) (TODO)
+- [Appendix](#appendix)
+    - [Relation to Other Programming Paradigms](#relation-to-other-programming-paradigms)
+    - [The Heilmeier Catechism](#the-heilmeier-catechism)
 
 # Introduction
 
@@ -19,7 +49,7 @@ programming, dynamic code analysis (e.g. profiling, `rr`-style debugging, etc.),
 transpilation to GPU backends, automatic parallelization/rescheduling, memoization,
 high-level automated memory management and code fuzzing.
 
-# Background: Julia's Compiler
+# Background
 
 To understand how Cassette works, one must first have at least a cursory knowledge of
 where Cassette fits into Julia's run-compile cycle, as well as Julia's `@generated`
@@ -104,7 +134,7 @@ requests tracking the development of these changes:
 - [jrevels/Cassette#7](https://github.com/jrevels/Cassette/issues/7): Generated `CodeInfo` inlining should occur in Base rather than in Cassette
 - [jrevels/Cassette#9](https://github.com/jrevels/Cassette/issues/9): Performance overhead of `getfield` type-domain projection
 
-# Cassette's Overdubbing Mechanism and Contextual Dispatch
+# The Overdubbing Mechanism and Contextual Dispatch
 
 As stated earlier, Cassette's overdubbing mechanism works by using a wrapper type whose
 call definition is a `@generated` function that injects context-specific code
@@ -455,7 +485,7 @@ end
 (o::Overdub{Execute})(args...) = (hook(o, args...); execute(o, args...))
 ```
 
-# Cassette's Contextual Metadata Propagation
+# Contextual Metadata Propagation
 
 Until this section, our focus has been on using Cassette to inject context-specific
 *functional behaviors* that can either transparently overlay or invasively redirect the
@@ -719,36 +749,17 @@ Cassette implementation for this strategy is not yet complete. Theoretically, it
 similar enough to the `struct` wrapping strategy that it does not merit its own
 description.
 
-<!--
+### Anonymous Types
 
-### Implementing Wrappers With Anonymous Types
+TODO
 
-### Dispatching on Wrappers
+### Dispatching On Metadata Wrappers
 
-#### Metadata Confusion
-
-
-
-TODO: new sections
-
-# Application Examples
-
-## Forward-Mode Automatic Differentiation
-
-# Design Goals and Hurdles
-
-This document's focus so far has been on describing Cassette, the problems it solves, and
-the mechanisms that enable these solutions. This section was written to convey the design
-hurdles/goals that were overcome during development, the most significant of which was
-achieving nestability and composability for independent contexts.
-
-# Future Work
-
--->
+TODO
 
 # Appendix
 
-## 1. Relation to Other Programming Paradigms
+## Relation to Other Programming Paradigms
 
 Cassette's contextual dispatch seems conceptually similar to the mechanisms that
 underlie "aspect weaving" as defined by [aspect-oriented programming (AOP)](https://en.wikipedia.org/wiki/Aspect-oriented_programming).
@@ -764,7 +775,7 @@ For more work concerning the combination of aspect-oriented and functional progr
 techniques, De Meuter's "Monads as a theoretical foundation for AOP" (1997) is a [useful
 starting place](https://scholar.google.com/scholar?start=0&hl=en&as_sdt=0,22&sciodt=0,22&cites=3110450170580690333&scipsc=).
 
-## 2. The Heilmeier Catechism
+## The Heilmeier Catechism
 
 The [Heilmeier Catechism](https://www.darpa.mil/work-with-us/heilmeier-catechism) is a
 useful set of questions for researchers to address when describing new work. Here, we
@@ -772,15 +783,10 @@ answer a few of these questions with regard to Cassette.
 
 ### What are you trying to do? Articulate your objectives using absolutely no jargon.
 
-We seek to develop a tool that allows arbitrary Julia programs to be imbued with
-new features/optimizations
-
-
-
-allows  to be automatically
-injected into arbitrary Julia programs while they are running, despite the fact that
-these programs may have originally been written without any knowledge of these new
-features/optimizations. If we had such a tool, we could...
+We seek to develop a tool that can inject new features and optimizations into arbitrary
+Julia programs while they are running, despite the fact that these programs may have
+originally been written without any knowledge of these new features/optimizations. If we
+had such a tool, we could...
 
 - ...create new kinds of tools for Julia developers to help them quickly identify bugs and
 performance problems.
@@ -855,7 +861,7 @@ Cassette's Julia-based audience includes...
 
 - ...Julia core developers, who are affected in the sense that many planned features,
 such as method-overlay tables, will no longer require hardcoded compiler support. This
-also would allow them to rapidly prototype compiler research as mentioned earlier.
+also allows them to rapidly prototype compiler research, as is discussed below.
 
 - ...Julia package authors, who can use Cassette to implement specific language features
 that enable their tools. This includes developer-facing tools for debugging, profiling,
@@ -869,6 +875,8 @@ and new language-level features made possible by Cassette.
 - ...programming language researchers who wish to implement research prototypes in a
 practical setting.
 
+This last point merits further discussion.
+
 Outside of Julia, modular compiler extension tools (like Clang/LLVM's Pass framework) have
 jump-started compiler research by providing programming language researchers with the
 ability to rapidly prototype language features/optimizations without needing to develop
@@ -876,21 +884,24 @@ their own DSLs. Furthermore, developing research prototypes on top of real-world
 often allows the prototype to be quickly be adapted for practical use, benefitting the
 software community as a whole.
 
-<!--
+However, many of these tools are limited in that...
 
-TODO finish this
+- ...they only apply to highly normalized, low-level code
+- ...they don't provide access to run-time type information
+- ...multiple-dispatch is cumbersome to express/implement in the target language
+- ...they are tailored to support code verification rather arbitrary pass injection
 
-- ..., since Cassette could allow them to  needmodifying Julia internals.  Applicable
-domains include automatic parallelization (e.g. [ParallelAccelerator](https://github.com/IntelLabs/ParallelAccelerator.jl).),
+Not all existing tools have all of these limitations, of course, but most tools have at
+least one of them. Cassette overcomes these limitations by selecting Julia as the
+target language, which grants multiple-dispatch, JIT compilation facilities, and a
+high-level IR that is representable as a data structure within the host language.
+
+Applicable programming language research domains for Cassette include automatic
+parallelization (e.g. [ParallelAccelerator](https://github.com/IntelLabs/ParallelAccelerator.jl).),
 formal verification (e.g. [the Checker Framework](https://checkerframework.org/manual/)),
 and approximate computing (e.g. [EnerJ](https://sampa.cs.washington.edu/new/research/approximation/enerj.html)).
 
-
-
-Outside of Julia,  In a similar vein, we hope that Cassette be used to
-jump-start an ecosystem of Julia compiler "plugins" - modular extensions that implement new
-compiler optimizations and features external to the compiler itself. -->
-
+<!--
 ### What are the risks?
 
 TODO
@@ -905,4 +916,4 @@ TODO
 
 ### What are the mid-term and final “exams” to check for success?
 
-TODO
+TODO -->
