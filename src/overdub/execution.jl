@@ -136,7 +136,7 @@ for N in 0:MAX_ARGS
                     $Cassette.execute(Val(true), f, $(arg_names...))
                 end
             end
-            debug && println("RETURNING Overdub(...) BODY: ", method_body)
+            debug && Core.println("RETURNING Overdub(...) BODY: ", method_body)
             return method_body
         end
     end

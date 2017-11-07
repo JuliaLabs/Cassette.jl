@@ -4,16 +4,16 @@ function lookup_method_body(::Type{S}, arg_names::Vector,
                             world::UInt = typemax(UInt),
                             debug::Bool = false) where {S<:Tuple}
     if debug
-        println("-----------------------------------")
-        println("LOOKING UP CODEINFO FOR:")
-        println("\tSIGNATURE: ", S)
-        println("\tWORLD: ", world)
+        Core.println("-----------------------------------")
+        Core.println("LOOKING UP CODEINFO FOR:")
+        Core.println("\tSIGNATURE: ", S)
+        Core.println("\tWORLD: ", world)
     end
     results = _lookup_method_body(S, arg_names, world)
     results === nothing && return nothing
     method, code_info = results
-    debug && println("LOOKED UP METHOD: ", method)
-    debug && println("LOOKED UP CODEINFO: ", code_info)
+    debug && Core.println("LOOKED UP METHOD: ", method)
+    debug && Core.println("LOOKED UP CODEINFO: ", code_info)
     return code_info
 end
 
