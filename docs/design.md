@@ -7,7 +7,7 @@ will likely be difficult to read; I suggest these readers start with the
 
 At the time of writing, all examples in this document work using Julia commit
 4247bbafe650930b9f6da4feecf0a7dcc37e5204 (Version 0.7.0-DEV.2125) and Cassette commit
-6bf9fab39de6f364f76860a3cb5d9a01939d925f.
+d13a510a183b11e04b82434d388c19ddb13b85ab.
 
 # Table of Contents
 
