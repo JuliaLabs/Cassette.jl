@@ -170,7 +170,7 @@ Overdub(func, context) = Overdub(func, context, Val(get_world_age()))
 # `f(::Type{S}, ::CodeInfo)::CodeInfo`. This default definition is
 # simply the identity. Downstream code can overload this `pass` function
 # for new context types.
-pass(::Type{C}) where {C} = (signature, method_body) -> method_body
+getpass(::Type{C}) where {C} = (signature, method_body) -> method_body
 
 # Return the CodeInfo method body for type signature `S` and the world age `world`,
 # if such a method exists in the method table. Otherwise, return `nothing`.
@@ -193,7 +193,7 @@ end
         # The `method_body` exists as `CodeInfo`, so we run the context's pass on
         # `method_body` and then wrap all downstream calls with `Overdub` instances
         # carrying the same context and world as `f`.
-        method_body = overdub_calls!(pass(C)(signature, method_body))
+        method_body = overdub_calls!(getpass(C)(signature, method_body))
     else
         # There is no retrievable method body, so just call the original function. This will
         # occur for Julia "built-in" functions, such as `getfield` or `arrayref`.
@@ -472,7 +472,7 @@ end
     signature = Tuple{F,args...}
     method_body = lookup_method_body(signature, world)
     if isa(method_body, CodeInfo)
-        method_body = overdub_calls!(pass(C)(signature, method_body))
+        method_body = overdub_calls!(getpass(C)(signature, method_body))
     else
         # Instead of calling the function directly as we did previously,
         # we call it as a contextual primitive via the `execute` method.

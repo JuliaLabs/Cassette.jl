@@ -127,7 +127,7 @@ for N in 0:MAX_ARGS
             signature = Tuple{unwrap(C, F),$(arg_types...)}
             method_body = lookup_method_body(signature, $arg_names, world, debug)
             if isa(method_body, CodeInfo)
-                method_body = overdub_new!(overdub_calls!(pass(C, M)(signature, method_body)))
+                method_body = overdub_new!(overdub_calls!(getpass(C, M)(signature, method_body)))
                 method_body.inlineable = true
             else
                 arg_names = $arg_names
