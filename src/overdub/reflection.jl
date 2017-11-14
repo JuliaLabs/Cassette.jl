@@ -17,6 +17,12 @@ function lookup_method_body(::Type{S},
     return code_info
 end
 
+# When `_lookup_method_body` (below) munges a varargs method, it uses this
+# placeholder instead of `Core.getfield` for argument access during slot
+# reassignment. This way, downstream Cassette passes don't process it as
+# `Core.getfield`. Later, after context-specific passes are executed, the
+# overdub code manually replaces `GETFIELD_PLACEHOLDER` with a direct,
+# uncontextualized call to `Core.getfield`.
 const GETFIELD_PLACEHOLDER = :GETFIELD_PLACEHOLDER
 
 function _lookup_method_body(::Type{S}, world::UInt = typemax(UInt)) where {S<:Tuple}
