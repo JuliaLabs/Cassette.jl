@@ -21,7 +21,7 @@ for nargs in 1:MAX_ARGS
         @inline (o::Overdub{Execute})($(args...)) = (hook(o, $(args...)); execute(o, $(args...)))
 
         # contextual/metadata.jl workarounds
-        @inline unwrapcall(f, ctx::Context, $(args...)) = invoke(unwrapcall, Tuple{Any,Context,Vararg{Any}}, f, ctx, $(args...))
+        @inline mapcall(g, f, $(args...)) = invoke(mapcall, Tuple{Any,Any,Vararg{Any}}, g, f, $(args...))
         @inline wrapper_new(ctx::C, t::Type{T}, $(args...)) where {C<:Context,T} = invoke(wrapper_new, Tuple{C,Type{T},Vararg{Any}}, ctx, t, $(args...))
         @inline _new(t::Type{T}, $(args...)) where {T} = invoke(_new, Tuple{Type{T},Vararg{Any}}, t, $(args...))
     end

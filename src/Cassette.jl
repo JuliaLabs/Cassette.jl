@@ -6,6 +6,7 @@ const MAX_ARGS = 20
 
 include("utilities/metaprogramming.jl")
 include("utilities/anonymous.jl")
+include("utilities/misc.jl")
 
 include("contextual/contexts.jl")
 include("contextual/metadata.jl")

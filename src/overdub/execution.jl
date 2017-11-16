@@ -42,7 +42,7 @@ end
 @inline _hook(::World{w}, args...) where {w} = nothing
 @inline hook(settings::Settings{C,M,w}, f, args...) where {C,M,w} = _hook(settings.world, settings.context, settings.metadata, f, args...)
 
-@inline _execution(::World{w}, ctx, meta, f, args...) where {w} = Cassette.unwrapcall(f, ctx, args...)
+@inline _execution(::World{w}, ctx, meta, f, args...) where {w} = mapcall(x -> unwrap(ctx, x), f, args...)
 @inline execution(settings::Settings{C,M,w}, f, args...) where {C,M,w} = _execution(settings.world, settings.context, settings.metadata, f, args...)
 
 @inline _isprimitive(::World{w}, args...) where {w} = Val(false)
@@ -62,7 +62,8 @@ struct Overdub{P<:Phase,F,S<:Settings}
     end
 end
 
-@inline overdub(C, f, metadata = nothing) = Overdub(Execute(), f, Settings(C(f), metadata))
+@inline overdub(::Type{C}, f, metadata = nothing) where {C<:Context} = overdub(C(f), f, metadata)
+@inline overdub(ctx::Context, f, metadata = nothing) = Overdub(Execute(), f, Settings(ctx, metadata))
 
 @inline intercept(o::Overdub{Intercept}, f) = Overdub(Execute(), f, o.settings)
 

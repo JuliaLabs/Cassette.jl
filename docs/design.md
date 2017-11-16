@@ -654,10 +654,10 @@ unwrap(::Context, x) = x
 unwrap(::C,       x::Wrapper{C}) where {C<:Context} = x.value
 
 # call `f` with all arguments unwrapped w.r.t. `ctx`
-unwrapcall(f, ctx::Context, args...) = unwrap(ctx, f)(map(x -> unwrap(ctx, x), args)...)
+unwrapcall(ctx::Context, f, args...) = unwrap(ctx, f)(map(x -> unwrap(ctx, x), args)...)
 
 # the new execution method uses `unwrapcall` instead of calling the function directly
-execution(ctx::Context, f, args...) = unwrapcall(f, ctx::Context, args...)
+execution(ctx::Context, f, args...) = unwrapcall(ctx, f, args...)
 ```
 
 Note that the `unwrap` is written such that `Wrappers` can only be unwrapped with respect to

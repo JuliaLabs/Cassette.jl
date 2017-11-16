@@ -36,18 +36,14 @@ Base.show(io::IO, w::Wrapper) = print(io, "Wrapper(", repr(w.value), ", ", w.met
 # safe accessors #
 ##################
 
-@inline unwrap(::Context, x) = x
-@inline unwrap(::C,       x::Wrapper{C}) where {C<:Context} = x.value
-@inline unwrap(::Type{C}, T::Type{X}) where {C<:Context,X} = T
-@inline unwrap(::Type{C}, ::Type{<:Wrapper{C,U,V}}) where {C<:Context,U,V} = V
+@inline iswrapped(::Context, x) = false
+@inline iswrapped(::C,       x::Wrapper{C}) where {C<:Context} = true
+@inline iswrapped(::Type{C}, T::DataType) where {C<:Context} = false
+@inline iswrapped(::Type{C}, ::Type{<:Wrapper{C}}) where {C<:Context} = true
 
-@generated function unwrapcall(f, ctx::Context, args...)
-    unwrapped_args = [:(unwrap(ctx, args[$i])) for i in 1:nfields(args)]
-    return quote
-        $(Expr(:meta, :inline))
-        unwrap(ctx, f)($(unwrapped_args...))
-    end
-end
+@inline unwrap(ctx::Context, x) = iswrapped(ctx, x) ? x.value : x
+@inline unwrap(::Type{C}, T::DataType) where {C<:Context,X} = T
+@inline unwrap(::Type{C}, ::Type{<:Wrapper{C,U,V}}) where {C<:Context,U,V} = V
 
 @inline meta(::C, x::Wrapper{C,<:Any,<:Any,Active}) where {C<:Context} = x.meta.data
 
