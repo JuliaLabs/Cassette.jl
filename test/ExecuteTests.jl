@@ -110,4 +110,10 @@ n = rand()
 result = Cassette.@execute FooBarCtx foo_bar_identity(@Wrapper(1, n))
 @test result === Cassette.Wrapper(FooBarCtx(foo_bar_identity), 1, n)
 
-end # module InterceptTests
+############################################################################################
+
+simple_iteration_test(x) = sum([x + i for i in (1, 2)])
+Cassette.@context NOPCtx
+@test simple_iteration_test(1) == Cassette.@execute NOPCtx simple_iteration_test(1)
+
+end # module ExecuteTests

@@ -84,7 +84,9 @@ end
 # replace all calls with `Overdub{Execute}` calls
 function overdub_calls!(method_body::CodeInfo)
     replace_calls!(method_body) do call
-        if !(isa(call, SlotNumber) && call.id == 1)
+        if call === GETFIELD_PLACEHOLDER
+            return GlobalRef(Core, :getfield)
+        elseif !(isa(call, SlotNumber) && call.id == 1)
             return :($(GlobalRef(Cassette, :intercept))($(SlotNumber(0)), $call))
         end
         return call
@@ -122,25 +124,23 @@ end
 # Overdub{Intercept} #
 #--------------------#
 
-for N in 0:MAX_ARGS
-    arg_names = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
-    arg_types = [:(unwrap(C, $T)) for T in arg_names]
-    @eval begin
-        @generated function (f::Overdub{Intercept,F,Settings{C,M,world,debug}})($(arg_names...)) where {F,C,M,world,debug}
-            signature = Tuple{unwrap(C, F),$(arg_types...)}
-            method_body = lookup_method_body(signature, $arg_names, world, debug)
-            if isa(method_body, CodeInfo)
-                method_body = overdub_new!(overdub_calls!(getpass(C, M)(signature, method_body)))
-                method_body.inlineable = true
-            else
-                arg_names = $arg_names
-                method_body = quote
-                    $(Expr(:meta, :inline))
-                    $Cassette.execute(Val(true), f, $(arg_names...))
-                end
+const OVERDUB_ARGS_SYMBOL = gensym("cassette_overdub_arguments")
+
+@eval begin
+    @generated function (f::Overdub{Intercept,F,Settings{C,M,world,debug}})($(OVERDUB_ARGS_SYMBOL)...) where {F,C,M,world,debug}
+        signature = Tuple{unwrap(C, F), (unwrap(C, T) for T in $(OVERDUB_ARGS_SYMBOL))...}
+        method_body = lookup_method_body(signature, world, debug)
+        if isa(method_body, CodeInfo)
+            method_body = overdub_new!(overdub_calls!(getpass(C, M)(signature, method_body)))
+            method_body.inlineable = true
+        else
+            args_symbol = $(Expr(:quote, OVERDUB_ARGS_SYMBOL))
+            method_body = quote
+                $(Expr(:meta, :inline))
+                $Cassette.execute(Val(true), f, $(args_symbol)...)
             end
-            debug && Core.println("RETURNING Overdub(...) BODY: ", method_body)
-            return method_body
         end
+        debug && println("RETURNING Overdub(...) BODY: ", method_body)
+        return method_body
     end
 end
