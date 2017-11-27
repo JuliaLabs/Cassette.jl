@@ -2,7 +2,7 @@
 # Predicates #
 ##############
 
-is_call(x) = isa(x, Expr) && (x.head == :call)
+is_call(x) = isa(x, Expr) && (x.head == :call) && (x.args[1] !== GlobalRef(Core, :tuple))
 
 function is_method_definition(x)
     if isa(x, Expr)
@@ -40,8 +40,9 @@ function replace_match!(f, ismatch, lines::AbstractArray)
 end
 
 function transform_call!(f, call::Expr)
-    call.args[1] = f(replace_calls!(f, Any[call.args[1]])[])
-    for i in 2:length(call.args)
+    offset = call.args[1] === GlobalRef(Core, :_apply) ? 1 : 0
+    call.args[1 + offset] = f(replace_calls!(f, Any[call.args[1 + offset]])[])
+    for i in (2 + offset):length(call.args)
         call.args[i] = replace_calls!(f, Any[call.args[i]])[]
     end
     return call

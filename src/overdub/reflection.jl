@@ -9,6 +9,7 @@ function lookup_method_body(::Type{S}, arg_names::Vector,
         Core.println("\tSIGNATURE: ", S)
         Core.println("\tWORLD: ", world)
     end
+    S.parameters[1].name.module === Core.Inference && return nothing
     results = _lookup_method_body(S, arg_names, world)
     results === nothing && return nothing
     method, code_info = results
