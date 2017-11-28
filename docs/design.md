@@ -129,10 +129,10 @@ requests tracking the development of these changes:
 - [JuliaLang/julia#22938](https://github.com/JuliaLang/julia/pull/22938): Add a `CodeInfo` validator to Base
 - [JuliaLang/julia#22979](https://github.com/JuliaLang/julia/pull/22979): Enable generator expansion for code reflection methods
 - [JuliaLang/julia#22877](https://github.com/JuliaLang/julia/pull/22877): Improve performance of certain varargs functions
-- [jrevels/Cassette#5](https://github.com/jrevels/Cassette/issues/5): Optimization of "pass-through" varargs functions
-- [jrevels/Cassette#6](https://github.com/jrevels/Cassette/issues/6): World-age validation for certain kinds of `@generated` functions
-- [jrevels/Cassette#7](https://github.com/jrevels/Cassette/issues/7): Generated `CodeInfo` inlining should occur in Base rather than in Cassette
-- [jrevels/Cassette#9](https://github.com/jrevels/Cassette/issues/9): Performance overhead of `getfield` type-domain projection
+- [jrevels/Cassette#5](https://github.com/jrevels/Cassette.jl/issues/5): Optimization of "pass-through" varargs functions
+- [jrevels/Cassette#6](https://github.com/jrevels/Cassette.jl/issues/6): World-age validation for certain kinds of `@generated` functions
+- [jrevels/Cassette#7](https://github.com/jrevels/Cassette.jl/issues/7): Generated `CodeInfo` inlining should occur in Base rather than in Cassette
+- [jrevels/Cassette#9](https://github.com/jrevels/Cassette.jl/issues/9): Performance overhead of `getfield` type-domain projection
 
 # The Overdubbing Mechanism and Contextual Dispatch
 
