@@ -22,7 +22,7 @@ Cassette.@context MyCtx
 MESSAGES = String[]
 Cassette.@hook MyCtx f(args...) = push!(MESSAGES, string("calling ", f, args))
 Cassette.@execute MyCtx rosenbrock(x)
-@test length(MESSAGES) == 126
+@test length(MESSAGES) == 125
 
 ############################################################################################
 
@@ -110,4 +110,4 @@ n = rand()
 result = Cassette.@execute FooBarCtx foo_bar_identity(@Wrapper(1, n))
 @test result === Cassette.Wrapper(FooBarCtx(foo_bar_identity), 1, n)
 
-end # module InterceptTests
+end # module ExecuteTests
