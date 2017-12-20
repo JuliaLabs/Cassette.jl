@@ -77,27 +77,39 @@ end
 @inline execute(::Val{true}, o::Overdub, args...) = execution(o.settings, o.func, args...)
 @inline execute(::Val{false}, o::Overdub, args...) = Overdub(Intercept(), o.func, o.settings)(args...)
 
+@inline func(o::Overdub) = o.func
+@inline func(f) = f
+
 ##################
 # default passes #
 ##################
 
-# replace all calls with `Overdub{Execute}` calls
+# Replace all calls with `Overdub{Execute}` calls.
+# This is pretty sloppy after the linear IR change, and needs to be refactored
+# at some point...
 function overdub_calls!(method_body::CodeInfo)
-    replace_calls!(method_body) do call
-        if !(isa(call, SlotNumber) && call.id == 1)
-            return :($(GlobalRef(Cassette, :intercept))($(SlotNumber(0)), $call))
+    self = SSAValue(0)
+    new_code = Any[nothing, :($self = $(GlobalRef(Cassette, :func))($(SlotNumber(1))))]
+    replace_match!(s -> SSAValue(s.id + 1), s -> isa(s, SSAValue), method_body.code)
+    ssa_value_id_offset = 1
+    for i in 2:length(method_body.code)
+        stmnt = method_body.code[i]
+        replace_match!(s -> self, s -> isa(s, SlotNumber) && s.id == 1, stmnt)
+        if isa(stmnt, Expr) && stmnt.head == :(=)
+            lhs, rhs = stmnt.args
+            if isa(lhs, SSAValue) && is_call(rhs)
+                new_stmnt = Expr(:(=), lhs, Expr(:call, GlobalRef(Cassette, :intercept), SlotNumber(1), rhs.args[1]))
+                new_lhs = SSAValue(lhs.id + 1)
+                push!(new_code, new_stmnt)
+                replace_match!(s -> SSAValue(s.id + 1), s -> isa(s, SSAValue) && s.id >= lhs.id, method_body.code)
+                rhs.args[1] = lhs
+                ssa_value_id_offset += 1
+            end
         end
-        return call
+        push!(new_code, stmnt)
     end
-    replace_slotnumbers!(method_body) do sn
-        if sn.id == 1
-            return Expr(:call, GlobalRef(Core, :getfield), sn, QuoteNode(:func))
-        elseif sn.id == 0
-            return SlotNumber(1)
-        else
-            return sn
-        end
-    end
+    method_body.code = new_code
+    method_body.ssavaluetypes += ssa_value_id_offset
     return method_body
 end
 
