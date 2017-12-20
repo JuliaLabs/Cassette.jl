@@ -23,34 +23,18 @@ end
 # Subexpression Match/Replace #
 ###############################
 
-replace_match!(f, ismatch, x) = x
-
-replace_match!(f, ismatch, code_info::CodeInfo) = (replace_match!(f, ismatch, code_info.code); code_info)
-
-function replace_match!(f, ismatch, lines::AbstractArray)
-    for i in eachindex(lines)
-        line = lines[i]
-        if ismatch(line)
-            lines[i] = f(line)
-        elseif isa(line, Expr)
-            replace_match!(f, ismatch, line.args)
+function replace_match!(replace, ismatch, x)
+    if ismatch(x)
+        return replace(x)
+    elseif isa(x, Array)
+        for i in eachindex(x)
+            x[i] = replace_match!(replace, ismatch, x[i])
         end
+    elseif isa(x, Expr)
+        replace_match!(replace, ismatch, x.args)
     end
-    return lines
+    return x
 end
-
-function transform_call!(f, call::Expr)
-    offset = call.args[1] === GlobalRef(Core, :_apply) ? 1 : 0
-    call.args[1 + offset] = f(replace_calls!(f, Any[call.args[1 + offset]])[])
-    for i in (2 + offset):length(call.args)
-        call.args[i] = replace_calls!(f, Any[call.args[i]])[]
-    end
-    return call
-end
-
-replace_calls!(f, x) = replace_match!(call -> transform_call!(f, call), is_call, x)
-
-replace_slotnumbers!(f, x) = replace_match!(f, s -> isa(s, SlotNumber), x)
 
 #################
 # Miscellaneous #
