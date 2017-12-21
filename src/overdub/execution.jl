@@ -87,31 +87,30 @@ Base.show(io::IO, o::Overdub{P}) where {P} = print("Overdub{$(P.name.name)}($(ty
 ##################
 
 # Replace all calls with `Overdub{Execute}` calls.
-# This is pretty sloppy after the linear IR change, and needs to be refactored
-# at some point...
+# Note that this approach emits code in which LHS SSAValues are not
+# monotonically increasing. This currently isn't a problem, but in
+# the future, valid IR might require monotonically increasing LHS
+# SSAValues, in which case we'll have to add an extra SSA-remapping
+# pass to this function.
 function overdub_calls!(method_body::CodeInfo)
-    self = SSAValue(0)
+    greatest_ssa_value = method_body.ssavaluetypes
+    self = SSAValue(greatest_ssa_value)
     new_code = Any[nothing, :($self = $(GlobalRef(Cassette, :func))($(SlotNumber(1))))]
-    replace_match!(s -> SSAValue(s.id + 1), s -> isa(s, SSAValue), method_body.code)
-    ssa_value_id_offset = 1
     for i in 2:length(method_body.code)
         stmnt = method_body.code[i]
         replace_match!(s -> self, s -> isa(s, SlotNumber) && s.id == 1, stmnt)
-        if isa(stmnt, Expr) && stmnt.head == :(=)
-            lhs, rhs = stmnt.args
-            if isa(lhs, SSAValue) && is_call(rhs)
-                new_stmnt = Expr(:(=), lhs, Expr(:call, GlobalRef(Cassette, :intercept), SlotNumber(1), rhs.args[1]))
-                new_lhs = SSAValue(lhs.id + 1)
-                push!(new_code, new_stmnt)
-                replace_match!(s -> SSAValue(s.id + 1), s -> isa(s, SSAValue) && s.id >= lhs.id, method_body.code)
-                rhs.args[1] = lhs
-                ssa_value_id_offset += 1
-            end
+        replace_match!(is_call, stmnt) do call
+            greatest_ssa_value += 1
+            new_ssa_value = SSAValue(greatest_ssa_value)
+            new_ssa_stmnt = Expr(:(=), new_ssa_value, Expr(:call, GlobalRef(Cassette, :intercept), SlotNumber(1), call.args[1]))
+            push!(new_code, new_ssa_stmnt)
+            call.args[1] = new_ssa_value
+            return call
         end
         push!(new_code, stmnt)
     end
     method_body.code = new_code
-    method_body.ssavaluetypes += ssa_value_id_offset
+    method_body.ssavaluetypes = greatest_ssa_value + 1
     return method_body
 end
 
