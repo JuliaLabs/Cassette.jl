@@ -80,6 +80,8 @@ end
 @inline func(o::Overdub) = o.func
 @inline func(f) = f
 
+Base.show(io::IO, o::Overdub) = print("Overdub($(typeof(context(o)).name), $(func(o)))")
+
 ##################
 # default passes #
 ##################
