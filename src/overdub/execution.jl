@@ -96,6 +96,11 @@ function overdub_calls!(method_body::CodeInfo)
     greatest_ssa_value = method_body.ssavaluetypes
     self = SSAValue(greatest_ssa_value)
     new_code = Any[nothing, :($self = $(GlobalRef(Cassette, :func))($(SlotNumber(1))))]
+    label_map = Dict{Int,Int}()
+    # Replace calls with overdubbed calls, and replace
+    # SlotNumber(1) references with the underlying function.
+    # Also, fix LabelNodes and record the changes in a map that
+    # we'll use in a future pass to
     for i in 2:length(method_body.code)
         stmnt = method_body.code[i]
         replace_match!(s -> self, s -> isa(s, SlotNumber) && s.id == 1, stmnt)
@@ -108,6 +113,21 @@ function overdub_calls!(method_body::CodeInfo)
             return call
         end
         push!(new_code, stmnt)
+        if isa(stmnt, LabelNode) && stmnt.label != length(new_code)
+            new_code[end] = LabelNode(length(new_code))
+            label_map[stmnt.label] = length(new_code)
+        end
+    end
+    # label positions might be messed up now due to
+    # the added SSAValues, so we have to fix them using
+    # the label map we built up during the earlier pass
+    for i in 2:length(new_code)
+        stmnt = new_code[i]
+        if isa(stmnt, GotoNode)
+            new_code[i] = GotoNode(get(label_map, stmnt.label, stmnt.label))
+        elseif isa(stmnt, Expr) && stmnt.head == :gotoifnot
+            stmnt.args[2] = get(label_map, stmnt.args[2], stmnt.args[2])
+        end
     end
     method_body.code = new_code
     method_body.ssavaluetypes = greatest_ssa_value + 1
