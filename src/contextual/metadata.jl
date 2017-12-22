@@ -59,11 +59,11 @@ Base.show(io::IO, b::Box) = print(io, "Box(", repr(b.value), ", ", b.meta, ")")
         if T.mutable
             if arg <: Box{C}
                 M = initmetatype(C, meta(C, arg))
-                push!(fields, :(mut($fname::M = args[$i].meta)))
+                push!(fields, :(mut($fname::$M = args[$i].meta)))
                 push!(_new_args, :(args[$i].value))
             else
                 M = initmetatype(C, arg)
-                push!(fields, :(mut($fname::M)))
+                push!(fields, :(mut($fname::$M)))
                 push!(_new_args, :(args[$i]))
             end
         else

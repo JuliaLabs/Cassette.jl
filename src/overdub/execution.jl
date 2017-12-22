@@ -136,9 +136,22 @@ end
 
 # replace all `new` expressions with calls to `Cassette._newbox`
 function overdub_new!(method_body::CodeInfo)
-    replace_match!(x -> isa(x, Expr) && x.head === :new, method_body.code) do x
-        ctx = Expr(:call, GlobalRef(Cassette, :context), SlotNumber(1))
-        return Expr(:call, GlobalRef(Cassette, :_newbox), ctx, x.args...)
+    code = method_body.code
+    ctx_ssa = SSAValue(method_body.ssavaluetypes)
+    insert!(code, 2, :($ctx_ssa = $(GlobalRef(Cassette, :context))($(SlotNumber(1)))))
+    method_body.ssavaluetypes += 1
+    replace_match!(x -> isa(x, Expr) && x.head === :new, code) do x
+        return Expr(:call, GlobalRef(Cassette, :_newbox), ctx_ssa, x.args...)
+    end
+    for i in eachindex(code)
+        stmnt = code[i]
+        if isa(stmnt, GotoNode)
+            code[i] = GotoNode(stmnt.label + 1)
+        elseif isa(stmnt, LabelNode)
+            code[i] = LabelNode(stmnt.label + 1)
+        elseif isa(stmnt, Expr) && stmnt.head == :gotoifnot
+            stmnt.args[2] += 1
+        end
     end
     return method_body
 end
