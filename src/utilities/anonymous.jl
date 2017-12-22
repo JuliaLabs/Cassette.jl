@@ -69,9 +69,9 @@ end
 
 @inline Anonymous(fields::Field...) = Anonymous(fields)
 
-######################
-# getfield/setfield! #
-######################
+################################
+# getfield/setfield!/fieldtype #
+################################
 
 @inline _getfield(x, ::Name{n}) where {n} = getfield(x, n)
 
@@ -104,6 +104,23 @@ end
     return quote
         $(Expr(:meta, :inline))
         error("type ", typeof(x), " has no field ", n)
+    end
+end
+
+@inline _fieldtype(x, ::Name{n}) where {n} = fieldtype(x, n)
+
+@generated function _fieldtype(x::Anonymous{F}, ::Name{n}) where {F,n}
+    for (i, fieldtype) in enumerate(F.parameters)
+        if nametype(fieldtype) === n
+            return quote
+                $(Expr(:meta, :inline))
+                return datatype($fieldtype)
+            end
+        end
+    end
+    return quote
+        $(Expr(:meta, :inline))
+        error("type ", typeof(x), "has no field ", n)
     end
 end
 

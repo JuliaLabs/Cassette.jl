@@ -22,7 +22,7 @@ for nargs in 1:MAX_ARGS
 
         # contextual/metadata.jl workarounds
         @inline mapcall(g, f, $(args...)) = invoke(mapcall, Tuple{Any,Any,Vararg{Any}}, g, f, $(args...))
-        @inline wrapper_new(ctx::C, t::Type{T}, $(args...)) where {C<:Context,T} = invoke(wrapper_new, Tuple{C,Type{T},Vararg{Any}}, ctx, t, $(args...))
+        @inline _newbox(ctx::C, t::Type{T}, $(args...)) where {C<:Context,T} = invoke(_newbox, Tuple{C,Type{T},Vararg{Any}}, ctx, t, $(args...))
         @inline _new(t::Type{T}, $(args...)) where {T} = invoke(_new, Tuple{Type{T},Vararg{Any}}, t, $(args...))
     end
 end

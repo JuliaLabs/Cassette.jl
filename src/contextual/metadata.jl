@@ -1,73 +1,73 @@
-###########
-# Wrapper #
-###########
+#######
+# Box #
+#######
 
-abstract type MetaStatus end
-struct Inactive <: MetaStatus end
-struct Active   <: MetaStatus end
+struct Unused end
 
-struct Meta{S<:MetaStatus,D,F}
-    status::S
+struct Meta{D,F}
     data::D
     fields::Anonymous{F}
-    Meta(data::D, fields::Anonymous{F}) where {D,F} = new{Inactive,D,F}(Inactive(), data, fields)
-    Meta(data::D, fields::Anonymous{F}) where {D,F<:Tuple{}} = new{Active,D,F}(Active(), data, fields)
 end
 
-Base.show(io::IO, m::Meta{S}) where {S} = print(io, "Meta{$(S.name.name)}(", repr(m.data), ", ", m.fields, ")")
+Base.show(io::IO, m::Meta) = print(io, "Meta(", repr(m.data), ", ", m.fields, ")")
 
-struct Wrapper{C,U,V,S,M,F}
+struct Box{C,U,V,M,F}
     context::C
     value::V
-    meta::Meta{S,M,F}
-    function Wrapper(context::C, value::V, meta::Meta{S,M,F}) where {C<:Context,V,S,M,F}
-        return new{C,V,V,S,M,F}(context, value, meta)
+    meta::Meta{M,F}
+    function Box(context::C, value::V, meta::Meta{M,F}) where {C<:Context,V,M,F}
+        return new{C,V,V,M,F}(context, value, meta)
     end
-    function Wrapper(context::C, value::Wrapper{<:Context,U}, meta::Meta{S,M,F}) where {C<:Context,U,S,M,F}
-        return new{C,U,typeof(value),S,M,F}(context, value, meta)
+    function Box(context::C, value::Box{<:Context,U}, meta::Meta{M,F}) where {C<:Context,U,M,F}
+        return new{C,U,typeof(value),M,F}(context, value, meta)
     end
 end
 
-Wrapper(context::Context, value, metadata = nothing) = Wrapper(context, value, Meta(metadata, @anon()))
+Box(context::Context, value, metadata = Unused()) = Box(context, value, Meta(metadata, @anon()))
 
-Base.show(io::IO, w::Wrapper) = print(io, "Wrapper(", repr(w.value), ", ", w.meta, ")")
+Base.show(io::IO, b::Box) = print(io, "Box(", repr(b.value), ", ", b.meta, ")")
 
 ##################
 # safe accessors #
 ##################
 
-@inline iswrapped(::Context, x) = false
-@inline iswrapped(::C,       x::Wrapper{C}) where {C<:Context} = true
-@inline iswrapped(::Type{C}, T::DataType) where {C<:Context} = false
-@inline iswrapped(::Type{C}, ::Type{<:Wrapper{C}}) where {C<:Context} = true
+@inline isboxed(::Context, x) = false
+@inline isboxed(::C,       x::Box{C}) where {C<:Context} = true
+@inline isboxed(::Type{C}, T::DataType) where {C<:Context} = false
+@inline isboxed(::Type{C}, ::Type{<:Box{C}}) where {C<:Context} = true
 
-@inline unwrap(ctx::Context, x) = iswrapped(ctx, x) ? x.value : x
-@inline unwrap(::Type{C}, T::DataType) where {C<:Context,X} = T
-@inline unwrap(::Type{C}, ::Type{<:Wrapper{C,U,V}}) where {C<:Context,U,V} = V
+@inline unbox(ctx::Context, x) = isboxed(ctx, x) ? x.value : x
+@inline unbox(::Type{C}, T::DataType) where {C<:Context,X} = T
+@inline unbox(::Type{C}, ::Type{<:Box{C,U,V}}) where {C<:Context,U,V} = V
 
-@inline meta(::C, x::Wrapper{C,<:Any,<:Any,Active}) where {C<:Context} = x.meta.data
+@inline meta(::C, x::Box{C}) where {C<:Context} = x.meta.data
+@inline meta(::Type{C}, ::Type{<:Box{C,U,V,M}}) where {C<:Context,U,V,M} = M
+
+@inline initmetadata(::Context, ::DataType, ::Any) = Unused()
+@inline initmetatype(::Type{<:Context}, ::DataType) = Any
 
 #########
 # `new` #
 #########
 
-# TODO: better metadata types for mutable fields (instead of just `Any`)
-@generated function wrapper_new(ctx::C, ::Type{T}, args...) where {C<:Context,T}
+@generated function _newbox(ctx::C, ::Type{T}, args...) where {C<:Context,T}
     _new_args = Any[]
     fields = Any[]
     fnames = fieldnames(T)
     for (i, arg) in enumerate(args)
         fname = fnames[i]
         if T.mutable
-            if arg <: Wrapper{C}
-                push!(fields, :(mut($fname::Any = args[$i].meta)))
+            if arg <: Box{C}
+                M = initmetatype(C, meta(C, arg))
+                push!(fields, :(mut($fname::M = args[$i].meta)))
                 push!(_new_args, :(args[$i].value))
             else
-                push!(fields, :(mut($fname::Any)))
+                M = initmetatype(C, arg)
+                push!(fields, :(mut($fname::M)))
                 push!(_new_args, :(args[$i]))
             end
         else
-            if arg <: Wrapper{C}
+            if arg <: Box{C}
                 push!(fields, :($fname = args[$i].meta))
                 push!(_new_args, :(args[$i].value))
             else
@@ -83,7 +83,7 @@ Base.show(io::IO, w::Wrapper) = print(io, "Wrapper(", repr(w.value), ", ", w.met
     else
         return quote
             $(Expr(:meta, :inline))
-            Wrapper(ctx, _new(T, $(_new_args...)), Meta(nothing, @anon($(fields...))))
+            Box(ctx, _new(T, $(_new_args...)), Meta(Unused(), @anon($(fields...))))
         end
     end
 end
@@ -99,34 +99,32 @@ end
 # `getfield`/`setfield!` #
 ##########################
 
-struct Uninitialized end
+@inline box_from_getfield(ctx, value, meta) = Box(ctx, value, meta)
+@inline box_from_getfield(ctx, value, ::Unused) = value
 
-@inline wrapper_from_getfield(ctx, value, meta) = Wrapper(ctx, value, meta)
-@inline wrapper_from_getfield(ctx, value, ::Uninitialized) = value
-
-@generated function _getfield(w::Wrapper{C,U,V,S,M,F}, name::Name{n}) where {C,U,V,S,M,F,n}
+@generated function _getfield(b::Box{C,U,V,M,F}, name::Name{n}) where {C,U,V,M,F,n}
     for fieldtype in F.parameters
         if nametype(fieldtype) === n
             return quote
                 $(Expr(:meta, :inline))
-                value = _getfield(w.value, name)
-                meta = _getfield(w.meta.fields, name)
-                wrapper_from_getfield(w.context, value, meta)
+                value = _getfield(b.value, name)
+                meta = _getfield(b.meta.fields, name)
+                box_from_getfield(b.context, value, meta)
             end
         end
     end
     return quote
         $(Expr(:meta, :inline))
-        _getfield(w.value, name)
+        _getfield(b.value, name)
     end
 end
 
-@generated function _setfield!(w::Wrapper{C,U,V,S,M,F}, name::Name{n}, x) where {C,U,V,S,M,F,n}
-    if x <: Wrapper{C}
+@generated function _setfield!(b::Box{C,U,V,M,F}, name::Name{n}, x) where {C,U,V,M,F,n}
+    if x <: Box{C}
         return quote
             $(Expr(:meta, :inline))
-            _setfield!(w.value, name, x.value)
-            _setfield!(w.meta.fields, name, x.meta)
+            _setfield!(b.value, name, x.value)
+            _setfield!(b.meta.fields, name, x.meta)
             return x
         end
     else
@@ -134,15 +132,16 @@ end
             if nametype(fieldtype) === n
                 return quote
                     $(Expr(:meta, :inline))
-                    _setfield!(w.value, name, x)
-                    _setfield!(w.meta.fields, name, Uninitialized())
+                    _setfield!(b.value, name, x)
+                    T = _fieldtype(b.meta.fields, name)
+                    _setfield!(b.meta.fields, name, initmetadata(b.context, T, x))
                     return x
                 end
             end
         end
         return quote
             $(Expr(:meta, :inline))
-            _setfield!(w.value, name, x)
+            _setfield!(b.value, name, x)
         end
     end
 end

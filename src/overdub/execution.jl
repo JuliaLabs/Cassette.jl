@@ -42,7 +42,7 @@ end
 @inline _hook(::World{w}, args...) where {w} = nothing
 @inline hook(settings::Settings{C,M,w}, f, args...) where {C,M,w} = _hook(settings.world, settings.context, settings.metadata, f, args...)
 
-@inline _execution(::World{w}, ctx, meta, f, args...) where {w} = mapcall(x -> unwrap(ctx, x), f, args...)
+@inline _execution(::World{w}, ctx, meta, f, args...) where {w} = mapcall(x -> unbox(ctx, x), f, args...)
 @inline execution(settings::Settings{C,M,w}, f, args...) where {C,M,w} = _execution(settings.world, settings.context, settings.metadata, f, args...)
 
 @inline _isprimitive(::World{w}, args...) where {w} = Val(false)
@@ -134,11 +134,11 @@ function overdub_calls!(method_body::CodeInfo)
     return method_body
 end
 
-# replace all `new` expressions with calls to `Cassette.wrapper_new`
+# replace all `new` expressions with calls to `Cassette._newbox`
 function overdub_new!(method_body::CodeInfo)
-    replace_match!(x -> isa(x, Expr) && x.head === :new, method_body) do x
+    replace_match!(x -> isa(x, Expr) && x.head === :new, method_body.code) do x
         ctx = Expr(:call, GlobalRef(Cassette, :context), SlotNumber(1))
-        return Expr(:call, GlobalRef(Cassette, :wrapper_new), ctx, x.args...)
+        return Expr(:call, GlobalRef(Cassette, :_newbox), ctx, x.args...)
     end
     return method_body
 end
@@ -157,10 +157,10 @@ end
 
 for N in 0:MAX_ARGS
     arg_names = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
-    arg_types = [:(unwrap(C, $T)) for T in arg_names]
+    arg_types = [:(unbox(C, $T)) for T in arg_names]
     @eval begin
         @generated function (f::Overdub{Intercept,F,Settings{C,M,world,debug}})($(arg_names...)) where {F,C,M,world,debug}
-            signature = Tuple{unwrap(C, F),$(arg_types...)}
+            signature = Tuple{unbox(C, F),$(arg_types...)}
             method_body = lookup_method_body(signature, $arg_names, world, debug)
             if isa(method_body, CodeInfo)
                 method_body = overdub_new!(overdub_calls!(getpass(C, M)(signature, method_body)))

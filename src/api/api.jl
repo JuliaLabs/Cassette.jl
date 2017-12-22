@@ -15,23 +15,6 @@ macro context(Ctx)
     end)
 end
 
-############
-# @execute #
-############
-
-macro execute(args...)
-    isdebug = last(args) == :debug
-    args = isdebug ? args[1:end-1] : args
-    ctx, meta, call = unpack_contextual_macro_args(nothing, args...)
-    @assert isa(call, Expr) && call.head == :call
-    ctxsym = gensym("context")
-    f = call.args[1]
-    settings = isdebug ? :($Cassette.Settings($ctxsym, $meta, $Cassette.World(), Val(true))) : :($Cassette.Settings($ctxsym, $meta))
-    call.args[1] = :($Cassette.Overdub($(Execute()), $f, $settings))
-    replace_match!(x -> :($Cassette.Wrapper($ctxsym, $(x.args[3:end]...))), iswrappermacrocall, call.args)
-    return esc(:($ctxsym = $ctx($f); $call))
-end
-
 #########
 # @hook #
 #########
@@ -90,11 +73,11 @@ function unpack_contextual_macro_args(meta_default, args...)
     end
 end
 
-macro Wrapper(args...)
-    error("cannot use @Wrapper macro outside of the scope of Cassette's contextual macros (@execute, @execution, @isprimitive, @primitive, @hook)")
+macro Box(args...)
+    error("cannot use @Box macro outside of the scope of Cassette's contextual macros (@execute, @execution, @isprimitive, @primitive, @hook)")
 end
 
-iswrappermacrocall(x) = isa(x, Expr) && x.head == :macrocall && x.args[1] == Symbol("@Wrapper")
+isboxmacrocall(x) = isa(x, Expr) && x.head == :macrocall && x.args[1] == Symbol("@Box")
 
 function contextual_transform!(ctx, meta, f, method)
     @assert is_method_definition(method)
@@ -128,20 +111,20 @@ function contextual_transform!(ctx, meta, f, signature::Expr, body::Expr)
         x = callargs[i]
         if isa(x, Expr) && x.head == :(::)
             xtype = last(x.args)
-            if iswrappermacrocall(xtype)
-                wrapperargs = xtype.args[3:end]
-                if isempty(wrapperargs)
+            if isboxmacrocall(xtype)
+                boxargs = xtype.args[3:end]
+                if isempty(boxargs)
                     U, M = :Any, :Any
-                elseif length(wrapperargs) == 1
-                    U, M = first(wrapperargs), :Any
-                elseif length(wrapperargs) == 2
-                    U, M = wrapperargs
+                elseif length(boxargs) == 1
+                    U, M = first(boxargs), :Any
+                elseif length(boxargs) == 2
+                    U, M = boxargs
                 else
-                    error("incorrect usage of `@Wrapper`: $(xtype)")
+                    error("incorrect usage of `@Box`: $(xtype)")
                 end
-                new_xtype = :($Cassette.Wrapper{$ctxtypevar,<:$U,<:Any,$Cassette.Active,<:$M})
+                new_xtype = :($Cassette.Box{$ctxtypevar,<:$U,<:Any,$Cassette.Active,<:$M})
             else
-                new_xtype = :(Union{$Cassette.Wrapper{<:Any,<:$xtype},$xtype})
+                new_xtype = :(Union{$Cassette.Box{<:Any,<:$xtype},$xtype})
             end
             x.args[end] = new_xtype
         end
@@ -149,7 +132,7 @@ function contextual_transform!(ctx, meta, f, signature::Expr, body::Expr)
 
     signature.args[1] = Expr(:call, f, world, ctx, meta, callargs...)
 
-    unshift!(body.args, Expr(:meta, :inline))
+    pushfirst!(body.args, Expr(:meta, :inline))
 
     return esc(Expr(:function, signature, body))
 end
