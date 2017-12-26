@@ -4,22 +4,24 @@
 
 struct Unused end
 
-struct Meta{D,F}
+struct Meta{D,A,F}
     data::D
     fields::Anonymous{F}
+    Meta(data::D, fields::Anonymous{F}) where {D<:Any,F} = new{D,true,F}(data, fields)
+    Meta(data::D, fields::Anonymous{F}) where {D<:Unused,F} = new{D,false,F}(data, fields)
 end
 
 Base.show(io::IO, m::Meta) = print(io, "Meta(", repr(m.data), ", ", m.fields, ")")
 
-struct Box{C,U,V,M,F}
+struct Box{C,U,V,M,A,F}
     context::C
     value::V
-    meta::Meta{M,F}
-    function Box(context::C, value::V, meta::Meta{M,F}) where {C<:Context,V,M,F}
-        return new{C,V,V,M,F}(context, value, meta)
+    meta::Meta{M,A,F}
+    function Box(context::C, value::V, meta::Meta{M,A,F}) where {C<:Context,V,M,A,F}
+        return new{C,V,V,M,A,F}(context, value, meta)
     end
-    function Box(context::C, value::Box{<:Context,U}, meta::Meta{M,F}) where {C<:Context,U,M,F}
-        return new{C,U,typeof(value),M,F}(context, value, meta)
+    function Box(context::C, value::Box{<:Context,U}, meta::Meta{M,A,F}) where {C<:Context,U,M,A,F}
+        return new{C,U,typeof(value),M,A,F}(context, value, meta)
     end
 end
 
@@ -102,7 +104,7 @@ end
 @inline box_from_getfield(ctx, value, meta) = Box(ctx, value, meta)
 @inline box_from_getfield(ctx, value, ::Unused) = value
 
-@generated function _getfield(b::Box{C,U,V,M,F}, name::Name{n}) where {C,U,V,M,F,n}
+@generated function _getfield(b::Box{C,U,V,M,A,F}, name::Name{n}) where {C,U,V,M,A,F,n}
     for fieldtype in F.parameters
         if nametype(fieldtype) === n
             return quote
@@ -119,7 +121,7 @@ end
     end
 end
 
-@generated function _setfield!(b::Box{C,U,V,M,F}, name::Name{n}, x) where {C,U,V,M,F,n}
+@generated function _setfield!(b::Box{C,U,V,M,A,F}, name::Name{n}, x) where {C,U,V,M,A,F,n}
     if x <: Box{C}
         return quote
             $(Expr(:meta, :inline))

@@ -122,7 +122,7 @@ function contextual_transform!(ctx, meta, f, signature::Expr, body::Expr)
                 else
                     error("incorrect usage of `@Box`: $(xtype)")
                 end
-                new_xtype = :($Cassette.Box{$ctxtypevar,<:$U,<:Any,$Cassette.Active,<:$M})
+                new_xtype = :($Cassette.Box{$ctxtypevar,<:$U,<:Any,<:$M,true})
             else
                 new_xtype = :(Union{$Cassette.Box{<:Any,<:$xtype},$xtype})
             end
