@@ -38,6 +38,11 @@ Base.show(io::IO, b::Box) = print(io, "Box(", repr(b.value), ", ", b.meta, ")")
 @inline isboxed(::Type{C}, T::DataType) where {C<:Context} = false
 @inline isboxed(::Type{C}, ::Type{<:Box{C}}) where {C<:Context} = true
 
+@inline hasmeta(::Context, x) = false
+@inline hasmeta(::C, x::Box{C,U,V,M,A}) where {C<:Context,U,V,M,A} = A
+@inline hasmeta(::Type{C}, T::DataType) where {C<:Context} = false
+@inline hasmeta(::Type{C}, ::Type{<:Box{C,U,V,M,A}}) where {C<:Context,U,V,M,A} = A
+
 @inline unbox(ctx::Context, x) = isboxed(ctx, x) ? x.value : x
 @inline unbox(::Type{C}, T::DataType) where {C<:Context,X} = T
 @inline unbox(::Type{C}, ::Type{<:Box{C,U,V}}) where {C<:Context,U,V} = V
@@ -46,6 +51,7 @@ Base.show(io::IO, b::Box) = print(io, "Box(", repr(b.value), ", ", b.meta, ")")
 @inline meta(::Type{C}, ::Type{<:Box{C,U,V,M}}) where {C<:Context,U,V,M} = M
 
 @inline initmetadata(::Context, ::DataType, ::Any) = Unused()
+
 @inline initmetatype(::Type{<:Context}, ::DataType) = Any
 
 #########
