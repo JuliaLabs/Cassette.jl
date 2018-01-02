@@ -9,6 +9,10 @@ At the time of writing, all examples in this document work using Julia commit
 4247bbafe650930b9f6da4feecf0a7dcc37e5204 (Version 0.7.0-DEV.2125) and Cassette commit
 d13a510a183b11e04b82434d388c19ddb13b85ab.
 
+**NOTE: This document is currently out-of-date/incomplete, though many of the concepts
+described are still valid and useful for understanding the current version of Cassette. I
+will update this document and add more information when I get the time.**
+
 # Table of Contents
 
 - [Introduction](#introduction)
