@@ -172,7 +172,8 @@ for N in 0:MAX_ARGS
                      Any[:f, arg_names...],
                      Any[:F, :C, :M, :world, :debug, :pass],
                      @__LINE__,
-                     QuoteNode(Symbol(@__FILE__)))
+                     QuoteNode(Symbol(@__FILE__)),
+                     true)
     @eval begin
         function _overdub_generator(::Type{F}, ::Type{C}, ::Type{M}, world, debug, pass, f, $(arg_names...)) where {F,C,M}
             try
@@ -186,6 +187,7 @@ for N in 0:MAX_ARGS
                     end
                     method_body = overdub_new!(overdub_calls!(method_body))
                     method_body.inlineable = true
+                    method_body.signature_for_inference_heuristics = Core.svec(ftype, atypes, world)
                 else
                     arg_names = $arg_names
                     method_body = quote
