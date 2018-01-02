@@ -25,13 +25,13 @@ Cassette.@hook RosCtx f(args...) = push!(MESSAGES, string("calling ", f, args))
 
 Cassette.@hook RosCtx meta f(args...) = push!(meta, string("calling ", f, args))
 meta = String[]
-@test Cassette.overdub(RosCtx, rosenbrock, meta)(x) == rosenbrock(x)
+@test Cassette.overdub(RosCtx, rosenbrock, metadata = meta)(x) == rosenbrock(x)
 @test MESSAGES == meta
 
 Cassette.@hook RosCtx meta f(args...) = nothing
 Cassette.@hook RosCtx meta f(args::Number...) = push!(meta, args)
 meta = Any[]
-@test Cassette.overdub(RosCtx, rosenbrock, meta)(x) == rosenbrock(x)
+@test Cassette.overdub(RosCtx, rosenbrock, metadata = meta)(x) == rosenbrock(x)
 for args in meta
     @test all(x -> isa(x, Number), args)
 end
@@ -57,10 +57,10 @@ Cassette.@context FoldCtx
 Cassette.@context CountCtx
 count1 = Ref(0)
 Cassette.@hook CountCtx count f(args::Number...) = (count[] += 1)
-Cassette.overdub(CountCtx, sin, count1)(1)
+Cassette.overdub(CountCtx, sin, metadata = count1)(1)
 Cassette.@hook CountCtx count f(args::Number...) = (count[] += 2)
 count2 = Ref(0)
-Cassette.overdub(CountCtx, sin, count2)(1)
+Cassette.overdub(CountCtx, sin, metadata = count2)(1)
 @test (2 * count1[]) === count2[]
 
 ############################################################################################

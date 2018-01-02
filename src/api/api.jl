@@ -104,7 +104,7 @@ function contextual_transform!(ctx, meta, f, signature::Expr, body::Expr)
 
     worldtypevar = gensym("world")
     push!(signature.args, :($worldtypevar))
-    world = :(::$Cassette.World{$worldtypevar})
+    world = :(::Val{$worldtypevar})
 
     callargs = signature.args[1].args
     for i in 1:length(callargs)

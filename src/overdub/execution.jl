@@ -8,44 +8,37 @@ struct Execute <: Phase end
 
 struct Intercept <: Phase end
 
-#########
-# World #
-#########
-
-struct World{w} end
-
-World() = World{get_world_age()}()
-
-get_world_age() = ccall(:jl_get_tls_world_age, UInt, ()) # ccall(:jl_get_world_counter, UInt, ())
-
 ############
 # Settings #
 ############
 
+get_world_age() = ccall(:jl_get_tls_world_age, UInt, ()) # ccall(:jl_get_world_counter, UInt, ())
+
 struct Settings{C<:Context,M,w,d}
     context::C
     metadata::M
-    world::World{w}
+    world::Val{w}
     debug::Val{d}
-    function Settings(context::C,
-                      metadata::M = nothing,
-                      world::World{w} = World(),
-                      debug::Val{d} = Val(false)) where {C,M,w,d}
-        return new{C,M,w,d}(context, metadata, world, debug)
-    end
+end
+
+function Settings(context::Context;
+                  metadata = Unused(),
+                  world::Val = Val(get_world_age()),
+                  debug::Val = Val(false))
+    return Settings(context, metadata, world, debug)
 end
 
 #####################
 # Execution Methods #
 #####################
 
-@inline _hook(::World{w}, args...) where {w} = nothing
+@inline _hook(::Val{w}, args...) where {w} = nothing
 @inline hook(settings::Settings{C,M,w}, f, args...) where {C,M,w} = _hook(settings.world, settings.context, settings.metadata, f, args...)
 
-@inline _execution(::World{w}, ctx, meta, f, args...) where {w} = mapcall(x -> unbox(ctx, x), f, args...)
+@inline _execution(::Val{w}, ctx, meta, f, args...) where {w} = mapcall(x -> unbox(ctx, x), f, args...)
 @inline execution(settings::Settings{C,M,w}, f, args...) where {C,M,w} = _execution(settings.world, settings.context, settings.metadata, f, args...)
 
-@inline _isprimitive(::World{w}, args...) where {w} = Val(false)
+@inline _isprimitive(::Val{w}, args...) where {w} = Val(false)
 @inline isprimitive(settings::Settings{C,M,w}, f, args...) where {C,M,w} = _isprimitive(settings.world, settings.context, settings.metadata, f, args...)
 
 ###########
@@ -62,8 +55,8 @@ struct Overdub{P<:Phase,F,S<:Settings}
     end
 end
 
-@inline overdub(::Type{C}, f, metadata = nothing) where {C<:Context} = overdub(C(f), f, metadata)
-@inline overdub(ctx::Context, f, metadata = nothing) = Overdub(Execute(), f, Settings(ctx, metadata))
+@inline overdub(::Type{C}, f; kwargs...) where {C<:Context} = overdub(C(f), f; kwargs...)
+@inline overdub(ctx::Context, f; kwargs...) = Overdub(Execute(), f, Settings(ctx; kwargs...))
 
 @inline intercept(o::Overdub{Intercept}, f) = Overdub(Execute(), f, o.settings)
 
@@ -171,9 +164,18 @@ end
 for N in 0:MAX_ARGS
     arg_names = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
     arg_types = [:(unbox(C, $T)) for T in arg_names]
+    stub_expr = Expr(:new,
+                     Core.GeneratedFunctionStub,
+                     :_overdub_generator,
+                     Any[:f, arg_names...],
+                     Any[:F, :C, :M, :world, :debug],
+                     @__LINE__,
+                     QuoteNode(Symbol(@__FILE__)))
     @eval begin
-        @generated function (f::Overdub{Intercept,F,Settings{C,M,world,debug}})($(arg_names...)) where {F,C,M,world,debug}
-            signature = Tuple{unbox(C, F),$(arg_types...)}
+        function _overdub_generator(::Type{F}, ::Type{C}, ::Type{M}, world, debug, f, $(arg_names...)) where {F,C,M}
+            ftype = unbox(C, F)
+            atypes = ($(arg_types...),)
+            signature = Tuple{ftype,atypes...}
             method_body = lookup_method_body(signature, $arg_names, world, debug)
             if isa(method_body, CodeInfo)
                 method_body = overdub_new!(overdub_calls!(getpass(C, M)(signature, method_body)))
@@ -187,6 +189,9 @@ for N in 0:MAX_ARGS
             end
             debug && Core.println("RETURNING Overdub(...) BODY: ", method_body)
             return method_body
+        end
+        function (f::Overdub{Intercept,F,Settings{C,M,world,debug}})($(arg_names...)) where {F,C,M,world,debug}
+            $(Expr(:meta, :generated, stub_expr))
         end
     end
 end

@@ -4,6 +4,8 @@ module Cassette
 
 const MAX_ARGS = 20
 
+struct Unused end
+
 include("utilities/metaprogramming.jl")
 include("utilities/anonymous.jl")
 include("utilities/misc.jl")

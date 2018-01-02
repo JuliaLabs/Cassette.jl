@@ -5,9 +5,9 @@ for nargs in 1:MAX_ARGS
     args = [Symbol("x$i") for i in 1:nargs]
     @eval begin
         # overdub/execution.jl workarounds
-        @inline _hook(world::World{w}, $(args...)) where {w} = invoke(_hook, Tuple{World{w},Vararg{Any}}, world, $(args...))
-        @inline _execution(world::World{w}, ctx, meta, f, $(args...)) where {w} = invoke(_execution, Tuple{World{w},Any,Any,Any,Vararg{Any}}, world, ctx, meta, f, $(args...))
-        @inline _isprimitive(world::World{w}, $(args...)) where {w} = invoke(_isprimitive, Tuple{World{w},Vararg{Any}}, world, $(args...))
+        @inline _hook(world::Val{w}, $(args...)) where {w} = invoke(_hook, Tuple{Val{w},Vararg{Any}}, world, $(args...))
+        @inline _execution(world::Val{w}, ctx, meta, f, $(args...)) where {w} = invoke(_execution, Tuple{Val{w},Any,Any,Any,Vararg{Any}}, world, ctx, meta, f, $(args...))
+        @inline _isprimitive(world::Val{w}, $(args...)) where {w} = invoke(_isprimitive, Tuple{Val{w},Vararg{Any}}, world, $(args...))
         @inline hook(settings::Settings{C,M,w}, f, $(args...)) where {C,M,w} = invoke(hook, Tuple{Settings{C,M,w},Any,Vararg{Any}}, settings, f, $(args...))
         @inline execution(settings::Settings{C,M,w}, f, $(args...)) where {C,M,w} = invoke(execution, Tuple{Settings{C,M,w},Any,Vararg{Any}}, settings, f, $(args...))
         @inline isprimitive(settings::Settings{C,M,w}, f, $(args...)) where {C,M,w} = invoke(isprimitive, Tuple{Settings{C,M,w},Any,Vararg{Any}}, settings, f, $(args...))
