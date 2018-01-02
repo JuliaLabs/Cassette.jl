@@ -18,7 +18,7 @@ Downstream applications for Cassette include automatic differentiation, interval
 
 ## Contextual Dispatch
 
-On top of its JIT pass-injection mechanism, Cassette implements a new form of dispatch, dubbed **contextual dispatch**. Contextual dispatch allows users to define context-specific behaviors on top of (or in place of) existing Julia methods using Julia's existing multiple dispatch semantics.
+On top of its JIT pass-injection mechanism, Cassette implements a new form of dispatch, dubbed **contextual dispatch**. Contextual dispatch leverages Julia's existing multiple dispatch semantics to enable new behaviors to be defined on top of (or in place of) methods called within a specific execution context.
 
 Here's a simple example that uses Cassette to implement a naive form of GPU "transpilation":
 
