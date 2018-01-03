@@ -173,22 +173,30 @@ for N in 0:MAX_ARGS
                      QuoteNode(Symbol(@__FILE__)))
     @eval begin
         function _overdub_generator(::Type{F}, ::Type{C}, ::Type{M}, world, debug, f, $(arg_names...)) where {F,C,M}
-            ftype = unbox(C, F)
-            atypes = ($(arg_types...),)
-            signature = Tuple{ftype,atypes...}
-            method_body = lookup_method_body(signature, $arg_names, world, debug)
-            if isa(method_body, CodeInfo)
-                method_body = overdub_new!(overdub_calls!(getpass(C, M)(signature, method_body)))
-                method_body.inlineable = true
-            else
-                arg_names = $arg_names
-                method_body = quote
-                    $(Expr(:meta, :inline))
-                    $Cassette.execute(Val(true), f, $(arg_names...))
+            try
+                ftype = unbox(C, F)
+                atypes = ($(arg_types...),)
+                signature = Tuple{ftype,atypes...}
+                method_body = lookup_method_body(signature, $arg_names, world, debug)
+                if isa(method_body, CodeInfo)
+                    method_body = overdub_new!(overdub_calls!(getpass(C, M)(signature, method_body)))
+                    method_body.inlineable = true
+                else
+                    arg_names = $arg_names
+                    method_body = quote
+                        $(Expr(:meta, :inline))
+                        $Cassette.execute(Val(true), f, $(arg_names...))
+                    end
+                end
+                debug && Core.println("RETURNING OVERDUBBED METHOD BODY: ", method_body)
+                return method_body
+            catch err
+                errmsg = "ERROR DURING OVERDUBBED EXECUTION: " * sprint(showerror, err)
+                Core.println(errmsg) # in case the returned body doesn't get reached
+                return quote
+                    error($errmsg)
                 end
             end
-            debug && Core.println("RETURNING Overdub(...) BODY: ", method_body)
-            return method_body
         end
         function (f::Overdub{Intercept,F,Settings{C,M,world,debug}})($(arg_names...)) where {F,C,M,world,debug}
             $(Expr(:meta, :generated, stub_expr))
