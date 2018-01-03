@@ -18,5 +18,3 @@ end
 abstract type Context{S,T} end
 
 Base.show(io::IO, ::Context{S,T}) where {S,T} = print(io, "$S{$T}()")
-
-getpass(::Type{<:Context}, M) = (signature, method_body) -> method_body

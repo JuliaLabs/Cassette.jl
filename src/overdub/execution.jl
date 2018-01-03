@@ -14,18 +14,20 @@ struct Intercept <: Phase end
 
 get_world_age() = ccall(:jl_get_tls_world_age, UInt, ()) # ccall(:jl_get_world_counter, UInt, ())
 
-struct Settings{C<:Context,M,w,d}
+struct Settings{C<:Context,M,w,d,P}
     context::C
     metadata::M
     world::Val{w}
     debug::Val{d}
+    pass::P
 end
 
 function Settings(context::Context;
                   metadata = Unused(),
                   world::Val = Val(get_world_age()),
-                  debug::Val = Val(false))
-    return Settings(context, metadata, world, debug)
+                  debug::Val = Val(false),
+                  pass = Unused())
+    return Settings(context, metadata, world, debug, pass)
 end
 
 #####################
@@ -168,18 +170,21 @@ for N in 0:MAX_ARGS
                      Core.GeneratedFunctionStub,
                      :_overdub_generator,
                      Any[:f, arg_names...],
-                     Any[:F, :C, :M, :world, :debug],
+                     Any[:F, :C, :M, :world, :debug, :pass],
                      @__LINE__,
                      QuoteNode(Symbol(@__FILE__)))
     @eval begin
-        function _overdub_generator(::Type{F}, ::Type{C}, ::Type{M}, world, debug, f, $(arg_names...)) where {F,C,M}
+        function _overdub_generator(::Type{F}, ::Type{C}, ::Type{M}, world, debug, pass, f, $(arg_names...)) where {F,C,M}
             try
                 ftype = unbox(C, F)
                 atypes = ($(arg_types...),)
                 signature = Tuple{ftype,atypes...}
                 method_body = lookup_method_body(signature, $arg_names, world, debug)
                 if isa(method_body, CodeInfo)
-                    method_body = overdub_new!(overdub_calls!(getpass(C, M)(signature, method_body)))
+                    if !(pass <: Unused)
+                        method_body = pass(signature, method_body)
+                    end
+                    method_body = overdub_new!(overdub_calls!(method_body))
                     method_body.inlineable = true
                 else
                     arg_names = $arg_names
@@ -198,7 +203,7 @@ for N in 0:MAX_ARGS
                 end
             end
         end
-        function (f::Overdub{Intercept,F,Settings{C,M,world,debug}})($(arg_names...)) where {F,C,M,world,debug}
+        function (f::Overdub{Intercept,F,Settings{C,M,world,debug,pass}})($(arg_names...)) where {F,C,M,world,debug,pass}
             $(Expr(:meta, :generated, stub_expr))
         end
     end
