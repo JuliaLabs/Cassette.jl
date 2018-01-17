@@ -176,10 +176,10 @@ for N in 0:MAX_ARGS
                      true)
     @eval begin
         function _overdub_generator(::Type{F}, ::Type{C}, ::Type{M}, world, debug, pass, f, $(arg_names...)) where {F,C,M}
+            ftype = unbox(C, F)
+            atypes = ($(arg_types...),)
+            signature = Tuple{ftype,atypes...}
             try
-                ftype = unbox(C, F)
-                atypes = ($(arg_types...),)
-                signature = Tuple{ftype,atypes...}
                 method_body = lookup_method_body(signature, $arg_names, world, debug)
                 if isa(method_body, CodeInfo)
                     if !(pass <: Unused)
@@ -198,7 +198,7 @@ for N in 0:MAX_ARGS
                 debug && Core.println("RETURNING OVERDUBBED METHOD BODY: ", method_body)
                 return method_body
             catch err
-                errmsg = "ERROR DURING OVERDUBBED EXECUTION: " * sprint(showerror, err)
+                errmsg = "ERROR COMPILING $signature OVERDUBBED WITH CONTEXT $C: " * sprint(showerror, err)
                 Core.println(errmsg) # in case the returned body doesn't get reached
                 return quote
                     error($errmsg)

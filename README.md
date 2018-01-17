@@ -8,6 +8,8 @@ Cassette relies on new reflection features and compiler performance improvements
 
 Cassette targets downstream package developers, not Julia end-users. Downstream developers are expected to have a solid understanding of Julia's type system, metaprogramming facilities, and dispatch mechanism.
 
+Last updated for Julia commit: 26a2ea2c87e57ae0fcb57137efb1dc7d7bd888b1
+
 ## Overview
 
 Cassette is a Julia package that provides a mechanism for dynamically injecting code transformation passes into Julia’s just-in-time (JIT) compilation cycle, enabling post hoc analysis, optimization, and modification of "Cassette-unaware" Julia programs. For example, developers can simply write a Julia function of the form `pass(::Cassette.Context, ::CodeInfo)::CodeInfo`, and then use Cassette to apply `pass` to every method called within some execution context. Importantly, target programs need not have been written with any knowledge of Cassette - no manual source annotation or refactoring of the target code is required!
