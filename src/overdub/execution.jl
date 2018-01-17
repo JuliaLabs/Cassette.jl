@@ -77,136 +77,108 @@ end
 
 Base.show(io::IO, o::Overdub{P}) where {P} = print("Overdub{$(P.name.name)}($(typeof(context(o)).name), $(func(o)))")
 
-##################
-# default passes #
-##################
+####################
+# Overdub{Execute} #
+####################
 
-# Replace all calls with `Overdub{Execute}` calls.
+@inline (o::Overdub{Execute})(args...) = (hook(o, args...); execute(o, args...))
+
+######################
+# Overdub{Intercept} #
+######################
+
 # Note that this approach emits code in which LHS SSAValues are not
 # monotonically increasing. This currently isn't a problem, but in
 # the future, valid IR might require monotonically increasing LHS
 # SSAValues, in which case we'll have to add an extra SSA-remapping
 # pass to this function.
-function overdub_calls!(method_body::CodeInfo)
+function overdub_pass!(method_body::CodeInfo)
+    # set up new SSAValues
+    self_ssa = SSAValue(method_body.ssavaluetypes)
+    method_body.ssavaluetypes += 1
+    ctx_ssa = SSAValue(method_body.ssavaluetypes)
     greatest_ssa_value = method_body.ssavaluetypes
-    self = SSAValue(greatest_ssa_value)
-    new_code = Any[nothing, :($self = $(GlobalRef(Cassette, :func))($(SlotNumber(1))))]
-    label_map = Dict{Int,Int}()
-    # Replace calls with overdubbed calls, and replace
-    # SlotNumber(1) references with the underlying function.
-    # Also, fix LabelNodes and record the changes in a map that
-    # we'll use in a future pass to
-    for i in 2:length(method_body.code)
+
+    # set up replacement code
+    new_code = copy_prelude_code(method_body.code)
+    prelude_end = length(new_code)
+    push!(new_code, :($self_ssa = $(GlobalRef(Cassette, :func))($(SlotNumber(1)))))
+    push!(new_code, :($ctx_ssa = $(GlobalRef(Cassette, :context))($(SlotNumber(1)))))
+    in_overdub_region = false
+
+    # fill in replacement code
+    for i in (prelude_end + 1):length(method_body.code)
         stmnt = method_body.code[i]
-        replace_match!(s -> self, s -> isa(s, SlotNumber) && s.id == 1, stmnt)
-        replace_match!(is_call, stmnt) do call
-            greatest_ssa_value += 1
-            new_ssa_value = SSAValue(greatest_ssa_value)
-            new_ssa_stmnt = Expr(:(=), new_ssa_value, Expr(:call, GlobalRef(Cassette, :intercept), SlotNumber(1), call.args[1]))
-            push!(new_code, new_ssa_stmnt)
-            call.args[1] = new_ssa_value
-            return call
-        end
-        push!(new_code, stmnt)
-        if isa(stmnt, LabelNode) && stmnt.label != length(new_code)
-            new_code[end] = LabelNode(length(new_code))
-            label_map[stmnt.label] = length(new_code)
-        end
-    end
-    # label positions might be messed up now due to
-    # the added SSAValues, so we have to fix them using
-    # the label map we built up during the earlier pass
-    for i in 2:length(new_code)
-        stmnt = new_code[i]
-        if isa(stmnt, GotoNode)
-            new_code[i] = GotoNode(get(label_map, stmnt.label, stmnt.label))
-        elseif isa(stmnt, Expr) && stmnt.head == :gotoifnot
-            stmnt.args[2] = get(label_map, stmnt.args[2], stmnt.args[2])
+        if stmnt === BEGIN_OVERDUB_REGION
+            in_overdub_region = true
+        else
+            # replace `SlotNumber(1)` references with `self_ssa`
+            replace_match!(s -> self_ssa, s -> isa(s, SlotNumber) && s.id == 1, stmnt)
+            if in_overdub_region
+                # replace calls with overdubbed calls
+                replace_match!(s -> is_call(s), stmnt) do call
+                    greatest_ssa_value += 1
+                    new_ssa_value = SSAValue(greatest_ssa_value)
+                    new_ssa_stmnt = Expr(:(=), new_ssa_value, Expr(:call, GlobalRef(Cassette, :intercept), SlotNumber(1), call.args[1]))
+                    push!(new_code, new_ssa_stmnt)
+                    call.args[1] = new_ssa_value
+                    return call
+                end
+            end
+            push!(new_code, stmnt)
         end
     end
-    method_body.code = new_code
+
+    # replace all `new` expressions with calls to `Cassette._newbox`
+    replace_match!(x -> isa(x, Expr) && x.head === :new, new_code) do x
+        return Expr(:call, GlobalRef(Cassette, :_newbox), ctx_ssa, x.args...)
+    end
+
+    method_body.code = fix_labels_and_gotos!(new_code)
     method_body.ssavaluetypes = greatest_ssa_value + 1
     return method_body
 end
 
-# replace all `new` expressions with calls to `Cassette._newbox`
-function overdub_new!(method_body::CodeInfo)
-    code = method_body.code
-    ctx_ssa = SSAValue(method_body.ssavaluetypes)
-    insert!(code, 2, :($ctx_ssa = $(GlobalRef(Cassette, :context))($(SlotNumber(1)))))
-    method_body.ssavaluetypes += 1
-    replace_match!(x -> isa(x, Expr) && x.head === :new, code) do x
-        return Expr(:call, GlobalRef(Cassette, :_newbox), ctx_ssa, x.args...)
-    end
-    for i in eachindex(code)
-        stmnt = code[i]
-        if isa(stmnt, GotoNode)
-            code[i] = GotoNode(stmnt.label + 1)
-        elseif isa(stmnt, LabelNode)
-            code[i] = LabelNode(stmnt.label + 1)
-        elseif isa(stmnt, Expr) && stmnt.head == :gotoifnot
-            stmnt.args[2] += 1
+function _overdub_generator(::Type{F}, ::Type{C}, ::Type{M}, world, debug, pass, f, args) where {F,C,M}
+    ftype = unbox(C, F)
+    atypes = Tuple(unbox(C, T) for T in args)
+    signature = Tuple{ftype,atypes...}
+    try
+        method_body = lookup_method_body(signature, world, debug)
+        if isa(method_body, CodeInfo)
+            if !(pass <: Unused)
+                method_body = pass(signature, method_body)
+            end
+            method_body = overdub_pass!(method_body)
+            method_body.inlineable = true
+            method_body.signature_for_inference_heuristics = Core.svec(ftype, atypes, world)
+            debug && Core.println("RETURNING OVERDUBBED CODEINFO: ", sprint(show, method_body))
+        else
+            method_body = quote
+                $(Expr(:meta, :inline))
+                $Cassette.execute(Val(true), f, $(OVERDUB_ARGS_SYMBOL)...)
+            end
+            debug && Core.println("NO CODEINFO FOUND; EXECUTING AS PRIMITIVE")
+        end
+        return method_body
+    catch err
+        errmsg = "ERROR COMPILING $signature IN CONTEXT $C: " * sprint(showerror, err)
+        Core.println(errmsg) # in case the returned body doesn't get reached
+        return quote
+            error($errmsg)
         end
     end
-    return method_body
 end
 
-############################
-# Overdub Call Definitions #
-############################
-
-# Overdub{Execute} #
-#------------------#
-
-@inline (o::Overdub{Execute})(args...) = (hook(o, args...); execute(o, args...))
-
-# Overdub{Intercept} #
-#--------------------#
-
-for N in 0:MAX_ARGS
-    arg_names = [Symbol("_CASSETTE_$i") for i in 2:(N+1)]
-    arg_types = [:(unbox(C, $T)) for T in arg_names]
-    stub_expr = Expr(:new,
-                     Core.GeneratedFunctionStub,
-                     :_overdub_generator,
-                     Any[:f, arg_names...],
-                     Any[:F, :C, :M, :world, :debug, :pass],
-                     @__LINE__,
-                     QuoteNode(Symbol(@__FILE__)),
-                     true)
-    @eval begin
-        function _overdub_generator(::Type{F}, ::Type{C}, ::Type{M}, world, debug, pass, f, $(arg_names...)) where {F,C,M}
-            ftype = unbox(C, F)
-            atypes = ($(arg_types...),)
-            signature = Tuple{ftype,atypes...}
-            try
-                method_body = lookup_method_body(signature, $arg_names, world, debug)
-                if isa(method_body, CodeInfo)
-                    if !(pass <: Unused)
-                        method_body = pass(signature, method_body)
-                    end
-                    method_body = overdub_new!(overdub_calls!(method_body))
-                    method_body.inlineable = true
-                    method_body.signature_for_inference_heuristics = Core.svec(ftype, atypes, world)
-                else
-                    arg_names = $arg_names
-                    method_body = quote
-                        $(Expr(:meta, :inline))
-                        $Cassette.execute(Val(true), f, $(arg_names...))
-                    end
-                end
-                debug && Core.println("RETURNING OVERDUBBED METHOD BODY: ", method_body)
-                return method_body
-            catch err
-                errmsg = "ERROR COMPILING $signature OVERDUBBED WITH CONTEXT $C: " * sprint(showerror, err)
-                Core.println(errmsg) # in case the returned body doesn't get reached
-                return quote
-                    error($errmsg)
-                end
-            end
-        end
-        function (f::Overdub{Intercept,F,Settings{C,M,world,debug,pass}})($(arg_names...)) where {F,C,M,world,debug,pass}
-            $(Expr(:meta, :generated, stub_expr))
-        end
-    end
+@eval function (f::Overdub{Intercept,F,Settings{C,M,world,debug,pass}})($(OVERDUB_ARGS_SYMBOL)...) where {F,C,M,world,debug,pass}
+    $(Expr(:meta,
+           :generated,
+           Expr(:new,
+                Core.GeneratedFunctionStub,
+                :_overdub_generator,
+                Any[:f, OVERDUB_ARGS_SYMBOL],
+                Any[:F, :C, :M, :world, :debug, :pass],
+                @__LINE__,
+                QuoteNode(Symbol(@__FILE__)),
+                true)))
 end

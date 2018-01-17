@@ -6,11 +6,10 @@ const MAX_ARGS = 20
 
 struct Unused end
 
-include("utilities/metaprogramming.jl")
-include("utilities/anonymous.jl")
-include("utilities/misc.jl")
+include("utilities.jl")
 
 include("contextual/contexts.jl")
+include("contextual/anonymous.jl")
 include("contextual/metadata.jl")
 
 include("overdub/reflection.jl")

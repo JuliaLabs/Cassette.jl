@@ -65,6 +65,26 @@ Cassette.overdub(CountCtx, sin, metadata = count2)(1)
 
 ############################################################################################
 
+square_closure(x) = (y -> y * x)(x)
+Cassette.@context SqrCtx
+x = rand()
+@test square_closure(x) == Cassette.overdub(SqrCtx, square_closure)(x)
+
+############################################################################################
+
+#=
+TODO: get these passing
+comprehension1(x) = [i for i in x]
+comprehension2(f, x, y) = [f(x, i) for i in y]
+Cassette.@context CompCtx
+f, x, y = hypot, rand(), rand(2)
+@test comprehension1(x) == Cassette.overdub(CompCtx, comprehension1)(x)
+@test comprehension1(y) == Cassette.overdub(CompCtx, comprehension1)(y)
+@test comprehension2(f, x, y) == Cassette.overdub(CompCtx, comprehension2)(f, x, y)
+=#
+
+############################################################################################
+
 struct Baz
     x::Int
     y::Float64
