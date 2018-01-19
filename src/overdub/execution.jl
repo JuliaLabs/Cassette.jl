@@ -14,7 +14,9 @@ struct Intercept <: Phase end
 
 get_world_age() = ccall(:jl_get_tls_world_age, UInt, ()) # ccall(:jl_get_world_counter, UInt, ())
 
-struct Settings{C<:Context,M,w,d,P}
+abstract type AbstractPass end
+
+struct Settings{C<:Context,M,w,d,P<:Union{Unused,AbstractPass}}
     context::C
     metadata::M
     world::Val{w}
@@ -139,7 +141,7 @@ function overdub_pass!(method_body::CodeInfo)
     return method_body
 end
 
-function _overdub_generator(::Type{F}, ::Type{C}, ::Type{M}, world, debug, pass, f, args) where {F,C,M}
+function overdub_intercept_call_generator(::Type{F}, ::Type{C}, ::Type{M}, world, debug, pass, f, args) where {F,C,M}
     ftype = unbox(C, F)
     atypes = Tuple(unbox(C, T) for T in args)
     signature = Tuple{ftype,atypes...}
@@ -170,15 +172,21 @@ function _overdub_generator(::Type{F}, ::Type{C}, ::Type{M}, world, debug, pass,
     end
 end
 
-@eval function (f::Overdub{Intercept,F,Settings{C,M,world,debug,pass}})($(OVERDUB_ARGS_SYMBOL)...) where {F,C,M,world,debug,pass}
-    $(Expr(:meta,
-           :generated,
-           Expr(:new,
-                Core.GeneratedFunctionStub,
-                :_overdub_generator,
-                Any[:f, OVERDUB_ARGS_SYMBOL],
-                Any[:F, :C, :M, :world, :debug, :pass],
-                @__LINE__,
-                QuoteNode(Symbol(@__FILE__)),
-                true)))
+function overdub_intercept_call_definition(pass, line, file)
+    return quote
+        function (f::$Cassette.Overdub{$Cassette.Intercept,F,$Cassette.Settings{C,M,world,debug,pass}})($(OVERDUB_ARGS_SYMBOL)...) where {F,C,M,world,debug,pass<:$pass}
+            $(Expr(:meta,
+                   :generated,
+                   Expr(:new,
+                        Core.GeneratedFunctionStub,
+                        :overdub_intercept_call_generator,
+                        Any[:f, OVERDUB_ARGS_SYMBOL],
+                        Any[:F, :C, :M, :world, :debug, :pass],
+                        @__LINE__,
+                        QuoteNode(Symbol(file)),
+                        true)))
+        end
+    end
 end
+
+eval(overdub_intercept_call_definition(:Unused, @__LINE__, @__FILE__))

@@ -124,4 +124,13 @@ ctx = FooBarCtx(foo_bar_identity)
 result = Cassette.overdub(ctx, foo_bar_identity)(Cassette.Box(ctx, 1, n))
 @test result === Cassette.Box(ctx, 1, n)
 
+############################################################################################
+
+sig_collection = DataType[]
+Cassette.@context PassCtx
+tapepass(sig, cinfo) = (push!(sig_collection, sig); cinfo)
+Cassette.@pass TapePass tapepass
+Cassette.overdub(PassCtx, sum; pass = TapePass())(rand(3))
+@test !isempty(sig_collection) && all(T -> T <: Tuple, sig_collection)
+
 end # module ExecuteTests

@@ -16,6 +16,22 @@ macro context(Ctx)
 end
 
 #########
+# @pass #
+#########
+
+macro pass(Pass, transform)
+    @assert isa(Pass, Symbol) "pass name must be a Symbol"
+    name = Expr(:quote, :($__module__.$Pass))
+    line = Expr(:quote, __source__.line)
+    file = Expr(:quote, __source__.file)
+    return esc(quote
+        struct $Pass <: $Cassette.AbstractPass end
+        (::Type{$Pass})(signature, codeinfo) = $transform(signature, codeinfo)
+        eval($Cassette, $Cassette.overdub_intercept_call_definition($name, $line, $file))
+    end)
+end
+
+#########
 # @hook #
 #########
 
