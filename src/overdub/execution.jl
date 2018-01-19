@@ -146,11 +146,8 @@ function overdub_intercept_call_generator(::Type{F}, ::Type{C}, ::Type{M}, world
     atypes = Tuple(unbox(C, T) for T in args)
     signature = Tuple{ftype,atypes...}
     try
-        method_body = lookup_method_body(signature; world = world, debug = debug)
+        method_body = lookup_method_body(signature; world = world, debug = debug, pass = pass)
         if isa(method_body, CodeInfo)
-            if !(pass <: Unused)
-                method_body = pass(signature, method_body)
-            end
             method_body = overdub_pass!(method_body)
             method_body.inlineable = true
             method_body.signature_for_inference_heuristics = Core.svec(ftype, atypes, world)

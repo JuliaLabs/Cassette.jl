@@ -6,7 +6,8 @@ const BEGIN_OVERDUB_REGION = gensym("cassette_begin_overdub_region")
 # if it exists in the method table. Otherwise, return `nothing`.
 function lookup_method_body(::Type{S};
                             world::UInt = typemax(UInt),
-                            debug::Bool = false) where {S<:Tuple}
+                            debug::Bool = false,
+                            pass = Unused) where {S<:Tuple}
     if debug
         Core.println("-----------------------------------")
         Core.println("LOOKING UP CODEINFO FOR:")
@@ -27,6 +28,11 @@ function lookup_method_body(::Type{S};
     code_info = Core.Compiler.copy_code_info(code_info)
     debug && Core.println("FOUND METHOD: ", sprint(show, method))
     debug && Core.println("FOUND CODEINFO: ", sprint(show, code_info))
+
+    # execute user-provided pass if present
+    if pass <: AbstractPass
+        code_info = pass(S, code_info)
+    end
 
     # substitute static parameters
     body = Expr(:block)
