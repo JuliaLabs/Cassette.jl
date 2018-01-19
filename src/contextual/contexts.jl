@@ -7,7 +7,7 @@ struct Tag{T} end
 @generated function Tag(::T) where {T}
     return quote
         $(Expr(:meta, :inline))
-        Tag{$(object_id(T))}()
+        Tag{$(objectid(T))}()
     end
 end
 

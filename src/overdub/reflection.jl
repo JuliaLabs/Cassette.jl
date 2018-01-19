@@ -4,7 +4,7 @@ const BEGIN_OVERDUB_REGION = gensym("cassette_begin_overdub_region")
 
 # Return the CodeInfo method body for signature `S` and `world`,
 # if it exists in the method table. Otherwise, return `nothing`.
-function lookup_method_body(::Type{S},
+function lookup_method_body(::Type{S};
                             world::UInt = typemax(UInt),
                             debug::Bool = false) where {S<:Tuple}
     if debug
@@ -36,7 +36,14 @@ function lookup_method_body(::Type{S},
     # construct new slotnames/slotflags, offset non-self slotnumbers
     code_info.slotnames = Any[code_info.slotnames[1], OVERDUB_ARGS_SYMBOL, code_info.slotnames[2:end]...]
     code_info.slotflags = Any[code_info.slotflags[1], 0x00,                code_info.slotflags[2:end]...]
-    replace_match!(s -> SlotNumber(s.id + 1), s -> isa(s, SlotNumber) && s.id > 1, code_info.code)
+    replace_match!(x -> isa(x, SlotNumber) || isa(x, NewvarNode), code_info.code) do x
+        if isa(x, NewvarNode) && x.slot.id > 1
+            return NewvarNode(SlotNumber(x.slot.id + 1))
+        elseif x.id > 1
+            return SlotNumber(x.id + 1)
+        end
+        return x
+    end
 
     # construct new `code_info.code` in which original arguments are properly destructured
     new_code = copy_prelude_code(code_info.code)

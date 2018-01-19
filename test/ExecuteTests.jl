@@ -72,8 +72,6 @@ x = rand()
 
 ############################################################################################
 
-#=
-TODO: get these passing
 comprehension1(x) = [i for i in x]
 comprehension2(f, x, y) = [f(x, i) for i in y]
 Cassette.@context CompCtx
@@ -81,7 +79,6 @@ f, x, y = hypot, rand(), rand(2)
 @test comprehension1(x) == Cassette.overdub(CompCtx, comprehension1)(x)
 @test comprehension1(y) == Cassette.overdub(CompCtx, comprehension1)(y)
 @test comprehension2(f, x, y) == Cassette.overdub(CompCtx, comprehension2)(f, x, y)
-=#
 
 ############################################################################################
 

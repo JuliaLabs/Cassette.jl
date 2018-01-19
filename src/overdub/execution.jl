@@ -144,7 +144,7 @@ function _overdub_generator(::Type{F}, ::Type{C}, ::Type{M}, world, debug, pass,
     atypes = Tuple(unbox(C, T) for T in args)
     signature = Tuple{ftype,atypes...}
     try
-        method_body = lookup_method_body(signature, world, debug)
+        method_body = lookup_method_body(signature; world = world, debug = debug)
         if isa(method_body, CodeInfo)
             if !(pass <: Unused)
                 method_body = pass(signature, method_body)
