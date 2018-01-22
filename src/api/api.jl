@@ -74,6 +74,14 @@ macro primitive(args...)
     end)
 end
 
+############
+# @overdub #
+############
+
+macro overdub(ctx, ex)
+  :(overdub($(esc(ctx)), () -> $(esc(ex)))())
+end
+
 #############
 # utilities #
 #############
