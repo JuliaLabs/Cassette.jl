@@ -87,6 +87,17 @@ end
 
 isboxmacrocall(x) = isa(x, Expr) && x.head == :macrocall && x.args[1] == Symbol("@Box")
 
+function typify_sig(ex)
+    ex isa Expr && ex.head == :where &&
+      return Expr(:where, typify_sig(ex.args[1]), ex.args[2:end]...)
+    @assert ex.head == :call
+    f = ex.args[1]
+    if !(f isa Expr && f.head == :(::))
+        f = :(::typeof($f))
+    end
+    return :($f($(ex.args[2:end]...)))
+end
+
 function contextual_transform!(ctx, meta, f, method)
     @assert is_method_definition(method)
     signature, body = method.args
@@ -95,6 +106,8 @@ end
 
 function contextual_transform!(ctx, meta, f, signature::Expr, body::Expr)
     @assert is_valid_ctx_specification(ctx) "invalid context specifier: $ctx. Valid syntax is `ContextType` or `context_name::ContextType`."
+
+    signature = typify_sig(signature)
 
     if signature.head != :where
         signature = Expr(:where, signature)
