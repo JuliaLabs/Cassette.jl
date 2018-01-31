@@ -8,6 +8,9 @@ struct Execute <: Phase end
 
 struct Intercept <: Phase end
 
+proceed(::Execute) = Intercept()
+proceed(::Intercept) = Execute()
+
 ############
 # Settings #
 ############
@@ -59,20 +62,12 @@ struct Overdub{P<:Phase,F,S<:Settings}
     end
 end
 
-@inline overdub(::Type{C}, f; kwargs...) where {C<:Context} = overdub(C(f), f; kwargs...)
-@inline overdub(ctx::Context, f; kwargs...) = Overdub(Execute(), f, Settings(ctx; kwargs...))
+@inline overdub(::Type{C}, f; phase = Execute(), kwargs...) where {C<:Context} = overdub(C(f), f; phase = phase, kwargs...)
+@inline overdub(ctx::Context, f; phase = Execute(), kwargs...) = Overdub(phase, f, Settings(ctx; kwargs...))
 
-@inline intercept(o::Overdub{Intercept}, f) = Overdub(Execute(), f, o.settings)
+@inline proceed(o::Overdub, f = o.func) = Overdub(proceed(o.phase), f, o.settings)
 
 @inline context(o::Overdub) = o.settings.context
-
-@inline hook(o::Overdub, args...) = hook(o.settings, o.func, args...)
-
-@inline isprimitive(o::Overdub, args...) = isprimitive(o.settings, o.func, args...)
-
-@inline execute(o::Overdub, args...) = execute(isprimitive(o, args...), o, args...)
-@inline execute(::Val{true}, o::Overdub, args...) = execution(o.settings, o.func, args...)
-@inline execute(::Val{false}, o::Overdub, args...) = Overdub(Intercept(), o.func, o.settings)(args...)
 
 @inline func(o::Overdub) = o.func
 @inline func(f) = f
@@ -83,7 +78,18 @@ Base.show(io::IO, o::Overdub{P}) where {P} = print("Overdub{$(P.name.name)}($(ty
 # Overdub{Execute} #
 ####################
 
-@inline (o::Overdub{Execute})(args...) = (hook(o, args...); execute(o, args...))
+@inline hook(o::Overdub{Execute}, args...) = hook(o.settings, o.func, args...)
+
+@inline isprimitive(o::Overdub{Execute}, args...) = isprimitive(o.settings, o.func, args...)
+
+@inline execute(o::Overdub{Execute}, args...) = execute(isprimitive(o, args...), o, args...)
+@inline execute(::Val{true}, o::Overdub{Execute}, args...) = execution(o.settings, o.func, args...)
+@inline execute(::Val{false}, o::Overdub{Execute}, args...) = proceed(o)(args...)
+
+@inline function (o::Overdub{Execute})(args...)
+    hook(o, args...)
+    execute(o, args...)
+end
 
 ######################
 # Overdub{Intercept} #
@@ -121,7 +127,7 @@ function overdub_pass!(method_body::CodeInfo)
                 replace_match!(s -> is_call(s), stmnt) do call
                     greatest_ssa_value += 1
                     new_ssa_value = SSAValue(greatest_ssa_value)
-                    new_ssa_stmnt = Expr(:(=), new_ssa_value, Expr(:call, GlobalRef(Cassette, :intercept), SlotNumber(1), call.args[1]))
+                    new_ssa_stmnt = Expr(:(=), new_ssa_value, Expr(:call, GlobalRef(Cassette, :proceed), SlotNumber(1), call.args[1]))
                     push!(new_code, new_ssa_stmnt)
                     call.args[1] = new_ssa_value
                     return call
@@ -155,7 +161,7 @@ function overdub_intercept_call_generator(::Type{F}, ::Type{C}, ::Type{M}, world
         else
             method_body = quote
                 $(Expr(:meta, :inline))
-                $Cassette.execute(Val(true), f, $(OVERDUB_ARGS_SYMBOL)...)
+                $Cassette.execute(Val(true), $Cassette.proceed(f), $(OVERDUB_ARGS_SYMBOL)...)
             end
             debug && Core.println("NO CODEINFO FOUND; EXECUTING AS PRIMITIVE")
         end
