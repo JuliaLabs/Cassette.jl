@@ -19,17 +19,17 @@ x = rand(2)
 Cassette.@context RosCtx
 
 MESSAGES = String[]
-Cassette.@hook RosCtx f(args...) = push!(MESSAGES, string("calling ", f, args))
+Cassette.@hook RosCtx (f::Any)(args...) = push!(MESSAGES, string("calling ", f, args))
 @test Cassette.overdub(RosCtx, rosenbrock)(x) == rosenbrock(x)
 @test length(MESSAGES) > 100
 
-Cassette.@hook RosCtx meta f(args...) = push!(meta, string("calling ", f, args))
+Cassette.@hook RosCtx meta (f::Any)(args...) = push!(meta, string("calling ", f, args))
 meta = String[]
 @test Cassette.overdub(RosCtx, rosenbrock, metadata = meta)(x) == rosenbrock(x)
 @test MESSAGES == meta
 
-Cassette.@hook RosCtx meta f(args...) = nothing
-Cassette.@hook RosCtx meta f(args::Number...) = push!(meta, args)
+Cassette.@hook RosCtx meta (f::Any)(args...) = nothing
+Cassette.@hook RosCtx meta (f::Any)(args::Number...) = push!(meta, args)
 meta = Any[]
 @test Cassette.overdub(RosCtx, rosenbrock, metadata = meta)(x) == rosenbrock(x)
 for args in meta
@@ -42,7 +42,7 @@ x = rand()
 sin_plus_cos(x) = sin(x) + cos(x)
 Cassette.@context SinCtx
 @test Cassette.overdub(SinCtx, sin_plus_cos)(x) === sin_plus_cos(x)
-Cassette.@primitive SinCtx (::typeof(sin))(x) = cos(x)
+Cassette.@primitive SinCtx sin(x) = cos(x)
 @test Cassette.overdub(SinCtx, sin_plus_cos)(x) === (2 * cos(x))
 
 ############################################################################################
@@ -56,9 +56,9 @@ Cassette.@context FoldCtx
 
 Cassette.@context CountCtx
 count1 = Ref(0)
-Cassette.@hook CountCtx count f(args::Number...) = (count[] += 1)
+Cassette.@hook CountCtx count (f::Any)(args::Number...) = (count[] += 1)
 Cassette.overdub(CountCtx, sin, metadata = count1)(1)
-Cassette.@hook CountCtx count f(args::Number...) = (count[] += 2)
+Cassette.@hook CountCtx count (f::Any)(args::Number...) = (count[] += 2)
 count2 = Ref(0)
 Cassette.overdub(CountCtx, sin, metadata = count2)(1)
 @test (2 * count1[]) === count2[]
