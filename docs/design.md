@@ -353,7 +353,7 @@ Here is an example demonstrating how contextual dispatch can be used to print ou
 functions that are called in a context, and replace all `sin` calls with `cos` calls:
 
 ```julia
-using Cassette: @context, @hook, @execute, @execution, @isprimitive, @primitive
+using Cassette: @context, @prehook, @execute, @execution, @isprimitive, @primitive
 
 # Define a new context type called "MyCtx"
 @context MyCtx
@@ -365,7 +365,7 @@ using Cassette: @context, @hook, @execute, @execution, @isprimitive, @primitive
 # method overloading, so we could use any of Julia's normal
 # dispatch features (function/argument dispatch, type variables,
 # etc.) here if we so desired.
-@hook MyCtx f(args...) = println("calling ", f, args)
+@prehook MyCtx f(args...) = println("calling ", f, args)
 
 # Define the execution behavior of `sin` in `MyCtx`.
 @execution MyCtx (::typeof(sin))(x) = cos(x)
@@ -417,7 +417,7 @@ to downstream calls by wrapping them in the `Overdub` wrapper. The interception 
 differs from the previous `Overdub` implementation in that downstream `Overdub` calls
 redirect to an execution phase rather than cycling back through the interception phase.
 
-During the execution phase, Cassette calls the context's hook method (defined via `@hook`,
+During the execution phase, Cassette calls the context's hook method (defined via `@prehook`,
 and a no-op by default), then checks the underlying method's type signature to see whether
 or not it was defined as a "primitive" for the context via `@isprimitive`. If so, Cassette's
 special `execution` method (overloaded via `@execution`) is called in place of the original
@@ -443,7 +443,7 @@ end
 
 Overdub(phase, func, context) = Overdub(phase, func, context, Val(get_world_age()))
 
-# `hook` is overloaded for different context types via Cassette's `@hook` macro.
+# `hook` is overloaded for different context types via Cassette's `@prehook` macro.
 # It returns `nothing` by default.
 hook(o::Overdub, args...) = hook(o.context, o.func, args...)
 hook(::Context, f, args...) = nothing
@@ -511,7 +511,7 @@ For example, the following code uses trace-level metadata to count the number of
 where all argument types are `<:Number`:
 
 ```julia
-julia> using Cassette: @context, @hook, @execute
+julia> using Cassette: @context, @prehook, @execute
 
 julia> @context CountCtx
 
@@ -522,7 +522,7 @@ julia> @context CountCtx
 # ...where the `c` argument propagates via a field of the `Overdub`
 # wrapper that calls `hook`. Note that since `c` is a normal argument,
 # you can also dispatch on its type.
-julia> @hook CountCtx c f(::Number, ::Number...) = (c[] += 1; println("count is now ", c[], " due to ", f))
+julia> @prehook CountCtx c f(::Number, ::Number...) = (c[] += 1; println("count is now ", c[], " due to ", f))
 
 julia> count = Ref(0) # this will be our trace-level metadata
 Base.RefValue{Int64}(0)
@@ -548,7 +548,7 @@ argument types are counted. Here, however, we use dispatch to make the intercept
 type a configurable parameter:
 
 ```julia
-julia> using Cassette: @context, @hook, @execute
+julia> using Cassette: @context, @prehook, @execute
 
 julia> mutable struct Count{T}
            x::Int
@@ -556,7 +556,7 @@ julia> mutable struct Count{T}
 
 julia> @context CountCtx
 
-julia> @hook CountCtx c::Count{T} function f(::T, ::T...) where {T}
+julia> @prehook CountCtx c::Count{T} function f(::T, ::T...) where {T}
             c.x += 1
             println("count is now ", c.x, " due to ", f)
        end

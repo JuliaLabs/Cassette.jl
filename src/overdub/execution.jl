@@ -6,10 +6,10 @@ abstract type Phase end
 
 struct Execute <: Phase end
 
-struct Intercept <: Phase end
+struct Transform <: Phase end
 
-proceed(::Execute) = Intercept()
-proceed(::Intercept) = Execute()
+proceed(::Execute) = Transform()
+proceed(::Transform) = Execute()
 
 ############
 # Settings #
@@ -39,8 +39,11 @@ end
 # Execution Methods #
 #####################
 
-@inline _hook(::Val{w}, args...) where {w} = nothing
-@inline hook(settings::Settings{C,M,w}, f, args...) where {C,M,w} = _hook(settings.world, settings.context, settings.metadata, f, args...)
+@inline _prehook(::Val{w}, args...) where {w} = nothing
+@inline prehook(settings::Settings{C,M,w}, f, args...) where {C,M,w} = _prehook(settings.world, settings.context, settings.metadata, f, args...)
+
+@inline _posthook(::Val{w}, args...) where {w} = nothing
+@inline posthook(settings::Settings{C,M,w}, f, args...) where {C,M,w} = _posthook(settings.world, settings.context, settings.metadata, f, args...)
 
 @inline _execution(::Val{w}, ctx, meta, f, args...) where {w} = mapcall(x -> unbox(ctx, x), f, args...)
 @inline execution(settings::Settings{C,M,w}, f, args...) where {C,M,w} = _execution(settings.world, settings.context, settings.metadata, f, args...)
@@ -78,7 +81,8 @@ Base.show(io::IO, o::Overdub{P}) where {P} = print("Overdub{$(P.name.name)}($(ty
 # Overdub{Execute} #
 ####################
 
-@inline hook(o::Overdub{Execute}, args...) = hook(o.settings, o.func, args...)
+@inline prehook(o::Overdub{Execute}, args...) = prehook(o.settings, o.func, args...)
+@inline posthook(o::Overdub{Execute}, args...) = posthook(o.settings, o.func, args...)
 
 @inline isprimitive(o::Overdub{Execute}, args...) = isprimitive(o.settings, o.func, args...)
 
@@ -87,12 +91,14 @@ Base.show(io::IO, o::Overdub{P}) where {P} = print("Overdub{$(P.name.name)}($(ty
 @inline execute(::Val{false}, o::Overdub{Execute}, args...) = proceed(o)(args...)
 
 @inline function (o::Overdub{Execute})(args...)
-    hook(o, args...)
-    execute(o, args...)
+    prehook(o, args...)
+    output = execute(o, args...)
+    posthook(o, output, args...)
+    return output
 end
 
 ######################
-# Overdub{Intercept} #
+# Overdub{Transform} #
 ######################
 
 # Note that this approach emits code in which LHS SSAValues are not
@@ -147,7 +153,7 @@ function overdub_pass!(method_body::CodeInfo)
     return method_body
 end
 
-function overdub_intercept_call_generator(::Type{F}, ::Type{C}, ::Type{M}, world, debug, pass, f, args) where {F,C,M}
+function overdub_transform_call_generator(::Type{F}, ::Type{C}, ::Type{M}, world, debug, pass, f, args) where {F,C,M}
     ftype = unbox(C, F)
     atypes = Tuple(unbox(C, T) for T in args)
     signature = Tuple{ftype,atypes...}
@@ -175,14 +181,14 @@ function overdub_intercept_call_generator(::Type{F}, ::Type{C}, ::Type{M}, world
     end
 end
 
-function overdub_intercept_call_definition(pass, line, file)
+function overdub_transform_call_definition(pass, line, file)
     return quote
-        function (f::$Cassette.Overdub{$Cassette.Intercept,F,$Cassette.Settings{C,M,world,debug,pass}})($(OVERDUB_ARGS_SYMBOL)...) where {F,C,M,world,debug,pass<:$pass}
+        function (f::$Cassette.Overdub{$Cassette.Transform,F,$Cassette.Settings{C,M,world,debug,pass}})($(OVERDUB_ARGS_SYMBOL)...) where {F,C,M,world,debug,pass<:$pass}
             $(Expr(:meta,
                    :generated,
                    Expr(:new,
                         Core.GeneratedFunctionStub,
-                        :overdub_intercept_call_generator,
+                        :overdub_transform_call_generator,
                         Any[:f, OVERDUB_ARGS_SYMBOL],
                         Any[:F, :C, :M, :world, :debug, :pass],
                         @__LINE__,
@@ -192,4 +198,4 @@ function overdub_intercept_call_definition(pass, line, file)
     end
 end
 
-eval(overdub_intercept_call_definition(:Unused, @__LINE__, @__FILE__))
+eval(overdub_transform_call_definition(:Unused, @__LINE__, @__FILE__))

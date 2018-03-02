@@ -19,17 +19,17 @@ x = rand(2)
 Cassette.@context RosCtx
 
 MESSAGES = String[]
-Cassette.@hook RosCtx (f::Any)(args...) = push!(MESSAGES, string("calling ", f, args))
+Cassette.@prehook RosCtx (f::Any)(args...) = push!(MESSAGES, string("calling ", f, args))
 @test Cassette.overdub(RosCtx, rosenbrock)(x) == rosenbrock(x)
 @test length(MESSAGES) > 100
 
-Cassette.@hook RosCtx meta (f::Any)(args...) = push!(meta, string("calling ", f, args))
+Cassette.@prehook RosCtx meta (f::Any)(args...) = push!(meta, string("calling ", f, args))
 meta = String[]
 @test Cassette.overdub(RosCtx, rosenbrock, metadata = meta)(x) == rosenbrock(x)
 @test MESSAGES == meta
 
-Cassette.@hook RosCtx meta (f::Any)(args...) = nothing
-Cassette.@hook RosCtx meta (f::Any)(args::Number...) = push!(meta, args)
+Cassette.@prehook RosCtx meta (f::Any)(args...) = nothing
+Cassette.@prehook RosCtx meta (f::Any)(args::Number...) = push!(meta, args)
 meta = Any[]
 @test Cassette.overdub(RosCtx, rosenbrock, metadata = meta)(x) == rosenbrock(x)
 for args in meta
@@ -56,9 +56,9 @@ Cassette.@context FoldCtx
 
 Cassette.@context CountCtx
 count1 = Ref(0)
-Cassette.@hook CountCtx count (f::Any)(args::Number...) = (count[] += 1)
+Cassette.@prehook CountCtx count (f::Any)(args::Number...) = (count[] += 1)
 Cassette.overdub(CountCtx, sin, metadata = count1)(1)
-Cassette.@hook CountCtx count (f::Any)(args::Number...) = (count[] += 2)
+Cassette.@prehook CountCtx count (f::Any)(args::Number...) = (count[] += 2)
 count2 = Ref(0)
 Cassette.overdub(CountCtx, sin, metadata = count2)(1)
 @test (2 * count1[]) === count2[]

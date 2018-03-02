@@ -65,15 +65,15 @@ julia> mutable struct Count{T}
 
 julia> Cassette.@context CountCtx
 
-# One can use the `@hook` macro to define a "hook" function that gets called every
-# time a function is encountered that matches the hook's signature. Unlike `@primitive`,
-# `@hook` does not redefine how normal method calls are dispatched in the target
-# program; it is just used to add side-effects as specified by the provided hook.
+# One can use the `@prehook` macro to define a callback that gets called right before
+# methods matching the given signature are called. Unlike `@primitive`, `@prehook` does not
+# redefine how normal method calls are dispatched in the target program; it is just used to
+# add side-effects as specified by the provided callback.
 #
-# Note here that we are dispatching on the type of trace-level metadata to define
-# a hook that increments a counter every time one or more arguments of type `T` are
-# encountered in the execution trace.
-julia> Cassette.@hook CountCtx c::Count{T} function f(arg::T, args::T...) where {T}
+# Note here that we are dispatching on the type of trace-level metadata to define a prehook
+# that increments a counter every time one or more arguments of type `T` are encountered in
+# the execution trace.
+julia> Cassette.@prehook CountCtx c::Count{T} function f(arg::T, args::T...) where {T}
            c.count += 1
        end
 
