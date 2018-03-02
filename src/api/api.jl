@@ -27,17 +27,22 @@ macro pass(Pass, transform)
     return esc(quote
         struct $Pass <: $Cassette.AbstractPass end
         (::Type{$Pass})(signature, codeinfo) = $transform(signature, codeinfo)
-        eval($Cassette, $Cassette.overdub_intercept_call_definition($name, $line, $file))
+        eval($Cassette, $Cassette.overdub_transform_call_definition($name, $line, $file))
     end)
 end
 
-#########
-# @hook #
-#########
+#####################
+# @prehook/posthook #
+#####################
 
-macro hook(args...)
+macro prehook(args...)
     ctx, meta, def = unpack_contextual_macro_args(:(::Any), args...)
-    return contextual_transform!(ctx, meta, :($Cassette._hook), def)
+    return contextual_transform!(ctx, meta, :($Cassette._prehook), def)
+end
+
+macro posthook(args...)
+    ctx, meta, def = unpack_contextual_macro_args(:(::Any), args...)
+    return contextual_transform!(ctx, meta, :($Cassette._posthook), def)
 end
 
 ##############
@@ -98,7 +103,7 @@ function unpack_contextual_macro_args(meta_default, args...)
 end
 
 macro Box(args...)
-    error("cannot use @Box macro outside of the scope of Cassette's contextual macros (@execute, @execution, @isprimitive, @primitive, @hook)")
+    error("cannot use @Box macro outside of the scope of Cassette's contextual macros (@execute, @execution, @isprimitive, @primitive, @prehook)")
 end
 
 isboxmacrocall(x) = isa(x, Expr) && x.head == :macrocall && x.args[1] == Symbol("@Box")
