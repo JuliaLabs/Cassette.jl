@@ -2,6 +2,8 @@ __precompile__(false)
 
 module Cassette
 
+using Core: CodeInfo, SlotNumber, NewvarNode, LabelNode, GotoNode, SSAValue
+
 const MAX_ARGS = 20
 
 struct Unused end
