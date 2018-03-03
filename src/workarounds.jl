@@ -23,13 +23,7 @@ for nargs in 1:MAX_ARGS
         @inline execute(p::Val{true}, o::Overdub, $(args...)) = invoke(execute, Tuple{Val{true},Overdub,Vararg{Any}}, p, o, $(args...))
         @inline execute(p::Val{false}, o::Overdub, $(args...)) = invoke(execute, Tuple{Val{false},Overdub,Vararg{Any}}, p, o, $(args...))
 
-        # TODO: use invoke here as well; see https://github.com/jrevels/Cassette.jl/issues/5#issuecomment-341525276
-        @inline function (o::Overdub{Execute})($(args...))
-            prehook(o, $(args...))
-            output = execute(o, $(args...))
-            posthook(o, output, $(args...))
-            return output
-        end
+        @inline (o::Overdub{Execute})($(args...)) = invoke(o, Tuple{Vararg{Any}}, $(args...))
 
         # contextual/metadata.jl workarounds
         @inline mapcall(g, f, $(args...)) = invoke(mapcall, Tuple{Any,Any,Vararg{Any}}, g, f, $(args...))
