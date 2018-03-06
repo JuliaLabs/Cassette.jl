@@ -35,9 +35,9 @@ Cassette.@context GPUCtx
 # is encountered that matches the signature of one of these primitives, that method call
 # will dispatch to the primitive definition provided here. For example, these definitions
 # will cause all `Base.sin(x)` calls to dispatch to `NativeGPUFunctions.sin(x)`.
-Cassette.@primitive GPUCtx (::typeof(Base.sin))(x::Number) = NativeGPUFunctions.sin(x)
-Cassette.@primitive GPUCtx (::typeof(Base.cos))(x::Number) = NativeGPUFunctions.cos(x)
-Cassette.@primitive GPUCtx (::typeof(Base.someotherfunction))(args...) = NativeGPUFunctions.someotherfunction(args...)
+Cassette.@primitive (::typeof(Base.sin))(x::Number) where {__CONTEXT__<:GPUCtx} = NativeGPUFunctions.sin(x)
+Cassette.@primitive (::typeof(Base.cos))(x::Number) where {__CONTEXT__<:GPUCtx} = NativeGPUFunctions.cos(x)
+Cassette.@primitive (::typeof(Base.someotherfunction))(args...) where {__CONTEXT__<:GPUCtx} = NativeGPUFunctions.someotherfunction(args...)
 ⋮ # pretend we do this for all the functions we care about
 
 f(args...) = # some function implemented in normal, GPU-unaware Julia code
@@ -73,8 +73,8 @@ julia> Cassette.@context CountCtx
 # Note here that we are dispatching on the type of trace-level metadata to define a prehook
 # that increments a counter every time one or more arguments of type `T` are encountered in
 # the execution trace.
-julia> Cassette.@prehook CountCtx c::Count{T} function f(arg::T, args::T...) where {T}
-           c.count += 1
+julia> Cassette.@prehook function f(arg::T, args::T...) where {T,__CONTEXT__<:CountCtx,__METADATA__<:Count{T}}
+           __trace__.metadata.count += 1
        end
 
 julia> f(x) = map(string, x)

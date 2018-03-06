@@ -5,19 +5,14 @@ for nargs in 1:MAX_ARGS
     args = [Symbol("x$i") for i in 1:nargs]
     @eval begin
         # overdub/execution.jl workarounds
-        @inline _prehook(world::Val{w}, $(args...)) where {w} = invoke(_prehook, Tuple{Val{w},Vararg{Any}}, world, $(args...))
-        @inline _posthook(world::Val{w}, $(args...)) where {w} = invoke(_posthook, Tuple{Val{w},Vararg{Any}}, world, $(args...))
-        @inline _execution(world::Val{w}, ctx, meta, f, $(args...)) where {w} = invoke(_execution, Tuple{Val{w},Any,Any,Any,Vararg{Any}}, world, ctx, meta, f, $(args...))
-        @inline _isprimitive(world::Val{w}, $(args...)) where {w} = invoke(_isprimitive, Tuple{Val{w},Vararg{Any}}, world, $(args...))
+        @inline prehook(config::TraceConfig{C,M,w}, f, $(args...)) where {C,M,w} = invoke(prehook, Tuple{TraceConfig{C,M,w},Any,Vararg{Any}}, config, f, $(args...))
+        @inline posthook(config::TraceConfig{C,M,w}, f, $(args...)) where {C,M,w} = invoke(posthook, Tuple{TraceConfig{C,M,w},Any,Vararg{Any}}, config, f, $(args...))
+        @inline execution(config::TraceConfig{C,M,w}, f, $(args...)) where {C,M,w} = invoke(execution, Tuple{TraceConfig{C,M,w},Any,Vararg{Any}}, config, f, $(args...))
+        @inline isprimitive(config::TraceConfig{C,M,w}, f, $(args...)) where {C,M,w} = invoke(isprimitive, Tuple{TraceConfig{C,M,w},Any,Vararg{Any}}, config, f, $(args...))
 
-        @inline prehook(settings::Settings{C,M,w}, f, $(args...)) where {C,M,w} = invoke(prehook, Tuple{Settings{C,M,w},Any,Vararg{Any}}, settings, f, $(args...))
-        @inline posthook(settings::Settings{C,M,w}, f, $(args...)) where {C,M,w} = invoke(posthook, Tuple{Settings{C,M,w},Any,Vararg{Any}}, settings, f, $(args...))
-        @inline execution(settings::Settings{C,M,w}, f, $(args...)) where {C,M,w} = invoke(execution, Tuple{Settings{C,M,w},Any,Vararg{Any}}, settings, f, $(args...))
-        @inline isprimitive(settings::Settings{C,M,w}, f, $(args...)) where {C,M,w} = invoke(isprimitive, Tuple{Settings{C,M,w},Any,Vararg{Any}}, settings, f, $(args...))
-
-        @inline prehook(o::Overdub, $(args...)) = invoke(prehook, Tuple{Overdub,Vararg{Any}}, o, $(args...))
-        @inline posthook(o::Overdub, $(args...)) = invoke(posthook, Tuple{Overdub,Vararg{Any}}, o, $(args...))
-        @inline isprimitive(o::Overdub, $(args...)) = invoke(isprimitive, Tuple{Overdub,Vararg{Any}}, o, $(args...))
+        @inline prehook_overdub(o::Overdub, $(args...)) = invoke(prehook_overdub, Tuple{Overdub,Vararg{Any}}, o, $(args...))
+        @inline posthook_overdub(o::Overdub, $(args...)) = invoke(posthook_overdub, Tuple{Overdub,Vararg{Any}}, o, $(args...))
+        @inline isprimitive_overdub(o::Overdub, $(args...)) = invoke(isprimitive_overdub, Tuple{Overdub,Vararg{Any}}, o, $(args...))
 
         @inline execute(o::Overdub, $(args...)) = invoke(execute, Tuple{Overdub,Vararg{Any}}, o, $(args...))
         @inline execute(p::Val{true}, o::Overdub, $(args...)) = invoke(execute, Tuple{Val{true},Overdub,Vararg{Any}}, p, o, $(args...))
@@ -25,9 +20,9 @@ for nargs in 1:MAX_ARGS
 
         # TODO: use invoke here as well; see https://github.com/jrevels/Cassette.jl/issues/5#issuecomment-341525276
         @inline function (o::Overdub{Execute})($(args...))
-            prehook(o, $(args...))
+            prehook_overdub(o, $(args...))
             output = execute(o, $(args...))
-            posthook(o, output, $(args...))
+            posthook_overdub(o, output, $(args...))
             return output
         end
 
