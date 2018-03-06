@@ -1,4 +1,12 @@
 ############
+# bindings #
+############
+
+const CONTEXT_BINDING = Symbol("__CONTEXT__")
+const METADATA_BINDING = Symbol("__METADATA__")
+const CONFIG_BINDING = Symbol("__trace__")
+
+############
 # @context #
 ############
 
@@ -10,8 +18,12 @@ macro context(Ctx)
             tag::$Cassette.Tag{T}
         end
         @inline $Ctx(x) = $Ctx($Cassette.Tag(x))
-        $Cassette.@execution ctx::$Ctx (::typeof(Core.getfield))(x, field) = $Cassette._getfield(x, $Cassette.Name{field}())
-        $Cassette.@execution ctx::$Ctx (::typeof(Core.setfield!))(x, field, y) = $Cassette._setfield!(x, $Cassette.Name{field}(), y)
+        $Cassette.@execution function Core.getfield(x, field) where {__CONTEXT__<:$Ctx}
+            return $Cassette._getfield(x, $Cassette.Name{field}())
+        end
+        $Cassette.@execution function Core.setfield!(x, field, y) where {__CONTEXT__<:$Ctx}
+            return $Cassette._setfield!(x, $Cassette.Name{field}(), y)
+        end
     end)
 end
 
@@ -35,47 +47,42 @@ end
 # @prehook/posthook #
 #####################
 
-macro prehook(args...)
-    ctx, meta, def = unpack_contextual_macro_args(:(::Any), args...)
-    return contextual_transform!(ctx, meta, :($Cassette._prehook), def)
+macro prehook(method)
+    return contextual_definition!(:($Cassette.prehook), method)
 end
 
-macro posthook(args...)
-    ctx, meta, def = unpack_contextual_macro_args(:(::Any), args...)
-    return contextual_transform!(ctx, meta, :($Cassette._posthook), def)
+macro posthook(method)
+    return contextual_definition!(:($Cassette.posthook), method)
 end
 
 ##############
 # @execution #
 ##############
 
-macro execution(args...)
-    ctx, meta, def = unpack_contextual_macro_args(:(::Any), args...)
-    return contextual_transform!(ctx, meta, :($Cassette._execution), def)
+macro execution(method)
+    return contextual_definition!(:($Cassette.execution), method)
 end
 
 ################
 # @isprimitive #
 ################
 
-macro isprimitive(args...)
-    ctx, meta, signature = unpack_contextual_macro_args(:(::Any), args...)
+macro isprimitive(signature)
     body = Expr(:block)
     push!(body.args, :(return Val(true)))
-    return contextual_transform!(ctx, meta, :($Cassette._isprimitive), signature, body)
+    return contextual_definition!(:($Cassette.isprimitive), signature, body)
 end
 
 ##############
 # @primitive #
 ##############
 
-macro primitive(args...)
-    ctx, meta, def = unpack_contextual_macro_args(:(::Any), args...)
-    @assert is_method_definition(def)
-    signature = deepcopy(first(def.args))
+macro primitive(method)
+    @assert is_method_definition(method)
+    signature = deepcopy(first(method.args))
     return esc(quote
-        $Cassette.@execution $ctx $meta $def
-        $Cassette.@isprimitive $ctx $meta $signature
+        $Cassette.@execution $method
+        $Cassette.@isprimitive $signature
     end)
 end
 
@@ -91,80 +98,70 @@ end
 # utilities #
 #############
 
-# returns ctx, meta, def
-function unpack_contextual_macro_args(meta_default, args...)
-    if length(args) == 2
-        return args[1], meta_default, args[2]
-    elseif length(args) == 3
-        return args
-    else
-        error("incorrect number of arguments to a contextual definition macros")
+function typify_signature(signature)
+    if isa(signature, Expr)
+        f, args = signature.args[1], signature.args[2:end]
+        if signature.head == :where
+            return Expr(:where, typify_signature(f), args...)
+        elseif signature.head == :call
+            if !(isa(f, Expr) && f.head == :(::))
+                return Expr(:call, :(::typeof($f)), args...)
+            end
+            return signature
+        end
     end
+    error("malformed signature: $signature")
 end
 
 macro Box(args...)
-    error("cannot use @Box macro outside of the scope of Cassette's contextual macros (@execute, @execution, @isprimitive, @primitive, @prehook)")
+    error("cannot use @Box macro outside of the scope of Cassette's contextual macros (@execution, @isprimitive, @primitive, @prehook, @posthook)")
 end
 
 isboxmacrocall(x) = isa(x, Expr) && x.head == :macrocall && x.args[1] == Symbol("@Box")
 
-function typify_sig(ex)
-    ex isa Expr && ex.head == :where &&
-      return Expr(:where, typify_sig(ex.args[1]), ex.args[2:end]...)
-    @assert ex.head == :call
-    f = ex.args[1]
-    if !(f isa Expr && f.head == :(::))
-        f = :(::typeof($f))
-    end
-    return :($f($(ex.args[2:end]...)))
+function is_metadata_typevar(x)
+    return (x == METADATA_BINDING || isa(x, Expr) && x.head == :(<:) && x.args[1] == METADATA_BINDING)
 end
 
-function contextual_transform!(ctx, meta, f, method)
+function contextual_definition!(f, method)
     @assert is_method_definition(method)
     signature, body = method.args
-    return contextual_transform!(ctx, meta, f, signature, body)
+    return contextual_definition!(f, signature, body)
 end
 
-function contextual_transform!(ctx, meta, f, signature::Expr, body::Expr)
-    @assert is_valid_ctx_specification(ctx) "invalid context specifier: $ctx. Valid syntax is `ContextType` or `context_name::ContextType`."
+function contextual_definition!(f, signature::Expr, body::Expr)
+    @assert(signature.head == :where,
+            "method signature missing `where` clause; `$(CONTEXT_BINDING) <: ContextType` "*
+            "must be defined in your method definition's `where` clause")
 
-    signature = typify_sig(signature)
+    signature = typify_signature(signature)
 
-    if signature.head != :where
-        signature = Expr(:where, signature)
-    end
+    # add metadata typevar (if not already present)
+    !(any(is_metadata_typevar, signature.args)) && push!(signature.args, METADATA_BINDING)
 
-    ctxtypevar = gensym("ContextTypeVar")
-    if isa(ctx, Expr) && ctx.head == :(::)
-        ctxtype = last(ctx.args)
-        ctx.args[end] = ctxtypevar
-    else
-        ctxtype = ctx
-        ctx = :(::$(ctxtypevar))
-    end
-    push!(signature.args, :($ctxtypevar <: $ctxtype))
+    # add world age typevar
+    world_binding = gensym("world")
+    push!(signature.args, world_binding)
 
-    worldtypevar = gensym("world")
-    push!(signature.args, :($worldtypevar))
-    world = :(::Val{$worldtypevar})
+    config_arg = :($CONFIG_BINDING::$Cassette.TraceConfig{$CONTEXT_BINDING,$METADATA_BINDING,$world_binding})
 
-    callargs = signature.args[1].args
-    for i in 1:length(callargs)
-        x = callargs[i]
+    call_args = signature.args[1].args
+    for i in 1:length(call_args)
+        x = call_args[i]
         if isa(x, Expr) && x.head == :(::)
             xtype = last(x.args)
             if isboxmacrocall(xtype)
-                boxargs = xtype.args[3:end]
-                if isempty(boxargs)
+                box_args = xtype.args[3:end]
+                if isempty(box_args)
                     U, M = :Any, :Any
-                elseif length(boxargs) == 1
-                    U, M = first(boxargs), :Any
-                elseif length(boxargs) == 2
-                    U, M = boxargs
+                elseif length(box_args) == 1
+                    U, M = first(box_args), :Any
+                elseif length(box_args) == 2
+                    U, M = box_args
                 else
                     error("incorrect usage of `@Box`: $(xtype)")
                 end
-                new_xtype = :($Cassette.Box{$ctxtypevar,<:$U,<:Any,<:$M,true})
+                new_xtype = :($Cassette.Box{$CONTEXT_BINDING,<:$U,<:Any,<:$M,true})
             else
                 new_xtype = :(Union{$Cassette.Box{<:Any,<:$xtype},$xtype})
             end
@@ -172,20 +169,9 @@ function contextual_transform!(ctx, meta, f, signature::Expr, body::Expr)
         end
     end
 
-    signature.args[1] = Expr(:call, f, world, ctx, meta, callargs...)
+    signature.args[1] = Expr(:call, f, config_arg, call_args...)
 
     pushfirst!(body.args, Expr(:meta, :inline))
 
     return esc(Expr(:function, signature, body))
 end
-
-function is_valid_ctx_specification(x)
-    if isa(x, Expr)
-        T = x.head == :(::) ? last(x.args) : x
-        return is_valid_ctx_type(T)
-    end
-    return isa(x, Symbol)
-end
-
-is_valid_ctx_type(x::Symbol) = true
-is_valid_ctx_type(x) = isa(x, Expr) && x.head == :(.) && is_valid_ctx_type(unquote(last(x.args)))

@@ -11,15 +11,15 @@ struct Transform <: Phase end
 proceed(::Execute) = Transform()
 proceed(::Transform) = Execute()
 
-############
-# Settings #
-############
+###############
+# TraceConfig #
+###############
 
 get_world_age() = ccall(:jl_get_tls_world_age, UInt, ()) # ccall(:jl_get_world_counter, UInt, ())
 
 abstract type AbstractPass end
 
-struct Settings{C<:Context,M,w,d,P<:Union{Unused,AbstractPass}}
+struct TraceConfig{C<:Context,M,w,d,P<:Union{Unused,AbstractPass}}
     context::C
     metadata::M
     world::Val{w}
@@ -27,50 +27,41 @@ struct Settings{C<:Context,M,w,d,P<:Union{Unused,AbstractPass}}
     pass::P
 end
 
-function Settings(context::Context;
-                  metadata = Unused(),
-                  world::Val = Val(get_world_age()),
-                  debug::Val = Val(false),
-                  pass = Unused())
-    return Settings(context, metadata, world, debug, pass)
+const AnyTraceConfig{world} = TraceConfig{<:Context,<:Any,world}
+
+function TraceConfig(context::Context;
+                     metadata = Unused(),
+                     world::Val = Val(get_world_age()),
+                     debug::Val = Val(false),
+                     pass = Unused())
+    return TraceConfig(context, metadata, world, debug, pass)
 end
 
-#####################
-# Execution Methods #
-#####################
-
-@inline _prehook(::Val{w}, args...) where {w} = nothing
-@inline prehook(settings::Settings{C,M,w}, f, args...) where {C,M,w} = _prehook(settings.world, settings.context, settings.metadata, f, args...)
-
-@inline _posthook(::Val{w}, args...) where {w} = nothing
-@inline posthook(settings::Settings{C,M,w}, f, args...) where {C,M,w} = _posthook(settings.world, settings.context, settings.metadata, f, args...)
-
-@inline _execution(::Val{w}, ctx, meta, f, args...) where {w} = mapcall(x -> unbox(ctx, x), f, args...)
-@inline execution(settings::Settings{C,M,w}, f, args...) where {C,M,w} = _execution(settings.world, settings.context, settings.metadata, f, args...)
-
-@inline _isprimitive(::Val{w}, args...) where {w} = Val(false)
-@inline isprimitive(settings::Settings{C,M,w}, f, args...) where {C,M,w} = _isprimitive(settings.world, settings.context, settings.metadata, f, args...)
+@inline prehook(::AnyTraceConfig{w}, ::Vararg{Any}) where {w} = nothing
+@inline posthook(::AnyTraceConfig{w}, ::Vararg{Any}) where {w} = nothing
+@inline isprimitive(::AnyTraceConfig{w}, ::Vararg{Any}) where {w} = Val(false)
+@inline execution(c::AnyTraceConfig{w}, f, args...) where {w} = mapcall(x -> unbox(c.context, x), f, args...)
 
 ###########
 # Overdub #
 ###########
 
-struct Overdub{P<:Phase,F,S<:Settings}
+struct Overdub{P<:Phase,F,C<:TraceConfig}
     phase::P
     func::F
-    settings::S
-    function Overdub(phase::P, func, settings::S) where {P,S}
+    config::C
+    function Overdub(phase::P, func, config::C) where {P,C}
         F = Core.Typeof(func) # this yields `Type{T}` instead of `UnionAll` for constructors
-        return new{P,F,S}(phase, func, settings)
+        return new{P,F,C}(phase, func, config)
     end
 end
 
 @inline overdub(::Type{C}, f; phase = Execute(), kwargs...) where {C<:Context} = overdub(C(f), f; phase = phase, kwargs...)
-@inline overdub(ctx::Context, f; phase = Execute(), kwargs...) = Overdub(phase, f, Settings(ctx; kwargs...))
+@inline overdub(ctx::Context, f; phase = Execute(), kwargs...) = Overdub(phase, f, TraceConfig(ctx; kwargs...))
 
-@inline proceed(o::Overdub, f = o.func) = Overdub(proceed(o.phase), f, o.settings)
+@inline proceed(o::Overdub, f = o.func) = Overdub(proceed(o.phase), f, o.config)
 
-@inline context(o::Overdub) = o.settings.context
+@inline context(o::Overdub) = o.config.context
 
 @inline func(o::Overdub) = o.func
 @inline func(f) = f
@@ -81,19 +72,18 @@ Base.show(io::IO, o::Overdub{P}) where {P} = print("Overdub{$(P.name.name)}($(ty
 # Overdub{Execute} #
 ####################
 
-@inline prehook(o::Overdub{Execute}, args...) = prehook(o.settings, o.func, args...)
-@inline posthook(o::Overdub{Execute}, args...) = posthook(o.settings, o.func, args...)
+@inline prehook_overdub(o::Overdub{Execute}, args...) = prehook(o.config, o.func, args...)
+@inline posthook_overdub(o::Overdub{Execute}, args...) = posthook(o.config, o.func, args...)
+@inline isprimitive_overdub(o::Overdub{Execute}, args...) = isprimitive(o.config, o.func, args...)
 
-@inline isprimitive(o::Overdub{Execute}, args...) = isprimitive(o.settings, o.func, args...)
-
-@inline execute(o::Overdub{Execute}, args...) = execute(isprimitive(o, args...), o, args...)
-@inline execute(::Val{true}, o::Overdub{Execute}, args...) = execution(o.settings, o.func, args...)
+@inline execute(o::Overdub{Execute}, args...) = execute(isprimitive_overdub(o, args...), o, args...)
+@inline execute(::Val{true}, o::Overdub{Execute}, args...) = execution(o.config, o.func, args...)
 @inline execute(::Val{false}, o::Overdub{Execute}, args...) = proceed(o)(args...)
 
 @inline function (o::Overdub{Execute})(args...)
-    prehook(o, args...)
+    prehook_overdub(o, args...)
     output = execute(o, args...)
-    posthook(o, output, args...)
+    posthook_overdub(o, output, args...)
     return output
 end
 
@@ -183,7 +173,7 @@ end
 
 function overdub_transform_call_definition(pass, line, file)
     return quote
-        function (f::$Cassette.Overdub{$Cassette.Transform,F,$Cassette.Settings{C,M,world,debug,pass}})($(OVERDUB_ARGS_SYMBOL)...) where {F,C,M,world,debug,pass<:$pass}
+        function (f::$Cassette.Overdub{$Cassette.Transform,F,$Cassette.TraceConfig{C,M,world,debug,pass}})($(OVERDUB_ARGS_SYMBOL)...) where {F,C,M,world,debug,pass<:$pass}
             $(Expr(:meta,
                    :generated,
                    Expr(:new,
