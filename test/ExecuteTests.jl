@@ -22,7 +22,7 @@ x = rand(2)
 MESSAGES = String[]
 @prehook (f::Any)(args...) where {__CONTEXT__<:RosCtx} = push!(MESSAGES, string("calling ", f, args))
 @test overdub(RosCtx, rosenbrock)(x) == rosenbrock(x)
-@test length(MESSAGES) > 100
+@test length(MESSAGES) > 90
 
 @prehook (f::Any)(args...) where {__CONTEXT__<:RosCtx} = push!(__trace__.metadata, string("calling ", f, args))
 meta = String[]
@@ -129,9 +129,25 @@ result = overdub(ctx, foo_bar_identity)(Box(ctx, 1, n))
 
 sig_collection = DataType[]
 @context PassCtx
-tapepass(sig, cinfo) = (push!(sig_collection, sig); cinfo)
-@pass TapePass tapepass
+@pass TapePass (sig, cinfo) -> (push!(sig_collection, sig); cinfo)
 overdub(PassCtx, sum; pass = TapePass())(rand(3))
 @test !isempty(sig_collection) && all(T -> T <: Tuple, sig_collection)
+
+############################################################################################
+
+mutable struct Count{T}
+    count::Int
+end
+
+@context CountCtx2
+
+@prehook function (::Any)(arg::T, args::T...) where {T,__CONTEXT__<:CountCtx2,__METADATA__<:Count{T}}
+    __trace__.metadata.count += 1
+end
+
+mapstr(x) = map(string, x)
+c = Count{Union{String,Int}}(0)
+@test overdub(CountCtx2, mapstr, metadata = c)(1:10) == mapstr(1:10)
+@test c.count > 1000
 
 end # module ExecuteTests
