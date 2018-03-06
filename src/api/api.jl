@@ -70,7 +70,7 @@ end
 macro isprimitive(signature)
     body = Expr(:block)
     push!(body.args, :(return Val(true)))
-    return contextual_definition!(:($Cassette.isprimitive), signature, body)
+    return contextual_definition!(:($Cassette.is_user_primitive), signature, body)
 end
 
 ##############

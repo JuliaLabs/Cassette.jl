@@ -83,6 +83,9 @@ f, x, y = hypot, rand(), rand(2)
 
 ############################################################################################
 
+using Test, Cassette
+using Cassette: @context, @prehook, @posthook, @primitive, @pass, overdub, Box
+
 struct Baz
     x::Int
     y::Float64
