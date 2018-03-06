@@ -5,14 +5,15 @@ for nargs in 1:MAX_ARGS
     args = [Symbol("x$i") for i in 1:nargs]
     @eval begin
         # overdub/execution.jl workarounds
-        @inline prehook(config::TraceConfig{C,M,w}, f, $(args...)) where {C,M,w} = invoke(prehook, Tuple{TraceConfig{C,M,w},Any,Vararg{Any}}, config, f, $(args...))
-        @inline posthook(config::TraceConfig{C,M,w}, f, $(args...)) where {C,M,w} = invoke(posthook, Tuple{TraceConfig{C,M,w},Any,Vararg{Any}}, config, f, $(args...))
-        @inline execution(config::TraceConfig{C,M,w}, f, $(args...)) where {C,M,w} = invoke(execution, Tuple{TraceConfig{C,M,w},Any,Vararg{Any}}, config, f, $(args...))
-        @inline isprimitive(config::TraceConfig{C,M,w}, f, $(args...)) where {C,M,w} = invoke(isprimitive, Tuple{TraceConfig{C,M,w},Any,Vararg{Any}}, config, f, $(args...))
+        @inline prehook(cfg::TraceConfig{C,M,w}, f, $(args...)) where {C,M,w} = invoke(prehook, Tuple{TraceConfig{C,M,w},Any,Vararg{Any}}, cfg, f, $(args...))
+        @inline posthook(cfg::TraceConfig{C,M,w}, f, $(args...)) where {C,M,w} = invoke(posthook, Tuple{TraceConfig{C,M,w},Any,Vararg{Any}}, cfg, f, $(args...))
+        @inline execution(cfg::TraceConfig{C,M,w}, f, $(args...)) where {C,M,w} = invoke(execution, Tuple{TraceConfig{C,M,w},Any,Vararg{Any}}, cfg, f, $(args...))
+        @inline is_user_primitive(cfg::TraceConfig{C,M,w}, f, $(args...)) where {C,M,w} = invoke(is_user_primitive, Tuple{TraceConfig{C,M,w},Any,Vararg{Any}}, cfg, f, $(args...))
+        @inline is_core_primitive(cfg::TraceConfig{C,M,w}, f, $(args...)) where {C,M,w} = invoke(is_core_primitive, Tuple{TraceConfig{C,M,w},Any,Vararg{Any}}, cfg, f, $(args...))
 
         @inline prehook_overdub(o::Overdub, $(args...)) = invoke(prehook_overdub, Tuple{Overdub,Vararg{Any}}, o, $(args...))
         @inline posthook_overdub(o::Overdub, $(args...)) = invoke(posthook_overdub, Tuple{Overdub,Vararg{Any}}, o, $(args...))
-        @inline isprimitive_overdub(o::Overdub, $(args...)) = invoke(isprimitive_overdub, Tuple{Overdub,Vararg{Any}}, o, $(args...))
+        @inline is_user_primitive_overdub(o::Overdub, $(args...)) = invoke(is_user_primitive_overdub, Tuple{Overdub,Vararg{Any}}, o, $(args...))
 
         @inline execute(o::Overdub, $(args...)) = invoke(execute, Tuple{Overdub,Vararg{Any}}, o, $(args...))
         @inline execute(p::Val{true}, o::Overdub, $(args...)) = invoke(execute, Tuple{Val{true},Overdub,Vararg{Any}}, p, o, $(args...))

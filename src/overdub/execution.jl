@@ -39,8 +39,26 @@ end
 
 @inline prehook(::AnyTraceConfig{w}, ::Vararg{Any}) where {w} = nothing
 @inline posthook(::AnyTraceConfig{w}, ::Vararg{Any}) where {w} = nothing
-@inline isprimitive(::AnyTraceConfig{w}, ::Vararg{Any}) where {w} = Val(false)
-@inline execution(c::AnyTraceConfig{w}, f, args...) where {w} = mapcall(x -> unbox(c.context, x), f, args...)
+@inline execution(cfg::AnyTraceConfig{w}, f, args...) where {w} = mapcall(x -> unbox(cfg.context, x), f, args...)
+@inline is_user_primitive(cfg::AnyTraceConfig{w}, f, args...) where {w} = Val(false)
+@inline is_core_primitive(cfg::AnyTraceConfig{w}, f, args...) where {w} = _is_core_primitive(cfg, Core.Typeof(f), args...)
+
+@generated function _is_core_primitive(cfg::TraceConfig{C,M,w}, ::Type{F}, args...) where {C,M,w,F}
+    ftype = unbox(C, F)
+    atypes = Tuple(unbox(C, T) for T in args)
+    signature = Tuple{ftype,atypes...}
+    # TODO: this is slow, we should try to check whether CodeInfo is retrievable
+    # rather than going through the whole process of actually retrieving it
+    if isa(lookup_method_body(signature; world = w), CodeInfo)
+        result = :(Val(false))
+    else
+        result = :(Val(true))
+    end
+    return quote
+        $(Expr(:meta, :inline))
+        $(result)
+    end
+end
 
 ###########
 # Overdub #
@@ -74,9 +92,9 @@ Base.show(io::IO, o::Overdub{P}) where {P} = print("Overdub{$(P.name.name)}($(ty
 
 @inline prehook_overdub(o::Overdub{Execute}, args...) = prehook(o.config, o.func, args...)
 @inline posthook_overdub(o::Overdub{Execute}, args...) = posthook(o.config, o.func, args...)
-@inline isprimitive_overdub(o::Overdub{Execute}, args...) = isprimitive(o.config, o.func, args...)
+@inline is_user_primitive_overdub(o::Overdub{Execute}, args...) = is_user_primitive(o.config, o.func, args...)
 
-@inline execute(o::Overdub{Execute}, args...) = execute(isprimitive_overdub(o, args...), o, args...)
+@inline execute(o::Overdub{Execute}, args...) = execute(is_user_primitive_overdub(o, args...), o, args...)
 @inline execute(::Val{true}, o::Overdub{Execute}, args...) = execution(o.config, o.func, args...)
 @inline execute(::Val{false}, o::Overdub{Execute}, args...) = proceed(o)(args...)
 
