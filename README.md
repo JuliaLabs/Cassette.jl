@@ -8,7 +8,7 @@ Cassette relies on new reflection features and compiler performance improvements
 
 Cassette targets downstream package developers, not Julia end-users. Downstream developers are expected to have a solid understanding of Julia's type system, metaprogramming facilities, and dispatch mechanism.
 
-Last updated for Julia commit: 01939d4586247546e904c46efbe19ad78b482355
+Last updated for Julia commit: e542b28ac2acfe40ac2403cd7e67759e7faf72d5
 
 ## Overview
 
