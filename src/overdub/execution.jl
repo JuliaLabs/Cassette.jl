@@ -90,18 +90,14 @@ Base.show(io::IO, o::Overdub{P}) where {P} = print("Overdub{$(P.name.name)}($(ty
 # Overdub{Execute} #
 ####################
 
-@inline prehook_overdub(o::Overdub{Execute}, args...) = prehook(o.config, o.func, args...)
-@inline posthook_overdub(o::Overdub{Execute}, args...) = posthook(o.config, o.func, args...)
-@inline is_user_primitive_overdub(o::Overdub{Execute}, args...) = is_user_primitive(o.config, o.func, args...)
-
-@inline execute(o::Overdub{Execute}, args...) = execute(is_user_primitive_overdub(o, args...), o, args...)
+@inline execute(o::Overdub{Execute}, args...) = execute(is_user_primitive(o.config, o.func, args...), o, args...)
 @inline execute(::Val{true}, o::Overdub{Execute}, args...) = execution(o.config, o.func, args...)
 @inline execute(::Val{false}, o::Overdub{Execute}, args...) = proceed(o)(args...)
 
 @inline function (o::Overdub{Execute})(args...)
-    prehook_overdub(o, args...)
+    prehook(o.config, o.func, args...)
     output = execute(o, args...)
-    posthook_overdub(o, output, args...)
+    posthook(o.config, o.func, output, args...)
     return output
 end
 
