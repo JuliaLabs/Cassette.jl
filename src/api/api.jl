@@ -215,7 +215,7 @@ Used within contextual method signatures to indicate the type of a value `V` wra
 
 For example:
 
-    using Cassette: @context, @prehook
+    using Cassette: @context, @prehook, @Box
 
     @context BoxCtx
 
