@@ -10,6 +10,11 @@ const CONFIG_BINDING = Symbol("__trace__")
 # @context #
 ############
 
+"""
+    Cassette.@context CtxType
+
+Defined and return a new Cassette context type with the name `CtxType`.
+"""
 macro context(Ctx)
     @assert isa(Ctx, Symbol) "context name must be a Symbol"
     name = Expr(:quote, Ctx)
@@ -24,6 +29,7 @@ macro context(Ctx)
         $Cassette.@execution function Core.setfield!(x, field, y) where {__CONTEXT__<:$Ctx}
             return $Cassette._setfield!(x, $Cassette.Name{field}(), y)
         end
+        $Ctx
     end)
 end
 
@@ -31,14 +37,25 @@ end
 # @pass #
 #########
 
-macro pass(Pass, transform)
-    @assert isa(Pass, Symbol) "pass name must be a Symbol"
-    name = Expr(:quote, :($__module__.$Pass))
+"""
+    Cassette.@pass transform
+
+Mark the given `transform` function is as a valid Cassette pass. When used as a Cassette
+pass, `transform` will be called as:
+
+    transform(signature::Type{Tuple{...}}, method_body::CodeInfo)::CodeInfo
+
+Note that this macro expands to an `eval` call and thus should only be called at top-level.
+
+Furthermore, to avoid world-age issues, `transform` should not be overloaded after it has
+been marked with `@pass`.
+"""
+macro pass(transform)
+    name = Expr(:quote, :($__module__.$transform))
     line = Expr(:quote, __source__.line)
     file = Expr(:quote, __source__.file)
     return esc(quote
-        struct $Pass <: $Cassette.AbstractPass end
-        (::Type{$Pass})(signature, codeinfo) = $transform(signature, codeinfo)
+        @inline $Cassette.ispass(::typeof($transform)) = true
         eval($Cassette, $Cassette.overdub_transform_call_definition($name, $line, $file))
     end)
 end
@@ -47,10 +64,70 @@ end
 # @prehook/posthook #
 #####################
 
+"""
+    Cassette.@prehook
+
+Place in front of a contextual method definition to overload the callback that Cassette
+executes before every method call in the target trace. The signature of the given method
+definition matches the method calls for which the prehook is executed.
+
+For example, the following code uses `@prehook` to increment a counter stored in
+`__trace__.metadata` every time a method is called with one or more arguments matching a
+given type:
+
+    using Cassette: @context, @prehook
+
+    @context CountCtx
+
+    mutable struct Count{T}
+        count::Int
+    end
+
+    @prehook function (f::Any)(input::T, ::T...) where {T,__CONTEXT__<:CountCtx,__METADATA__<:Count{T}}
+        __trace__.metadata.count += 1
+    end
+
+Prehooks are generally useful for inserting side-effects that do not ultimately affect
+the trace's execution path, but are allowed to (for example) mutate input argument state.
+
+For details on the contextual method definition format accepted by `@prehook`, see the
+contextual dispatch documentation.
+"""
 macro prehook(method)
     return contextual_definition!(:($Cassette.prehook), method)
 end
 
+"""
+    Cassette.@posthook
+
+Place in front of a contextual method definition to overload the callback that Cassette
+executes after every method call in the target trace. The signature of the given method
+definition matches the method calls for which the prehook is executed, except that the
+first argument is the type of the method calls' output.
+
+For example, the following code uses `@posthook` to increment a counter stored in
+`__trace__.metadata` every time a method call's output type matches the type of its
+input:
+
+    using Cassette: @context, @prehook
+
+    @context CountCtx
+
+    mutable struct Count{T}
+        count::Int
+    end
+
+    @prehook function (f::Any)(output::T, input::T, ::T...) where {T,__CONTEXT__<:CountCtx,__METADATA__<:Count{T}}
+        __trace__.metadata.count += 1
+    end
+
+Posthooks are generally useful for inserting side-effects that do not ultimately affect
+the trace's execution path, but are allowed to (for example) mutate input/output argument
+state.
+
+For details on the contextual method definition format accepted by `@posthook`, see the
+contextual dispatch documentation.
+"""
 macro posthook(method)
     return contextual_definition!(:($Cassette.posthook), method)
 end
@@ -69,7 +146,7 @@ end
 
 macro isprimitive(signature)
     body = Expr(:block)
-    push!(body.args, :(return Val(true)))
+    push!(body.args, :(return true))
     return contextual_definition!(:($Cassette.is_user_primitive), signature, body)
 end
 

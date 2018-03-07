@@ -17,9 +17,7 @@ proceed(::Transform) = Execute()
 
 get_world_age() = ccall(:jl_get_tls_world_age, UInt, ()) # ccall(:jl_get_world_counter, UInt, ())
 
-abstract type AbstractPass end
-
-struct TraceConfig{C<:Context,M,w,d,P<:Union{Unused,AbstractPass}}
+struct TraceConfig{C<:Context,M,w,d,P<:Unused}
     context::C
     metadata::M
     world::Val{w}
@@ -34,13 +32,19 @@ function TraceConfig(context::Context;
                      world::Val = Val(get_world_age()),
                      debug::Val = Val(false),
                      pass = Unused())
-    return TraceConfig(context, metadata, world, debug, pass)
+    if is_valid_pass(pass)
+        return TraceConfig(context, metadata, world, debug, pass)
+    else
+        error("The provided pass function is not valid (you may have forgotten to declare it with Cassette.@pass): $pass")
+    end
 end
 
+@inline is_valid_pass(::Any) = false
+@inline is_valid_pass(::Unused) = true
 @inline prehook(::AnyTraceConfig{w}, ::Vararg{Any}) where {w} = nothing
 @inline posthook(::AnyTraceConfig{w}, ::Vararg{Any}) where {w} = nothing
 @inline execution(cfg::AnyTraceConfig{w}, f, args...) where {w} = mapcall(x -> unbox(cfg.context, x), f, args...)
-@inline is_user_primitive(cfg::AnyTraceConfig{w}, f, args...) where {w} = Val(false)
+@inline is_user_primitive(cfg::AnyTraceConfig{w}, f, args...) where {w} = false
 @inline is_core_primitive(cfg::AnyTraceConfig{w}, f, args...) where {w} = _is_core_primitive(cfg, Core.Typeof(f), args...)
 
 @generated function _is_core_primitive(cfg::TraceConfig{C,M,w}, ::Type{F}, args...) where {C,M,w,F}
@@ -50,9 +54,9 @@ end
     # TODO: this is slow, we should try to check whether CodeInfo is retrievable
     # rather than going through the whole process of actually retrieving it
     if isa(lookup_method_body(signature; world = w), CodeInfo)
-        result = :(Val(false))
+        result = :(false)
     else
-        result = :(Val(true))
+        result = :(true)
     end
     return quote
         $(Expr(:meta, :inline))
@@ -90,9 +94,13 @@ Base.show(io::IO, o::Overdub{P}) where {P} = print("Overdub{$(P.name.name)}($(ty
 # Overdub{Execute} #
 ####################
 
-@inline execute(o::Overdub{Execute}, args...) = execute(is_user_primitive(o.config, o.func, args...), o, args...)
-@inline execute(::Val{true}, o::Overdub{Execute}, args...) = execution(o.config, o.func, args...)
-@inline execute(::Val{false}, o::Overdub{Execute}, args...) = proceed(o)(args...)
+@inline function execute(o::Overdub{Execute}, args...)
+    if is_user_primitive(o.config, o.func, args...)
+        return execution(o.config, o.func, args...)
+    else
+        return proceed(o)(args...)
+    end
+end
 
 @inline function (o::Overdub{Execute})(args...)
     prehook(o.config, o.func, args...)

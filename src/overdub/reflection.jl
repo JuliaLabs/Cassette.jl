@@ -30,7 +30,7 @@ function lookup_method_body(::Type{S};
     debug && Core.println("FOUND CODEINFO: ", sprint(show, code_info))
 
     # execute user-provided pass if present
-    if pass <: AbstractPass
+    if !(pass <: Unused)
         code_info = pass(S, code_info)
     end
 
