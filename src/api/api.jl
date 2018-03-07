@@ -40,8 +40,8 @@ end
 """
     Cassette.@pass transform
 
-Mark the given `transform` function is as a valid Cassette pass. When used as a Cassette
-pass, `transform` will be called as:
+Register `transform` as a Cassette pass. `transform` should be callable with the following
+signature:
 
     transform(signature::Type{Tuple{...}}, method_body::CodeInfo)::CodeInfo
 
