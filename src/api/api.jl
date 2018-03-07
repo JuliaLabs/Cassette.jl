@@ -46,9 +46,8 @@ signature:
     transform(signature::Type{Tuple{...}}, method_body::CodeInfo)::CodeInfo
 
 Note that this macro expands to an `eval` call and thus should only be called at top-level.
-
 Furthermore, to avoid world-age issues, `transform` should not be overloaded after it has
-been marked with `@pass`.
+been registered with `@pass`.
 """
 macro pass(transform)
     name = Expr(:quote, :($__module__.$transform))
