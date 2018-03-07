@@ -102,14 +102,14 @@ end
 
 Place in front of a contextual method definition to overload the callback that Cassette
 executes after every method call in the target trace. The signature of the given method
-definition matches the method calls for which the prehook is executed, except that the
+definition matches the method calls for which the posthook is executed, except that the
 first argument is the method call's output.
 
 For example, the following code uses `@posthook` to increment a counter stored in
 `__trace__.metadata` every time a method call's output type matches the type of its
 input:
 
-    using Cassette: @context, @prehook
+    using Cassette: @context, @posthook
 
     @context CountCtx
 
@@ -117,7 +117,7 @@ input:
         count::Int
     end
 
-    @prehook function (f::Any)(output::T, input::T, ::T...) where {T,__CONTEXT__<:CountCtx,__METADATA__<:Count{T}}
+    @posthook function (f::Any)(output::T, input::T, ::T...) where {T,__CONTEXT__<:CountCtx,__METADATA__<:Count{T}}
         __trace__.metadata.count += 1
     end
 
