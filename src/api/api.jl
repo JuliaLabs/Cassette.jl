@@ -11,9 +11,9 @@ const CONFIG_BINDING = Symbol("__trace__")
 ############
 
 """
-    Cassette.@context CtxType
+    Cassette.@context Ctx
 
-Defined and return a new Cassette context type with the name `CtxType`.
+Defined and return a new Cassette context type with the name `Ctx`.
 """
 macro context(Ctx)
     @assert isa(Ctx, Symbol) "context name must be a Symbol"
@@ -65,11 +65,10 @@ end
 #####################
 
 """
-    Cassette.@prehook
+    Cassette.@prehook contextual_method_definition
 
-Place in front of a contextual method definition to overload the callback that Cassette
-executes before every method call in the target trace. The signature of the given method
-definition matches the method calls for which the prehook is executed.
+Place in front of a contextual method definition to define a callback that Cassette
+executes before method calls that match the contextual method definition's signature.
 
 For example, the following code uses `@prehook` to increment a counter stored in
 `__trace__.metadata` every time a method is called with one or more arguments matching a
@@ -88,22 +87,23 @@ given type:
     end
 
 Prehooks are generally useful for inserting side-effects that do not ultimately affect
-the trace's execution path, but are allowed to (for example) mutate input argument state.
+the trace's execution path. However, prehooks are allowed to (for example) mutate input
+argument state.
 
-For details on the contextual method definition format accepted by `@prehook`, see the
-contextual dispatch documentation.
+For details regarding the format of `contextual_method_definition`, see the contextual
+dispatch documentation.
 """
 macro prehook(method)
     return contextual_definition!(:($Cassette.prehook), method)
 end
 
 """
-    Cassette.@posthook
+    Cassette.@posthook contextual_method_definition
 
-Place in front of a contextual method definition to overload the callback that Cassette
-executes after every method call in the target trace. The signature of the given method
-definition matches the method calls for which the posthook is executed, except that the
-first argument is the method call's output.
+Place in front of a contextual method definition to define a callback that Cassette executes
+after method calls that match the contextual method definition's signature. Note that the
+contextual method definition's signature differs from those of the matched method calls in
+that the first argument is the method calls' output.
 
 For example, the following code uses `@posthook` to increment a counter stored in
 `__trace__.metadata` every time a method call's output type matches the type of its
@@ -122,11 +122,11 @@ input:
     end
 
 Posthooks are generally useful for inserting side-effects that do not ultimately affect
-the trace's execution path, but are allowed to (for example) mutate input/output argument
-state.
+the trace's execution path. However, posthooks are allowed to (for example) mutate
+input/output argument state.
 
-For details on the contextual method definition format accepted by `@posthook`, see the
-contextual dispatch documentation.
+For details regarding the format of `contextual_method_definition`, see the contextual
+dispatch documentation.
 """
 macro posthook(method)
     return contextual_definition!(:($Cassette.posthook), method)
@@ -136,6 +136,17 @@ end
 # @execution #
 ##############
 
+"""
+    Cassette.@execution contextual_method_definition
+
+Place in front of a contextual method definition to overload Cassette's primitive execution
+behavior for method calls matching the contextual method definition's signature. Note that
+this execution behavior does not apply to non-primitives, which, by definition, Cassette
+will simply trace through.
+
+For details regarding the format of `contextual_method_definition`, see the contextual
+dispatch documentation.
+"""
 macro execution(method)
     return contextual_definition!(:($Cassette.execution), method)
 end
@@ -144,6 +155,16 @@ end
 # @isprimitive #
 ################
 
+"""
+    Cassette.@isprimitive contextual_method_signature
+
+Place in front of a contextual method signature to mark matching method calls as Cassette
+primitives. Cassette primitives are executed using the contextual method definitions
+provided via `Cassette.@execution`.
+
+For details regarding the format of `contextual_method_signature`, see the contextual
+dispatch documentation.
+"""
 macro isprimitive(signature)
     body = Expr(:block)
     push!(body.args, :(return true))
@@ -154,6 +175,12 @@ end
 # @primitive #
 ##############
 
+"""
+    Cassette.@primitive contextual_method_definition
+
+A convenience macro for simultaneously applying `Cassette.@execution` and
+`Cassette.@isprimitive` to the provided contextual method definition.
+"""
 macro primitive(method)
     @assert is_method_definition(method)
     signature = deepcopy(first(method.args))
@@ -167,6 +194,11 @@ end
 # @overdub #
 ############
 
+"""
+    Cassette.@overdub Ctx expression
+
+A convenience macro for overdubbing and executing `expression` within the context `Ctx`.
+"""
 macro overdub(ctx, ex)
   :(overdub($(esc(ctx)), () -> $(esc(ex)))())
 end
@@ -175,8 +207,40 @@ end
 # @Box #
 ########
 
+"""
+    Cassette.@Box([V, M])
+
+Used within contextual method signatures to indicate the type of a value `V` wrapped in a
+`Cassette.Box` with metadata of type `M`. `V` and `M` default to `Any` if unspecified.
+
+For example:
+
+    using Cassette: @context, @prehook
+
+    @context BoxCtx
+
+    @prehook function (f::Any)(x::@Box) where {__CONTEXT__<:BoxCtx}
+        println("The value ", unbox(__trace__.context, x),
+                " was wrapped in a Cassette.Box and passed to ", f)
+    end
+
+    @prehook function (f::Any)(x::@Box(Number)) where {__CONTEXT__<:BoxCtx}
+        println("The numeric value ", unbox(__trace__.context, x),
+                " was wrapped in a Cassette.Box and passed to ", f)
+    end
+
+    @prehook function (f::Any)(x::@Box(Number,String)) where {__CONTEXT__<:BoxCtx}
+        println("The numeric value ", unbox(__trace__.context, x),
+                " was wrapped in a Cassette.Box and passed to ", f,
+                " and carries the message: ", meta(__trace__.context, x))
+    end
+
+Note that `Cassette.@Box` can only used within the scope of a contextual method signature.
+
+For further details, see the contextual metadata propagation documentation.
+"""
 macro Box(args...)
-    error("cannot use @Box macro outside of the scope of Cassette's contextual macros (@execution, @isprimitive, @primitive, @prehook, @posthook)")
+    error("`Cassette.@Box` can only used within the scope of a contextual method signature")
 end
 
 #############
