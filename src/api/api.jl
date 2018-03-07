@@ -103,7 +103,7 @@ end
 Place in front of a contextual method definition to overload the callback that Cassette
 executes after every method call in the target trace. The signature of the given method
 definition matches the method calls for which the prehook is executed, except that the
-first argument is the type of the method calls' output.
+first argument is the method call's output.
 
 For example, the following code uses `@posthook` to increment a counter stored in
 `__trace__.metadata` every time a method call's output type matches the type of its
