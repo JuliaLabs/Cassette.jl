@@ -171,6 +171,14 @@ macro overdub(ctx, ex)
   :(overdub($(esc(ctx)), () -> $(esc(ex)))())
 end
 
+########
+# @Box #
+########
+
+macro Box(args...)
+    error("cannot use @Box macro outside of the scope of Cassette's contextual macros (@execution, @isprimitive, @primitive, @prehook, @posthook)")
+end
+
 #############
 # utilities #
 #############
@@ -190,16 +198,6 @@ function typify_signature(signature)
     error("malformed signature: $signature")
 end
 
-macro Box(args...)
-    error("cannot use @Box macro outside of the scope of Cassette's contextual macros (@execution, @isprimitive, @primitive, @prehook, @posthook)")
-end
-
-isboxmacrocall(x) = isa(x, Expr) && x.head == :macrocall && x.args[1] == Symbol("@Box")
-
-function is_metadata_typevar(x)
-    return (x == METADATA_BINDING || isa(x, Expr) && x.head == :(<:) && x.args[1] == METADATA_BINDING)
-end
-
 function contextual_definition!(f, method)
     @assert is_method_definition(method)
     signature, body = method.args
@@ -214,7 +212,10 @@ function contextual_definition!(f, signature::Expr, body::Expr)
     signature = typify_signature(signature)
 
     # add metadata typevar (if not already present)
-    !(any(is_metadata_typevar, signature.args)) && push!(signature.args, METADATA_BINDING)
+    has_metadata_typevar = any(signature.args) do x
+        x == METADATA_BINDING || isa(x, Expr) && x.head == :(<:) && x.args[1] == METADATA_BINDING
+    end
+    !has_metadata_typevar && push!(signature.args, METADATA_BINDING)
 
     # add world age typevar
     world_binding = gensym("world")
@@ -227,7 +228,7 @@ function contextual_definition!(f, signature::Expr, body::Expr)
         x = call_args[i]
         if isa(x, Expr) && x.head == :(::)
             xtype = last(x.args)
-            if isboxmacrocall(xtype)
+            if isa(xtype, Expr) && xtype.head == :macrocall && xtype.args[1] == Symbol("@Box")
                 box_args = xtype.args[3:end]
                 if isempty(box_args)
                     U, M = :Any, :Any
