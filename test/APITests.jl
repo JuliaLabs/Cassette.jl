@@ -1,4 +1,4 @@
-module ExecuteTests
+module APITests
 
 using Test, Cassette
 using Cassette: @context, @prehook, @posthook, @primitive, @pass, overdub, Box
@@ -153,4 +153,4 @@ c = Count{Union{String,Int}}(0)
 @test overdub(CountCtx2, mapstr, metadata = c)(1:10) == mapstr(1:10)
 @test c.count > 1000
 
-end # module ExecuteTests
+end # module APITests
