@@ -40,8 +40,8 @@ end
 """
     Cassette.@pass transform
 
-Register `transform` as a Cassette pass. `transform` should be callable with the following
-signature:
+Return a Cassette pass that applies `transform` to all overdubbed method bodies. `transform`
+must be callable with the following signature:
 
     transform(signature::Type{Tuple{...}}, method_body::CodeInfo)::CodeInfo
 
@@ -50,12 +50,15 @@ Furthermore, to avoid world-age issues, `transform` should not be overloaded aft
 been registered with `@pass`.
 """
 macro pass(transform)
-    name = Expr(:quote, :($__module__.$transform))
+    Pass = gensym("PassType")
+    name = Expr(:quote, :($__module__.$Pass))
     line = Expr(:quote, __source__.line)
     file = Expr(:quote, __source__.file)
     return esc(quote
-        @inline $Cassette.ispass(::typeof($transform)) = true
+        struct $Pass <: $Cassette.AbstractPass end
+        (::Type{$Pass})(signature, codeinfo) = $transform(signature, codeinfo)
         eval($Cassette, $Cassette.overdub_transform_call_definition($name, $line, $file))
+        $Pass()
     end)
 end
 

@@ -17,7 +17,9 @@ proceed(::Transform) = Execute()
 
 get_world_age() = ccall(:jl_get_tls_world_age, UInt, ()) # ccall(:jl_get_world_counter, UInt, ())
 
-struct TraceConfig{C<:Context,M,w,d,P<:Unused}
+abstract type AbstractPass end
+
+struct TraceConfig{C<:Context,M,w,d,P<:Union{AbstractPass,Unused}}
     context::C
     metadata::M
     world::Val{w}
@@ -31,16 +33,10 @@ function TraceConfig(context::Context;
                      metadata = Unused(),
                      world::Val = Val(get_world_age()),
                      debug::Val = Val(false),
-                     pass = Unused())
-    if is_valid_pass(pass)
-        return TraceConfig(context, metadata, world, debug, pass)
-    else
-        error("The provided pass function is not valid (you may have forgotten to declare it with Cassette.@pass): $pass")
-    end
+                     pass::Union{AbstractPass,Unused} = Unused())
+    return TraceConfig(context, metadata, world, debug, pass)
 end
 
-@inline is_valid_pass(::Any) = false
-@inline is_valid_pass(::Unused) = true
 @inline prehook(::AnyTraceConfig{w}, ::Vararg{Any}) where {w} = nothing
 @inline posthook(::AnyTraceConfig{w}, ::Vararg{Any}) where {w} = nothing
 @inline execution(cfg::AnyTraceConfig{w}, f, args...) where {w} = mapcall(x -> unbox(cfg.context, x), f, args...)
@@ -179,7 +175,7 @@ function overdub_transform_call_generator(::Type{F}, ::Type{C}, ::Type{M}, world
         else
             method_body = quote
                 $(Expr(:meta, :inline))
-                $Cassette.execute(Val(true), $Cassette.proceed(f), $(OVERDUB_ARGS_SYMBOL)...)
+                $Cassette.execution(f.config, f.func, $(OVERDUB_ARGS_SYMBOL)...)
             end
             debug && Core.println("NO CODEINFO FOUND; EXECUTING AS PRIMITIVE")
         end

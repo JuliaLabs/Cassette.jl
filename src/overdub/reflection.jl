@@ -7,7 +7,7 @@ const BEGIN_OVERDUB_REGION = gensym("cassette_begin_overdub_region")
 function lookup_method_body(::Type{S};
                             world::UInt = typemax(UInt),
                             debug::Bool = false,
-                            pass = Unused) where {S<:Tuple}
+                            pass::DataType = Unused) where {S<:Tuple}
     if debug
         Core.println("-----------------------------------")
         Core.println("LOOKING UP CODEINFO FOR:")

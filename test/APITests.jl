@@ -83,9 +83,6 @@ f, x, y = hypot, rand(), rand(2)
 
 ############################################################################################
 
-using Test, Cassette
-using Cassette: @context, @prehook, @posthook, @primitive, @pass, overdub, Box
-
 struct Baz
     x::Int
     y::Float64
@@ -132,8 +129,7 @@ result = overdub(ctx, foo_bar_identity)(Box(ctx, 1, n))
 
 sig_collection = DataType[]
 @context PassCtx
-@pass TapePass (sig, cinfo) -> (push!(sig_collection, sig); cinfo)
-overdub(PassCtx, sum; pass = TapePass())(rand(3))
+overdub(PassCtx, sum; pass = @pass((sig, cinfo) -> (push!(sig_collection, sig); cinfo)))(rand(3))
 @test !isempty(sig_collection) && all(T -> T <: Tuple, sig_collection)
 
 ############################################################################################
