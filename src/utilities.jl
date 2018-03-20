@@ -2,7 +2,7 @@
 # Expression Predicates #
 #########################
 
-is_call(x) = isa(x, Expr) && (x.head == :call) && (x.args[1] !== GlobalRef(Core, :tuple))
+is_call(x) = Base.Meta.isexpr(x, :call) && (x.args[1] !== GlobalRef(Core, :tuple))
 
 function is_method_definition(x)
     if isa(x, Expr)
@@ -51,9 +51,9 @@ function fix_labels_and_gotos!(code::Vector)
     for (i, stmnt) in enumerate(code)
         if isa(stmnt, GotoNode)
             code[i] = GotoNode(get(changes, stmnt.label, stmnt.label))
-        elseif isa(stmnt, Expr) && stmnt.head == :enter
+        elseif Base.Meta.isexpr(stmnt, :enter)
             stmnt.args[1] = get(changes, stmnt.args[1], stmnt.args[1])
-        elseif isa(stmnt, Expr) && stmnt.head == :gotoifnot
+        elseif Base.Meta.isexpr(stmnt, :gotoifnot)
             stmnt.args[2] = get(changes, stmnt.args[2], stmnt.args[2])
         end
     end
