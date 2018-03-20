@@ -292,9 +292,9 @@ function contextual_definition!(f, signature::Expr, body::Expr)
     call_args = signature.args[1].args
     for i in 1:length(call_args)
         x = call_args[i]
-        if isa(x, Expr) && x.head == :(::)
+        if Base.Meta.isexpr(x, :(::))
             xtype = last(x.args)
-            if isa(xtype, Expr) && xtype.head == :macrocall && xtype.args[1] == Symbol("@Box")
+            if Base.Meta.isexpr(xtype, :macrocall) && xtype.args[1] == Symbol("@Box")
                 box_args = xtype.args[3:end]
                 if isempty(box_args)
                     U, M = :Any, :Any

@@ -133,7 +133,7 @@ function translatefield(expr::Expr)
         if expr.args[1] == :mut && length(expr.args) == 2
             S = :Mutable
             inner = expr.args[2]
-            if isa(inner, Expr) && inner.head === :kw
+            if Base.Meta.isexpr(inner, :kw)
                 lhs, rhs = inner.args
             else
                 lhs, rhs = inner, nothing
@@ -145,7 +145,7 @@ function translatefield(expr::Expr)
         S = :Immutable
         lhs, rhs = expr.args
     end
-    name, T = (isa(lhs, Expr) && lhs.head == :(::)) ? lhs.args : (lhs, nothing)
+    name, T = Base.Meta.isexpr(lhs, :(::)) ? lhs.args : (lhs, nothing)
     if rhs === nothing
         @assert S === :Mutable
         data = T === nothing ? :($Cassette.Mutable{Any}()) : :($Cassette.Mutable{$T}())

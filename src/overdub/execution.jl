@@ -152,7 +152,7 @@ function overdub_pass!(method_body::CodeInfo)
     end
 
     # replace all `new` expressions with calls to `Cassette._newbox`
-    replace_match!(x -> isa(x, Expr) && x.head === :new, new_code) do x
+    replace_match!(x -> Base.Meta.isexpr(x, :new), new_code) do x
         return Expr(:call, GlobalRef(Cassette, :_newbox), ctx_ssa, x.args...)
     end
 
