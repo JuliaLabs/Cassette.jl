@@ -51,6 +51,8 @@ function fix_labels_and_gotos!(code::Vector)
     for (i, stmnt) in enumerate(code)
         if isa(stmnt, GotoNode)
             code[i] = GotoNode(get(changes, stmnt.label, stmnt.label))
+        elseif isa(stmnt, Expr) && stmnt.head == :enter
+            stmnt.args[1] = get(changes, stmnt.args[1], stmnt.args[1])
         elseif isa(stmnt, Expr) && stmnt.head == :gotoifnot
             stmnt.args[2] = get(changes, stmnt.args[2], stmnt.args[2])
         end
