@@ -1,4 +1,4 @@
-module APITests
+module ExampleTests
 
 using Test, Cassette
 using Cassette: @context, @prehook, @posthook, @primitive, @pass, overdub, Box
@@ -92,9 +92,10 @@ end
 baz_identity(x::Int) = Baz(x, float(x), "$x").x
 
 @context BazCtx
+Cassette.metatype(::Type{<:BazCtx}, ::Type{<:Integer}) = Float64
 n = rand()
 ctx = BazCtx(baz_identity)
-result = overdub(ctx, baz_identity)(Box(ctx, 1, n))
+result = overdub(ctx, baz_identity; boxes = Val(true))(Box(ctx, 1, n))
 @test result === Box(ctx, 1, n)
 
 ############################################################################################
@@ -116,13 +117,15 @@ function foo_bar_identity(x)
     foo.b = bar
     foo.a = Bar(4,5,6)
     foo2 = Foo(foo.a, foo.b)
-    foo2.b.x
+    foo2.a = foo2.b
+    return foo2.a.x
 end
 
 @context FooBarCtx
+Cassette.metatype(::Type{<:FooBarCtx}, ::Type{<:Integer}) = Float64
 n = rand()
 ctx = FooBarCtx(foo_bar_identity)
-result = overdub(ctx, foo_bar_identity)(Box(ctx, 1, n))
+result = overdub(ctx, foo_bar_identity; boxes = Val(true))(Box(ctx, 1, n))
 @test result === Box(ctx, 1, n)
 
 ############################################################################################
@@ -149,4 +152,4 @@ c = Count{Union{String,Int}}(0)
 @test overdub(CountCtx2, mapstr, metadata = c)(1:10) == mapstr(1:10)
 @test c.count > 1000
 
-end # module APITests
+end # module

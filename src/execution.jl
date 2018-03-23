@@ -19,10 +19,11 @@ get_world_age() = ccall(:jl_get_tls_world_age, UInt, ()) # ccall(:jl_get_world_c
 
 abstract type AbstractPass end
 
-struct TraceConfig{C<:Context,M,w,d,P<:Union{AbstractPass,Unused}}
+struct TraceConfig{C<:Context,M,w,b,d,P<:Union{AbstractPass,Unused}}
     context::C
     metadata::M
     world::Val{w}
+    boxes::Val{b}
     debug::Val{d}
     pass::P
 end
@@ -30,18 +31,19 @@ end
 const AnyTraceConfig{world} = TraceConfig{<:Context,<:Any,world}
 
 function TraceConfig(context::Context;
-                     metadata = Unused(),
+                     metadata = unused,
                      world::Val = Val(get_world_age()),
+                     boxes::Val = Val(false),
                      debug::Val = Val(false),
-                     pass::Union{AbstractPass,Unused} = Unused())
-    return TraceConfig(context, metadata, world, debug, pass)
+                     pass::Union{AbstractPass,Unused} = unused)
+    return TraceConfig(context, metadata, world, boxes, debug, pass)
 end
 
 @inline prehook(::AnyTraceConfig{w}, ::Vararg{Any}) where {w} = nothing
 @inline posthook(::AnyTraceConfig{w}, ::Vararg{Any}) where {w} = nothing
-@inline execution(cfg::AnyTraceConfig{w}, f, args...) where {w} = mapcall(x -> unbox(cfg.context, x), f, args...)
 @inline is_user_primitive(cfg::AnyTraceConfig{w}, f, args...) where {w} = false
 @inline is_core_primitive(cfg::AnyTraceConfig{w}, f, args...) where {w} = _is_core_primitive(cfg, Core.Typeof(f), args...)
+@inline execution(cfg::AnyTraceConfig{w}, f, args...) where {w} = unboxcall(cfg.context, f, args...)
 
 @generated function _is_core_primitive(cfg::TraceConfig{C,M,w}, ::Type{F}, args...) where {C,M,w,F}
     ftype = unbox(C, F)
@@ -114,7 +116,7 @@ end
 # the future, valid IR might require monotonically increasing LHS
 # SSAValues, in which case we'll have to add an extra SSA-remapping
 # pass to this function.
-function overdub_pass!(method_body::CodeInfo)
+function overdub_pass!(method_body::CodeInfo, boxes_enabled::Bool)
     # set up new SSAValues
     self_ssa = SSAValue(method_body.ssavaluetypes)
     method_body.ssavaluetypes += 1
@@ -151,9 +153,11 @@ function overdub_pass!(method_body::CodeInfo)
         end
     end
 
-    # replace all `new` expressions with calls to `Cassette._newbox`
-    replace_match!(x -> Base.Meta.isexpr(x, :new), new_code) do x
-        return Expr(:call, GlobalRef(Cassette, :_newbox), ctx_ssa, x.args...)
+    if boxes_enabled
+        # replace all `new` expressions with calls to `Cassette._newbox`
+        replace_match!(x -> Base.Meta.isexpr(x, :new), new_code) do x
+            return Expr(:call, GlobalRef(Cassette, :_newbox), ctx_ssa, x.args...)
+        end
     end
 
     method_body.code = fix_labels_and_gotos!(new_code)
@@ -161,14 +165,14 @@ function overdub_pass!(method_body::CodeInfo)
     return method_body
 end
 
-function overdub_transform_call_generator(::Type{F}, ::Type{C}, ::Type{M}, world, debug, pass, f, args) where {F,C,M}
+function overdub_transform_call_generator(::Type{F}, ::Type{C}, ::Type{M}, world, boxes, debug, pass, f, args) where {F,C,M}
     ftype = unbox(C, F)
     atypes = Tuple(unbox(C, T) for T in args)
     signature = Tuple{ftype,atypes...}
     try
         method_body = lookup_method_body(signature; world = world, debug = debug, pass = pass)
         if isa(method_body, CodeInfo)
-            method_body = overdub_pass!(method_body)
+            method_body = overdub_pass!(method_body, boxes)
             method_body.inlineable = true
             method_body.signature_for_inference_heuristics = Core.svec(ftype, atypes, world)
             debug && Core.println("RETURNING OVERDUBBED CODEINFO: ", sprint(show, method_body))
@@ -191,14 +195,14 @@ end
 
 function overdub_transform_call_definition(pass, line, file)
     return quote
-        function (f::$Cassette.Overdub{$Cassette.Transform,F,$Cassette.TraceConfig{C,M,world,debug,pass}})($(OVERDUB_ARGS_SYMBOL)...) where {F,C,M,world,debug,pass<:$pass}
+        function (f::$Cassette.Overdub{$Cassette.Transform,F,$Cassette.TraceConfig{C,M,world,boxes,debug,pass}})($(OVERDUB_ARGS_SYMBOL)...) where {F,C,M,world,boxes,debug,pass<:$pass}
             $(Expr(:meta,
                    :generated,
                    Expr(:new,
                         Core.GeneratedFunctionStub,
                         :overdub_transform_call_generator,
                         Any[:f, OVERDUB_ARGS_SYMBOL],
-                        Any[:F, :C, :M, :world, :debug, :pass],
+                        Any[:F, :C, :M, :world, :boxes, :debug, :pass],
                         @__LINE__,
                         QuoteNode(Symbol(file)),
                         true)))

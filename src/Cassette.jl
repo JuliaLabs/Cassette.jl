@@ -2,23 +2,28 @@ __precompile__(false)
 
 module Cassette
 
-using Core: CodeInfo, SlotNumber, NewvarNode, LabelNode, GotoNode, SSAValue
-
-const MAX_ARGS = 20
+using Core: CodeInfo, SlotNumber, NewvarNode, LabelNode, GotoNode, SSAValue, arrayref, arrayset
 
 struct Unused end
 
+abstract type Context end
+abstract type Tag{T} end
+
+@generated function Tag(::T) where {T}
+    return quote
+        $(Expr(:meta, :inline))
+        Tag{$(objectid(T))}
+    end
+end
+
+const unused = Unused()
+const MAX_ARGS = 20
+
 include("utilities.jl")
-
-include("contextual/contexts.jl")
-include("contextual/anonymous.jl")
-include("contextual/metadata.jl")
-
-include("overdub/reflection.jl")
-include("overdub/execution.jl")
-
-include("api/api.jl")
-
+include("metadata.jl")
+include("reflection.jl")
+include("execution.jl")
+include("macros.jl")
 include("workarounds.jl")
 
 end # module

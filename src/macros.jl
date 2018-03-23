@@ -19,15 +19,20 @@ macro context(Ctx)
     @assert isa(Ctx, Symbol) "context name must be a Symbol"
     name = Expr(:quote, Ctx)
     return esc(quote
-        struct $Ctx{T} <: $Cassette.Context{$name,T}
-            tag::$Cassette.Tag{T}
+        struct $Ctx{T<:$Cassette.Tag} <: $Cassette.Context
+            @inline $Ctx(f) = new{$Cassette.Tag(f)}()
         end
-        @inline $Ctx(x) = $Ctx($Cassette.Tag(x))
-        $Cassette.@execution function Core.getfield(x, field) where {__CONTEXT__<:$Ctx}
-            return $Cassette._getfield(x, $Cassette.Name{field}())
+        $Cassette.@execution function Core.getfield(x, name) where {__CONTEXT__<:$Ctx}
+            return $Cassette._getfield(x, name)
         end
-        $Cassette.@execution function Core.setfield!(x, field, y) where {__CONTEXT__<:$Ctx}
-            return $Cassette._setfield!(x, $Cassette.Name{field}(), y)
+        $Cassette.@execution function Core.setfield!(x, name, y) where {__CONTEXT__<:$Ctx}
+            return $Cassette._setfield!(x, name, y)
+        end
+        $Cassette.@execution function Core.arrayref(check, x, i) where {__CONTEXT__<:$Ctx}
+            return $Cassette._arrayref(check, x, i)
+        end
+        $Cassette.@execution function Core.arrayset(check, x, y, i) where {__CONTEXT__<:$Ctx}
+            return $Cassette._arrayset(check, x, y, i)
         end
         $Ctx
     end)
@@ -305,7 +310,7 @@ function contextual_definition!(f, signature::Expr, body::Expr)
                 else
                     error("incorrect usage of `@Box`: $(xtype)")
                 end
-                new_xtype = :($Cassette.Box{$CONTEXT_BINDING,<:$U,<:Any,<:$M,true})
+                new_xtype = :($Cassette.Box{$CONTEXT_BINDING,<:$U,<:Any,<:$M})
             else
                 new_xtype = :(Union{$Cassette.Box{<:Any,<:$xtype},$xtype})
             end
