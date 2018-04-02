@@ -1,7 +1,7 @@
 module ExampleTests
 
 using Test, Cassette
-using Cassette: @context, @prehook, @posthook, @primitive, @pass, overdub, Box
+using Cassette: @context, @prehook, @posthook, @primitive, @pass, overdub, Box, Tag
 
 ############################################################################################
 
@@ -151,5 +151,29 @@ mapstr(x) = map(string, x)
 c = Count{Union{String,Int}}(0)
 @test overdub(CountCtx2, mapstr, metadata = c)(1:10) == mapstr(1:10)
 @test c.count > 1000
+
+############################################################################################
+
+@context NestedCtx
+
+function nested_test(n, x)
+    if n < 1
+        return sin(x)
+    else
+        return overdub(NestedCtx, nested_test)(n - 1, x + x)
+    end
+end
+
+x = rand()
+ctxs = NestedCtx[]
+tag_id = objectid(typeof(nested_test))
+nested_ctx_type = NestedCtx{Tag{NestedCtx{Tag{NestedCtx{Tag{Nothing,tag_id}},tag_id}},tag_id}}
+
+@prehook function (::Any)(args...) where {__CONTEXT__<:NestedCtx}
+    !(in(__trace__.context, ctxs)) && push!(ctxs, __trace__.context)
+end
+
+@test overdub(NestedCtx, nested_test)(2, x) === sin(x + x + x + x)
+@test any(x -> isa(x, nested_ctx_type), ctxs)
 
 end # module
