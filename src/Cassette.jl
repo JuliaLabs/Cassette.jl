@@ -7,12 +7,14 @@ using Core: CodeInfo, SlotNumber, NewvarNode, LabelNode, GotoNode, SSAValue, arr
 struct Unused end
 
 abstract type Context end
-abstract type Tag{T} end
+abstract type Tag{C,T} end
 
-@generated function Tag(::T) where {T}
+@inline tagtype(x) = tagtype(Nothing, x)
+
+@generated function tagtype(::Type{C}, ::T) where {C,T}
     return quote
         $(Expr(:meta, :inline))
-        Tag{$(objectid(T))}
+        Tag{C,$(objectid(T))}
     end
 end
 

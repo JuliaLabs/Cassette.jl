@@ -20,7 +20,10 @@ macro context(Ctx)
     name = Expr(:quote, Ctx)
     return esc(quote
         struct $Ctx{T<:$Cassette.Tag} <: $Cassette.Context
-            @inline $Ctx(f) = new{$Cassette.Tag(f)}()
+            @inline $Ctx(f) = new{$Cassette.tagtype(f)}()
+        end
+        $Cassette.@primitive function Cassette.tagtype(x) where {__CONTEXT__<:$Ctx}
+            return $Cassette.tagtype(__CONTEXT__, x)
         end
         $Cassette.@execution function Core.getfield(x, name) where {__CONTEXT__<:$Ctx}
             return $Cassette._getfield(x, name)
