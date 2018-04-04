@@ -8,12 +8,7 @@ function lookup_method_body(::Type{S};
                             world::UInt = typemax(UInt),
                             debug::Bool = false,
                             pass::DataType = Unused) where {S<:Tuple}
-    if debug
-        Core.println("-----------------------------------")
-        Core.println("LOOKING UP CODEINFO FOR:")
-        Core.println("\tSIGNATURE: ", S)
-        Core.println("\tWORLD: ", world)
-    end
+    @safe_debug "looking up method" signature=S world=world
     S.parameters[1].name.module === Core.Compiler && return nothing
 
     # retrieve initial Method + CodeInfo
@@ -26,8 +21,7 @@ function lookup_method_body(::Type{S};
     code_info = Core.Compiler.retrieve_code_info(method_instance)
     isa(code_info, CodeInfo) || return nothing
     code_info = Core.Compiler.copy_code_info(code_info)
-    debug && Core.println("FOUND METHOD: ", sprint(show, method))
-    debug && Core.println("FOUND CODEINFO: ", sprint(show, code_info))
+    @safe_debug "retrieved initial method" method code_info
 
     # execute user-provided pass if present
     if !(pass <: Unused)
