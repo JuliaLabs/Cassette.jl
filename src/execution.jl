@@ -19,12 +19,11 @@ get_world_age() = ccall(:jl_get_tls_world_age, UInt, ()) # ccall(:jl_get_world_c
 
 abstract type AbstractPass end
 
-struct TraceConfig{C<:Context,M,w,b,d,P<:Union{AbstractPass,Unused}}
+struct TraceConfig{C<:Context,M,w,b,P<:Union{AbstractPass,Unused}}
     context::C
     metadata::M
     world::Val{w}
     boxes::Val{b}
-    debug::Val{d}
     pass::P
 end
 
@@ -34,9 +33,8 @@ function TraceConfig(context::Context;
                      metadata = unused,
                      world::Val = Val(get_world_age()),
                      boxes::Val = Val(false),
-                     debug::Val = Val(false),
                      pass::Union{AbstractPass,Unused} = unused)
-    return TraceConfig(context, metadata, world, boxes, debug, pass)
+    return TraceConfig(context, metadata, world, boxes, pass)
 end
 
 @inline prehook(::AnyTraceConfig{w}, ::Vararg{Any}) where {w} = nothing
@@ -165,12 +163,12 @@ function overdub_pass!(method_body::CodeInfo, boxes_enabled::Bool)
     return method_body
 end
 
-function overdub_transform_call_generator(::Type{F}, ::Type{C}, ::Type{M}, world, boxes, debug, pass, f, args) where {F,C,M}
+function overdub_transform_call_generator(::Type{F}, ::Type{C}, ::Type{M}, world, boxes, pass, f, args) where {F,C,M}
     ftype = unbox(C, F)
     atypes = Tuple(unbox(C, T) for T in args)
     signature = Tuple{ftype,atypes...}
     try
-        method_body = lookup_method_body(signature; world = world, debug = debug, pass = pass)
+        method_body = lookup_method_body(signature; world = world, pass = pass)
         if isa(method_body, CodeInfo)
             method_body = overdub_pass!(method_body, boxes)
             method_body.inlineable = true
@@ -195,14 +193,14 @@ end
 
 function overdub_transform_call_definition(pass, line, file)
     return quote
-        function (f::$Cassette.Overdub{$Cassette.Transform,F,$Cassette.TraceConfig{C,M,world,boxes,debug,pass}})($(OVERDUB_ARGS_SYMBOL)...) where {F,C,M,world,boxes,debug,pass<:$pass}
+        function (f::$Cassette.Overdub{$Cassette.Transform,F,$Cassette.TraceConfig{C,M,world,boxes,pass}})($(OVERDUB_ARGS_SYMBOL)...) where {F,C,M,world,boxes,pass<:$pass}
             $(Expr(:meta,
                    :generated,
                    Expr(:new,
                         Core.GeneratedFunctionStub,
                         :overdub_transform_call_generator,
                         Any[:f, OVERDUB_ARGS_SYMBOL],
-                        Any[:F, :C, :M, :world, :boxes, :debug, :pass],
+                        Any[:F, :C, :M, :world, :boxes, :pass],
                         @__LINE__,
                         QuoteNode(Symbol(file)),
                         true)))

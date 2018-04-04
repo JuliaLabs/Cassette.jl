@@ -6,7 +6,6 @@ const BEGIN_OVERDUB_REGION = gensym("cassette_begin_overdub_region")
 # if it exists in the method table. Otherwise, return `nothing`.
 function lookup_method_body(::Type{S};
                             world::UInt = typemax(UInt),
-                            debug::Bool = false,
                             pass::DataType = Unused) where {S<:Tuple}
     @safe_debug "looking up method" signature=S world=world
     S.parameters[1].name.module === Core.Compiler && return nothing
