@@ -175,18 +175,18 @@ function overdub_transform_call_generator(::Type{F}, ::Type{C}, ::Type{M}, world
             method_body = overdub_pass!(method_body, boxes)
             method_body.inlineable = true
             method_body.signature_for_inference_heuristics = Core.svec(ftype, atypes, world)
-            debug && Core.println("RETURNING OVERDUBBED CODEINFO: ", sprint(show, method_body))
+            @safe_debug "returning overdubbed codeinfo" method_body
         else
             method_body = quote
                 $(Expr(:meta, :inline))
                 $Cassette.execution(f.config, f.func, $(OVERDUB_ARGS_SYMBOL)...)
             end
-            debug && Core.println("NO CODEINFO FOUND; EXECUTING AS PRIMITIVE")
+            @safe_debug "no codeinfo found; executing as primitive"
         end
         return method_body
     catch err
+        @safe_error "error compiling" signature context=C
         errmsg = "ERROR COMPILING $signature IN CONTEXT $C: " * sprint(showerror, err)
-        Core.println(errmsg) # in case the returned body doesn't get reached
         return quote
             error($errmsg)
         end
