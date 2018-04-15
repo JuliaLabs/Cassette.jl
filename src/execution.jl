@@ -84,7 +84,7 @@ end
 @inline func(o::Overdub) = o.func
 @inline func(f) = f
 
-Base.show(io::IO, o::Overdub{P}) where {P} = print("Overdub{$(P.name.name)}($(typeof(context(o)).name), $(func(o)))")
+Base.show(io::IO, o::Overdub{P}) where {P} = print(io, "Overdub{$(P.name.name)}($(typeof(context(o)).name), $(func(o)))")
 
 ####################
 # Overdub{Execute} #
