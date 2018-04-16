@@ -168,11 +168,11 @@ function overdub_transform_call_generator(::Type{F}, ::Type{C}, ::Type{M}, world
     atypes = Tuple(unbox(C, T) for T in args)
     signature = Tuple{ftype,atypes...}
     try
-        method_body = lookup_method_body(signature; world = world, pass = pass)
-        if isa(method_body, CodeInfo)
+        method_body, method = lookup_method_body(signature; world = world, pass = pass)
+        if isa(method_body, CodeInfo) && isa(method, Method)
             method_body = overdub_pass!(method_body, boxes)
             method_body.inlineable = true
-            method_body.signature_for_inference_heuristics = Core.svec(ftype, atypes, world)
+            method_body.method_for_inference_limit_heuristics = method
             @safe_debug "returning overdubbed codeinfo" method_body
         else
             method_body = quote

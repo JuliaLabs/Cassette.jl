@@ -8,17 +8,17 @@ function lookup_method_body(::Type{S};
                             world::UInt = typemax(UInt),
                             pass::DataType = Unused) where {S<:Tuple}
     @safe_debug "looking up method" signature=S world=world
-    S.parameters[1].name.module === Core.Compiler && return nothing
+    S.parameters[1].name.module === Core.Compiler && return (nothing, nothing)
 
     # retrieve initial Method + CodeInfo
     _methods = Base._methods_by_ftype(S, -1, world)
-    length(_methods) == 1 || return nothing
+    length(_methods) == 1 || return (nothing, nothing)
     type_signature, raw_static_params, method = first(_methods)
     method_instance = Core.Compiler.code_for_method(method, type_signature, raw_static_params, world, false)
     method_signature = method.sig
     static_params = Any[raw_static_params...]
     code_info = Core.Compiler.retrieve_code_info(method_instance)
-    isa(code_info, CodeInfo) || return nothing
+    isa(code_info, CodeInfo) || return (nothing, nothing)
     code_info = Core.Compiler.copy_code_info(code_info)
     @safe_debug "retrieved initial method" method code_info
 
@@ -70,5 +70,5 @@ function lookup_method_body(::Type{S};
     push!(new_code, BEGIN_OVERDUB_REGION)
     append!(new_code, code_info.code[(prelude_end + 1):end])
     code_info.code = fix_labels_and_gotos!(new_code)
-    return code_info
+    return code_info, method
 end
