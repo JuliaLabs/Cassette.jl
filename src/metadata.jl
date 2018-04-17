@@ -218,15 +218,15 @@ end
 # `getfield`/`setfield!` #
 ##########################
 
-@inline _getfield(x, name) = getfield(x, name)
-@inline _getfield(x::Box, name) = Box(x.context, getfield(x.value, name), getfield(x.meta.tree, name)[])
+@inline _getfield(x, name) = Core.getfield(x, name)
+@inline _getfield(x::Box, name) = Box(x.context, Core.getfield(x.value, name), Core.getfield(x.meta.tree, name)[])
 
-@inline _setfield!(x, name, y) = setfield!(x, name, y)
+@inline _setfield!(x, name, y) = Core.setfield!(x, name, y)
 @inline _setfield!(x::Box, name, y) = _setfield!(x, name, y, y, unused)
 @inline _setfield!(x::Box{C}, name, y::Box{C}) where {C} = _setfield!(x, name, y, y.value, y.meta)
 
 @inline function _setfield!(x::Box, name, y, y_value, y_meta)
-    setfield!(x.value, name, y_value)
+    Core.setfield!(x.value, name, y_value)
     setindex!(getfield(x.meta.tree, name), y_meta)
     return y
 end
@@ -235,15 +235,15 @@ end
 # `arrayref`/`arrayset` #
 #########################
 
-@inline _arrayref(check, x, i) = arrayref(check, x, i)
-@inline _arrayref(check, x::Box, i) = Box(x.context, arrayref(check, x.value, i), arrayref(check, x.meta.tree, i))
+@inline _arrayref(check, x, i) = Core.arrayref(check, x, i)
+@inline _arrayref(check, x::Box, i) = Box(x.context, Core.arrayref(check, x.value, i), Core.arrayref(check, x.meta.tree, i))
 
-@inline _arrayset(check, x, y, i) = arrayset(check, x, y, i)
+@inline _arrayset(check, x, y, i) = Core.arrayset(check, x, y, i)
 @inline _arrayset(check, x::Box, y, i) = _arrayset(check, x, y, unused, i)
 @inline _arrayset(check, x::Box{C}, y::Box{C}, i) where {C} = _arrayset(check, x, y.value, y.meta, i)
 
 @inline function _arrayset(check, x::Box, y_value, y_meta, i)
-    arrayset(check, x.value, y_value, i)
-    arrayset(check, x.meta, y_meta, i)
+    Core.arrayset(check, x.value, y_value, i)
+    Core.arrayset(check, x.meta, y_meta, i)
     return x
 end
