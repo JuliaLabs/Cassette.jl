@@ -13,12 +13,7 @@ abstract type Tag{C,T} end
 
 @inline tagtype(x) = tagtype(Nothing, x)
 
-@generated function tagtype(::Type{C}, ::T) where {C,T}
-    return quote
-        $(Expr(:meta, :inline))
-        Tag{C,$(objectid(T))}
-    end
-end
+Base.@pure tagtype(::Type{C}, ::T) where {C,T} = Tag{C,objectid(T)}
 
 const unused = Unused()
 const MAX_ARGS = 20
