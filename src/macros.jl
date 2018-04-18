@@ -25,6 +25,10 @@ macro context(Ctx)
         $Cassette.@primitive function Cassette.tagtype(x) where {__CONTEXT__<:$Ctx}
             return $Cassette.tagtype(__CONTEXT__, x)
         end
+        # TODO: make sure this isn't slow, and if it is, bake it into `overdub_pass!`
+        $Cassette.@execution function Core._apply(f, args...) where {__CONTEXT__<:$Ctx}
+            return Core._apply($Cassette.Overdub($Cassette.Execute(), f, __trace__), args...)
+        end
         $Cassette.@execution function Core.getfield(x, name) where {__CONTEXT__<:$Ctx}
             return $Cassette._getfield(x, name)
         end
