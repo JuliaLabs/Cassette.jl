@@ -90,17 +90,13 @@ Base.show(io::IO, o::Overdub{P}) where {P} = print(io, "Overdub{$(P.name.name)}(
 # Overdub{Execute} #
 ####################
 
-@inline function execute(o::Overdub{Execute}, args...)
-    if is_user_primitive(o.config, o.func, args...)
-        return execution(o.config, o.func, args...)
-    else
-        return proceed(o)(args...)
-    end
-end
-
 @inline function (o::Overdub{Execute})(args...)
     prehook(o.config, o.func, args...)
-    output = execute(o, args...)
+    if is_user_primitive(o.config, o.func, args...)
+        output = execution(o.config, o.func, args...)
+    else
+        output = proceed(o)(args...)
+    end
     posthook(o.config, o.func, output, args...)
     return output
 end
