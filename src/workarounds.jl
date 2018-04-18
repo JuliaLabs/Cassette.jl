@@ -12,14 +12,14 @@ for nargs in 1:MAX_ARGS
         @inline is_core_primitive(cfg::TraceConfig{C,M,w}, f, $(args...)) where {C,M,w} = invoke(is_core_primitive, Tuple{TraceConfig{C,M,w},Any,Vararg{Any}}, cfg, f, $(args...))
 
         # TODO: use invoke here as well; see https://github.com/jrevels/Cassette.jl/issues/5#issuecomment-341525276
-        @inline function (o::Overdub{Execute})(args...)
-            prehook(o.config, o.func, args...)
-            if is_user_primitive(o.config, o.func, args...)
-                output = execution(o.config, o.func, args...)
+        @inline function (o::Overdub{Execute})($(args...))
+            prehook(o.config, o.func, $(args...))
+            if is_user_primitive(o.config, o.func, $(args...))
+                output = execution(o.config, o.func, $(args...))
             else
-                output = proceed(o)(args...)
+                output = proceed(o)($(args...))
             end
-            posthook(o.config, o.func, output, args...)
+            posthook(o.config, o.func, output, $(args...))
             return output
         end
 
