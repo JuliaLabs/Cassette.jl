@@ -8,22 +8,18 @@ using Logging
 
 struct Unused end
 
-abstract type Context end
-abstract type Tag{C,T} end
+abstract type AbstractPass end
+abstract type AbstractTag end
+abstract type AbstractContext{w,b,P<:Union{AbstractPass,Unused},T<:Union{AbstractTag,Nothing}} end
 
-@inline tagtype(x) = tagtype(Nothing, x)
-
-Base.@pure tagtype(::Type{C}, ::T) where {C,T} = Tag{C,objectid(T)}
-
-const unused = Unused()
+const UNUSED = Unused()
 const MAX_ARGS = 20
 
 include("utilities.jl")
 include("metadata.jl")
-include("reflection.jl")
-include("execution.jl")
+include("overdub.jl")
 include("macros.jl")
-include("workarounds.jl")
+# include("workarounds.jl")
 
 function __init__()
     # FIXME: Base should provide a mechanism for this (eg. Julia/julia#26265)

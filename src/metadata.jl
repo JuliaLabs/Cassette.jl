@@ -63,14 +63,14 @@ struct MetaNode{D,T<:MetaTree}
     MetaNode{D}(data, tree::T) where {D,T} = new{D,T}(data, tree)
 end
 
-@inline function metanodetype(::Type{C}, ::Type{T}) where {C<:Context,T}
+@inline function metanodetype(::Type{C}, ::Type{T}) where {C<:AbstractContext,T}
     if isconcretetype(T)
         return Union{MetaNode{metatype(C, T),subtreetype(C, T)},Unused}
     end
     return Union{MetaNode,Unused}
 end
 
-@generated function subtreetype(::Type{C}, ::Type{T}) where {C,T}
+@generated function subtreetype(::Type{C}, ::Type{T}) where {C<:AbstractContext,T}
     if !(isconcretetype(T))
         return :(error("cannot call subtreetype on non-concrete type ", $T))
     end
@@ -90,7 +90,7 @@ end
     end
 end
 
-@generated function initmetanode(::C, ::V, metadata::D) where {C<:Context,V,D}
+@generated function initmetanode(::C, ::V, metadata::D) where {C<:AbstractContext,V,D}
     if V <: Array
         return quote
             $(Expr(:meta, :inline))
@@ -99,12 +99,12 @@ end
     elseif fieldcount(V) == 0
         return quote
             $(Expr(:meta, :inline))
-            MetaNode{metatype(C, V)}(metadata, unused)
+            MetaNode{metatype(C, V)}(metadata, UNUSED)
         end
     else
         S = isimmutable(V) ? :Immutable : :Mutable
         fnames = fieldnames(V)
-        fdatas = map(F -> :($S{metanodetype(C, $F)}(unused)), V.types)
+        fdatas = map(F -> :($S{metanodetype(C, $F)}(UNUSED)), V.types)
         fields = Expr(:tuple)
         for i in 1:fieldcount(V)
             push!(fields.args, :($(fnames[i]) = $(fdatas[i])))
@@ -125,45 +125,45 @@ Here, `U` is the innermost, "underlying" type of the value being wrapped. This p
 precomputed so that Cassette can directly dispatch on it in the signatures generated for
 contextual primitives.
 =#
-struct Box{C,U,V,D,T}
+struct Box{C<:AbstractContext,U,V,D,T}
     context::C
     value::V
     meta::MetaNode{D,T}
-    function Box(context::C, value::V, meta::MetaNode{D,T}) where {C<:Context,V,D,T}
+    function Box(context::C, value::V, meta::MetaNode{D,T}) where {C,V,D,T}
         U = _underlying_type(V)
         return new{C,U,V,D,T}(context, value, meta)
     end
 end
 
-function Box(context::C, value, metadata = unused) where {C<:Context}
+function box(context::C, value, metadata = UNUSED) where {C<:AbstractContext}
     return Box(context, value, initmetanode(context, value, metadata))
 end
 
 _underlying_type(::Type{V}) where {V} = V
-_underlying_type(::Type{<:Box{<:Context,U}}) where {U} = U
+_underlying_type(::Type{<:Box{<:AbstractContext,U}}) where {U} = U
 
 #######
 # API #
 #######
 
-@inline isboxed(::Context, ::Any) = false
-@inline isboxed(::C,       ::Box{C}) where {C<:Context} = true
-@inline isboxed(::Type{C}, ::DataType) where {C<:Context} = false
-@inline isboxed(::Type{C}, ::Type{<:Box{C}}) where {C<:Context} = true
+@inline isboxed(::AbstractContext, ::Any) = false
+@inline isboxed(::C,       ::Box{C}) where {C<:AbstractContext} = true
+@inline isboxed(::Type{C}, ::DataType) where {C<:AbstractContext} = false
+@inline isboxed(::Type{C}, ::Type{<:Box{C}}) where {C<:AbstractContext} = true
 
-@inline unbox(ctx::Context, x) = isboxed(ctx, x) ? x.value : x
-@inline unbox(::Type{C},    T::DataType) where {C<:Context,X} = T
-@inline unbox(::Type{C},    ::Type{<:Box{C,U,V}}) where {C<:Context,U,V} = V
+@inline unbox(ctx::AbstractContext, x) = isboxed(ctx, x) ? x.value : x
+@inline unbox(::Type{C},    T::DataType) where {C<:AbstractContext,X} = T
+@inline unbox(::Type{C},    ::Type{<:Box{C,U,V}}) where {C<:AbstractContext,U,V} = V
 
-@inline meta(::C,       x::Box{C}) where {C<:Context} = x.meta.data
-@inline meta(::Type{C}, ::Type{<:Box{C,U,V,D}}) where {C<:Context,U,V,D} = D
+@inline meta(::C,       x::Box{C}) where {C<:AbstractContext} = x.meta.data
+@inline meta(::Type{C}, ::Type{<:Box{C,U,V,D}}) where {C<:AbstractContext,U,V,D} = D
 
-@inline hasmeta(::Context, ::Any) = false
-@inline hasmeta(ctx::C,    x::Box{C}) where {C<:Context} = isa(meta(ctx, x), Unused)
+@inline hasmeta(::AbstractContext, ::Any) = false
+@inline hasmeta(ctx::C,    x::Box{C}) where {C<:AbstractContext} = isa(meta(ctx, x), Unused)
 
-@inline metatype(::Type{<:Context}, ::DataType) = Unused
+@inline metatype(::Type{<:AbstractContext}, ::DataType) = Unused
 
-@generated function unboxcall(ctx::Context, f, args...)
+@generated function unboxcall(ctx::AbstractContext, f, args...)
     N = fieldcount(typeof(args))
     return quote
         $(Expr(:meta, :inline))
@@ -175,7 +175,7 @@ end
 # `new` #
 #########
 
-@generated function _newbox(ctx::C, ::Type{T}, args...) where {C<:Context,T}
+@generated function _newbox(ctx::C, ::Type{T}, args...) where {C<:AbstractContext,T}
     unboxed_args = [:(unbox(ctx, args[$i])) for i in 1:length(args)]
     if length(args) == fieldcount(T)
         fields = Expr(:tuple)
@@ -190,14 +190,14 @@ end
                 boxcount += 1
                 argmetanode = :(args[$i].meta)
             else
-                argmetanode = :unused
+                argmetanode = :UNUSED
             end
             push!(fields.args, :($fname = $S{$ftype}($argmetanode)))
         end
         if !(boxcount == 0 && isimmutable(T))
             return quote
                 $(Expr(:meta, :inline))
-                Box(ctx, _new(T, $(unboxed_args...)), MetaNode{metatype(C, T)}(unused, $fields))
+                Box(ctx, _new(T, $(unboxed_args...)), MetaNode{metatype(C, T)}(UNUSED, $fields))
             end
         end
     end
@@ -222,7 +222,7 @@ end
 @inline _getfield(x::Box, name) = Box(x.context, Core.getfield(x.value, name), Core.getfield(x.meta.tree, name)[])
 
 @inline _setfield!(x, name, y) = Core.setfield!(x, name, y)
-@inline _setfield!(x::Box, name, y) = _setfield!(x, name, y, y, unused)
+@inline _setfield!(x::Box, name, y) = _setfield!(x, name, y, y, UNUSED)
 @inline _setfield!(x::Box{C}, name, y::Box{C}) where {C} = _setfield!(x, name, y, y.value, y.meta)
 
 @inline function _setfield!(x::Box, name, y, y_value, y_meta)
@@ -239,7 +239,7 @@ end
 @inline _arrayref(check, x::Box, i) = Box(x.context, Core.arrayref(check, x.value, i), Core.arrayref(check, x.meta.tree, i))
 
 @inline _arrayset(check, x, y, i) = Core.arrayset(check, x, y, i)
-@inline _arrayset(check, x::Box, y, i) = _arrayset(check, x, y, unused, i)
+@inline _arrayset(check, x::Box, y, i) = _arrayset(check, x, y, UNUSED, i)
 @inline _arrayset(check, x::Box{C}, y::Box{C}, i) where {C} = _arrayset(check, x, y.value, y.meta, i)
 
 @inline function _arrayset(check, x::Box, y_value, y_meta, i)

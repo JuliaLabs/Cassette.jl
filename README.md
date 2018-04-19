@@ -37,7 +37,6 @@ Cassette.@context GPUCtx
 # will cause all `Base.sin(x)` calls to dispatch to `NativeGPUFunctions.sin(x)`.
 Cassette.@primitive Base.sin(x::Number) where {__CONTEXT__<:GPUCtx} = NativeGPUFunctions.sin(x)
 Cassette.@primitive Base.cos(x::Number) where {__CONTEXT__<:GPUCtx} = NativeGPUFunctions.cos(x)
-Cassette.@primitive Base.someotherfunction(args...) where {__CONTEXT__<:GPUCtx} = NativeGPUFunctions.someotherfunction(args...)
 ⋮ # pretend we do this for all the functions we care about
 
 f(args...) = # some function implemented in normal, GPU-unaware Julia code
@@ -45,7 +44,9 @@ f(args...) = # some function implemented in normal, GPU-unaware Julia code
 # Execute `f` in a `GPUCtx`. `Cassette.overdub` takes in a context type and a function,
 # and produces a new, "contextualized" version of that function, which can then be called
 # with the original function's arguments.
-Cassette.overdub(GPUCtx, f)(args...)
+Cassette.overdub(GPUCtx()) do
+    f(args...)
+end
 ```
 
 Cassette provides many other mechanisms similar to the `@primitive` macro that allow context-authors to precisely alter behavior, interleave side-effects, and generally manipulate programs executed under their context.
