@@ -4,6 +4,8 @@
 
 is_call(x) = Base.Meta.isexpr(x, :call) && (x.args[1] !== GlobalRef(Core, :tuple))
 
+is_macro(x, name) = Base.Meta.isexpr(x, :macrocall) && x.args[1] == name
+
 function is_method_definition(x)
     if isa(x, Expr)
         if x.head == :function
@@ -36,9 +38,33 @@ function replace_match!(replace, ismatch, x)
     return x
 end
 
-############
-# Julia IR #
-############
+#######################
+# Julia IR/Reflection #
+#######################
+
+mutable struct Reflection
+    signature::DataType
+    method::Method
+    static_params::Vector{Any}
+    code_info::CodeInfo
+end
+
+# Return `Reflection` for signature `S` and `world`, if possible. Otherwise, return `nothing`.
+function reflect(::Type{S}, world::UInt = typemax(UInt)) where {S<:Tuple}
+    # @safe_debug "looking up method" signature=S world=world
+    S.parameters[1].name.module === Core.Compiler && return nothing
+    _methods = Base._methods_by_ftype(S, -1, world)
+    length(_methods) == 1 || return nothing
+    type_signature, raw_static_params, method = first(_methods)
+    method_instance = Core.Compiler.code_for_method(method, type_signature, raw_static_params, world, false)
+    method_signature = method.sig
+    static_params = Any[raw_static_params...]
+    code_info = Core.Compiler.retrieve_code_info(method_instance)
+    isa(code_info, CodeInfo) || return nothing
+    code_info = Core.Compiler.copy_code_info(code_info)
+    # @safe_debug "retrieved initial method" method code_info
+    return Reflection(S, method, static_params, code_info)
+end
 
 function fix_labels_and_gotos!(code::Vector)
     changes = Dict{Int,Int}()
@@ -71,6 +97,9 @@ function copy_prelude_code(code::Vector)
     end
     return prelude_code
 end
+
+# there's also `ccall(:jl_get_world_counter, UInt, ())`
+get_world_age() = ccall(:jl_get_tls_world_age, UInt, ())
 
 #################
 # Miscellaneous #

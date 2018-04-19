@@ -1,14 +1,15 @@
-############
-# bindings #
-############
+#######################
+# unhygeniec bindings #
+#######################
 
-const CONTEXT_BINDING = Symbol("__CONTEXT__")
-const METADATA_BINDING = Symbol("__METADATA__")
-const CONFIG_BINDING = Symbol("__trace__")
+const CONTEXT_TYPE_BINDING = Symbol("__CONTEXT__")
+const CONTEXT_BINDING = Symbol("__context__")
 
 ############
 # @context #
 ############
+
+function tag end # only overloaded on a per-context basis
 
 """
     Cassette.@context Ctx
@@ -17,17 +18,39 @@ Defined and return a new Cassette context type with the name `Ctx`.
 """
 macro context(Ctx)
     @assert isa(Ctx, Symbol) "context name must be a Symbol"
-    name = Expr(:quote, Ctx)
+    CtxTag = gensym(string(Ctx, "Tag"))
     return esc(quote
-        struct $Ctx{T<:$Cassette.Tag} <: $Cassette.Context
-            @inline $Ctx(f) = new{$Cassette.tagtype(f)}()
+        struct $CtxTag{E,H} <: $Cassette.AbstractTag end
+        Base.@pure $CtxTag(x) = $CtxTag(nothing, x)
+        Base.@pure $CtxTag(::E, ::X) where {E,X} = $CtxTag{E,objectid(X)}()
+
+        struct $Ctx{M,w,b,P<:Union{$Cassette.AbstractPass,$Cassette.Unused},T<:Union{$CtxTag,Nothing}} <: $Cassette.AbstractContext{w,b,P,T}
+            metadata::M
+            world::Val{w}
+            boxes::Val{b}
+            pass::P
+            tag::T
         end
-        $Cassette.@primitive function Cassette.tagtype(x) where {__CONTEXT__<:$Ctx}
-            return $Cassette.tagtype(__CONTEXT__, x)
+
+        function $Ctx(;
+                      metadata = $Cassette.UNUSED,
+                      world::Val = Val($Cassette.get_world_age()),
+                      boxes::Val = Val(false),
+                      pass::Union{$Cassette.AbstractPass,$Cassette.Unused} = $Cassette.UNUSED)
+            return $Ctx(metadata, world, boxes, pass, nothing)
         end
-        # TODO: make sure this isn't slow, and if it is, bake it into `overdub_pass!`
+
+        function $Cassette.tag(ctx::$Ctx, f)
+            return $Ctx(ctx.metadata, ctx.world, ctx.boxes, ctx.pass, $CtxTag(f))
+        end
+
+        # default primitives/execution definitions
+        $Cassette.@primitive function $CtxTag(x) where {__CONTEXT__<:$Ctx}
+            return $CtxTag(__context__.tag, x)
+        end
         $Cassette.@execution function Core._apply(f, args...) where {__CONTEXT__<:$Ctx}
-            return Core._apply($Cassette.Overdub($Cassette.Execute(), f, __trace__), args...)
+            flattened_args = Core._apply(tuple, args...)
+            return $Cassette.overdub_execute(__context__, f, flattened_args...)
         end
         $Cassette.@execution function Core.getfield(x, name) where {__CONTEXT__<:$Ctx}
             return $Cassette._getfield(x, name)
@@ -41,8 +64,25 @@ macro context(Ctx)
         $Cassette.@execution function Core.arrayset(check, x, y, i) where {__CONTEXT__<:$Ctx}
             return $Cassette._arrayset(check, x, y, i)
         end
+
         $Ctx
     end)
+end
+
+############
+# @overdub #
+############
+
+"""
+    Cassette.@overdub(Ctx(...), expression)
+A convenience macro for overdubbing and executing `expression` within the context `Ctx`.
+"""
+macro overdub(ctx, expr)
+    return quote
+        func = $(esc(CONTEXT_BINDING)) -> $(esc(expr))
+        ctx = $Cassette.tag($(esc(ctx)), func)
+        $Cassette.overdub_recurse(ctx, func, ctx)
+    end
 end
 
 #########
@@ -69,7 +109,7 @@ macro pass(transform)
     return esc(quote
         struct $Pass <: $Cassette.AbstractPass end
         (::Type{$Pass})(signature, codeinfo) = $transform(signature, codeinfo)
-        eval($Cassette, $Cassette.overdub_transform_call_definition($name, $line, $file))
+        eval($Cassette, $Cassette.overdub_recurse_definition($name, $line, $file))
         $Pass()
     end)
 end
@@ -85,7 +125,7 @@ Place in front of a contextual method definition to define a callback that Casse
 executes before method calls that match the contextual method definition's signature.
 
 For example, the following code uses `@prehook` to increment a counter stored in
-`__trace__.metadata` every time a method is called with one or more arguments matching a
+`__context__.metadata` every time a method is called with one or more arguments matching a
 given type:
 
     using Cassette: @context, @prehook
@@ -96,8 +136,8 @@ given type:
         count::Int
     end
 
-    @prehook function (f::Any)(input::T, ::T...) where {T,__CONTEXT__<:CountCtx,__METADATA__<:Count{T}}
-        __trace__.metadata.count += 1
+    @prehook function (f::Any)(input::T, ::T...) where {T,__CONTEXT__<:CountCtx{Count{T}}}
+        __context__.metadata.count += 1
     end
 
 Prehooks are generally useful for inserting side-effects that do not ultimately affect
@@ -120,7 +160,7 @@ contextual method definition's signature differs from those of the matched metho
 that the first argument is the method calls' output.
 
 For example, the following code uses `@posthook` to increment a counter stored in
-`__trace__.metadata` every time a method call's output type matches the type of its
+`__context__.metadata` every time a method call's output type matches the type of its
 input:
 
     using Cassette: @context, @posthook
@@ -131,8 +171,8 @@ input:
         count::Int
     end
 
-    @posthook function (f::Any)(output::T, input::T, ::T...) where {T,__CONTEXT__<:CountCtx,__METADATA__<:Count{T}}
-        __trace__.metadata.count += 1
+    @posthook function (f::Any)(output::T, input::T, ::T...) where {T,__CONTEXT__<:CountCtx{Count{T}}}
+        __context__.metadata.count += 1
     end
 
 Posthooks are generally useful for inserting side-effects that do not ultimately affect
@@ -204,19 +244,6 @@ macro primitive(method)
     end)
 end
 
-############
-# @overdub #
-############
-
-"""
-    Cassette.@overdub Ctx expression
-
-A convenience macro for overdubbing and executing `expression` within the context `Ctx`.
-"""
-macro overdub(ctx, ex)
-  :(overdub($(esc(ctx)), () -> $(esc(ex)))())
-end
-
 ########
 # @Box #
 ########
@@ -234,27 +261,27 @@ For example:
     @context BoxCtx
 
     @prehook function (f::Any)(x::@Box) where {__CONTEXT__<:BoxCtx}
-        println("The value ", unbox(__trace__.context, x),
+        println("The value ", unbox(__context__, x),
                 " was wrapped in a Cassette.Box and passed to ", f)
     end
 
     @prehook function (f::Any)(x::@Box(Number)) where {__CONTEXT__<:BoxCtx}
-        println("The numeric value ", unbox(__trace__.context, x),
+        println("The numeric value ", unbox(__context__, x),
                 " was wrapped in a Cassette.Box and passed to ", f)
     end
 
     @prehook function (f::Any)(x::@Box(Number,String)) where {__CONTEXT__<:BoxCtx}
-        println("The numeric value ", unbox(__trace__.context, x),
+        println("The numeric value ", unbox(__context__, x),
                 " was wrapped in a Cassette.Box and passed to ", f,
-                " and carries the message: ", meta(__trace__.context, x))
+                " and carries the message: ", meta(__context__, x))
     end
 
-Note that `Cassette.@Box` can only used within the scope of a contextual method signature.
+Note that `Cassette.@Box` can only used within a contextual method signature.
 
 For further details, see the contextual metadata propagation documentation.
 """
 macro Box(args...)
-    error("`Cassette.@Box` can only used within the scope of a contextual method signature")
+    error("`Cassette.@Box` can only used within a contextual method signature")
 end
 
 #############
@@ -289,24 +316,12 @@ function contextual_definition!(f, signature::Expr, body::Expr)
 
     signature = typify_signature(signature)
 
-    # add metadata typevar (if not already present)
-    has_metadata_typevar = any(signature.args) do x
-        x == METADATA_BINDING || isa(x, Expr) && x.head == :(<:) && x.args[1] == METADATA_BINDING
-    end
-    !has_metadata_typevar && push!(signature.args, METADATA_BINDING)
-
-    # add world age typevar
-    world_binding = gensym("world")
-    push!(signature.args, world_binding)
-
-    config_arg = :($CONFIG_BINDING::$Cassette.TraceConfig{$CONTEXT_BINDING,$METADATA_BINDING,$world_binding})
-
     call_args = signature.args[1].args
     for i in 1:length(call_args)
         x = call_args[i]
         if Base.Meta.isexpr(x, :(::))
             xtype = last(x.args)
-            if Base.Meta.isexpr(xtype, :macrocall) && xtype.args[1] == Symbol("@Box")
+            if is_macro(xtype, Symbol("@Box"))
                 box_args = xtype.args[3:end]
                 if isempty(box_args)
                     U, M = :Any, :Any
@@ -317,7 +332,7 @@ function contextual_definition!(f, signature::Expr, body::Expr)
                 else
                     error("incorrect usage of `@Box`: $(xtype)")
                 end
-                new_xtype = :($Cassette.Box{$CONTEXT_BINDING,<:$U,<:Any,<:$M})
+                new_xtype = :($Cassette.Box{$CONTEXT_TYPE_BINDING,<:$U,<:Any,<:$M})
             else
                 new_xtype = :(Union{$Cassette.Box{<:Any,<:$xtype},$xtype})
             end
@@ -325,7 +340,11 @@ function contextual_definition!(f, signature::Expr, body::Expr)
         end
     end
 
-    signature.args[1] = Expr(:call, f, config_arg, call_args...)
+    ctx_arg = :($CONTEXT_BINDING::$CONTEXT_TYPE_BINDING)
+    world_binding = gensym("world")
+    push!(signature.args, world_binding)
+    world_arg = :(::Val{$world_binding})
+    signature.args[1] = Expr(:call, f, ctx_arg, world_arg, call_args...)
 
     pushfirst!(body.args, Expr(:meta, :inline))
 
