@@ -19,7 +19,6 @@ include("utilities.jl")
 include("metadata.jl")
 include("overdub.jl")
 include("macros.jl")
-# include("workarounds.jl")
 
 function __init__()
     # FIXME: Base should provide a mechanism for this (eg. Julia/julia#26265)
