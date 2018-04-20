@@ -295,7 +295,9 @@ function typify_signature(signature)
             return Expr(:where, typify_signature(f), args...)
         elseif signature.head == :call
             if !(isa(f, Expr) && f.head == :(::))
-                return Expr(:call, :(::typeof($f)), args...)
+                # Use Core.Typeof here instead of typeof so that we don't, for example,
+                # overload UnionAll when users attempt to overload type constructors
+                return Expr(:call, :(::Core.Typeof($f)), args...)
             end
             return signature
         end
