@@ -19,21 +19,21 @@ x = rand(2)
 
 @context RosCtx
 
-MESSAGES = String[]
-@prehook (f::Any)(args...) where {__CONTEXT__<:RosCtx} = push!(MESSAGES, string("calling ", f, args))
-@test @overdub(RosCtx(), f(x)) == rosenbrock(x)
-@test length(MESSAGES) > 90
+messages = String[]
+@prehook (f::Any)(args...) where {__CONTEXT__<:RosCtx} = push!(messages, string("calling ", f, args))
+@test @overdub(RosCtx(), rosenbrock(x)) == rosenbrock(x)
+@test length(messages) > 90
 
 @prehook (f::Any)(args...) where {__CONTEXT__<:RosCtx} = push!(__context__.metadata, string("calling ", f, args))
-meta = String[]
-@test @overdub(RosCtx(metadata=meta), rosenbrock(x)) == rosenbrock(x)
-@test MESSAGES == meta
+messages2 = String[]
+@test @overdub(RosCtx(metadata=messages2), rosenbrock(x)) == rosenbrock(x)
+@test messages == messages2
 
 @prehook (f::Any)(args...) where {__CONTEXT__<:RosCtx} = nothing
 @prehook (f::Any)(args::Number...) where {__CONTEXT__<:RosCtx} = push!(__context__.metadata, args)
-meta = Any[]
-@test @overdub(RosCtx(metadata=meta), rosenbrock(x)) == rosenbrock(x)
-for args in meta
+argslog = Any[]
+@test @overdub(RosCtx(metadata=argslog), rosenbrock(x)) == rosenbrock(x)
+for args in argslog
     @test all(x -> isa(x, Number), args)
 end
 
@@ -51,7 +51,7 @@ sin_plus_cos(x) = sin(x) + cos(x)
 x = 2
 foldmul(x, args...) = Core._apply(Base.afoldl, (*, x), args...)
 @context FoldCtx
-@test @overdub(FoldCtx(), foldmul(x))(x) === foldmul(x)
+@test @overdub(FoldCtx(), foldmul(x)) === foldmul(x)
 
 ############################################################################################
 
@@ -73,6 +73,7 @@ x = rand()
 
 ############################################################################################
 
+# TODO: this is broken
 comprehension1(x) = [i for i in x]
 comprehension2(f, x, y) = [f(x, i) for i in y]
 @context CompCtx
