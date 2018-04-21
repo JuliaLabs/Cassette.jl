@@ -73,7 +73,6 @@ x = rand()
 
 ############################################################################################
 
-# TODO: this is broken
 comprehension1(x) = [i for i in x]
 comprehension2(f, x, y) = [f(x, i) for i in y]
 @context CompCtx
