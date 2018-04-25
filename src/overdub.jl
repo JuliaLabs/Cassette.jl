@@ -6,10 +6,10 @@
 @inline posthook(::AbstractContext, ::Val{w}, ::Vararg{Any}) where {w} = nothing
 @inline is_user_primitive(ctx::AbstractContext, ::Val{w}, ::Vararg{Any}) where {w} = false
 @inline is_core_primitive(ctx::AbstractContext, ::Val{w}, args...) where {w} = _is_core_primitive(ctx, args...)
-@inline execution(ctx::AbstractContext, ::Val{w}, f, args...) where {w} = unboxcall(ctx, f, args...)
+@inline execution(ctx::AbstractContext, ::Val{w}, f, args...) where {w} = f(args...)
 
 @generated function _is_core_primitive(::C, args...) where {w,C<:AbstractContext{w}}
-    signature = Tuple{(unbox(C, A) for A in args)...}
+    signature = Tuple{args...}
     # TODO: this is slow, we should try to check whether the reflection is possible
     # without going through the whole process of actually computing it
     if isa(reflect(signature, w), Reflection)
@@ -50,8 +50,7 @@ const OVERDUB_ARGS_SYMBOL = gensym("overdub_arguments")
 # increasing LHS SSAValues, in which case we'll have to add an extra SSA-remapping pass to
 # this function.
 function overdub_recurse_pass!(reflection::Reflection,
-                               pass::DataType = Unused,
-                               boxes_enabled::Bool = false)
+                               pass::DataType = Unused)
     signature = reflection.signature
     method = reflection.method
     static_params = reflection.static_params
@@ -119,15 +118,6 @@ function overdub_recurse_pass!(reflection::Reflection,
         push!(overdubbed_code, stmnt)
     end
 
-    # If Cassette's Box framework is being used, then we redirect all `:new` expressions
-    # to Cassette's `_newbox` function.
-    if boxes_enabled
-        # replace all `new` expressions with calls to `Cassette._newbox`
-        replace_match!(x -> Base.Meta.isexpr(x, :new), overdubbed_code) do x
-            return Expr(:call, GlobalRef(Cassette, :_newbox), overdub_ctx_slot, x.args...)
-        end
-    end
-
     code_info.code = fix_labels_and_gotos!(overdubbed_code)
     code_info.method_for_inference_limit_heuristics = method
     code_info.inlineable = true
@@ -135,14 +125,14 @@ function overdub_recurse_pass!(reflection::Reflection,
     return reflection
 end
 
-function overdub_recurse_generator(world, boxes, pass, self, ctx, args)
-    signature = Tuple{(unbox(ctx, A) for A in args)...}
+function overdub_recurse_generator(world, pass, self, ctx, args)
+    signature = Tuple{args...}
     try
         reflection = reflect(signature, world)
         if isa(reflection, Reflection)
             overdub_recurse_pass!(reflection, pass)
             body = reflection.code_info
-            @safe_debug "returning overdubbed CodeInfo" body
+            @safe_debug "returning overdubbed CodeInfo" signature body
         else
             body = quote
                 $(Expr(:meta, :inline))
@@ -162,14 +152,14 @@ end
 
 function overdub_recurse_definition(pass, line, file)
     return quote
-        function overdub_recurse($OVERDUB_CTX_SYMBOL::AbstractContext{world,boxes,pass}, $OVERDUB_ARGS_SYMBOL...) where {world,boxes,pass<:$pass}
+        function overdub_recurse($OVERDUB_CTX_SYMBOL::AbstractContext{world,pass}, $OVERDUB_ARGS_SYMBOL...) where {world,pass<:$pass}
             $(Expr(:meta,
                    :generated,
                    Expr(:new,
                         Core.GeneratedFunctionStub,
                         :overdub_recurse_generator,
                         Any[:overdub_recurse, OVERDUB_CTX_SYMBOL, OVERDUB_ARGS_SYMBOL],
-                        Any[:world, :boxes, :pass],
+                        Any[:world, :pass],
                         line,
                         QuoteNode(Symbol(file)),
                         true)))

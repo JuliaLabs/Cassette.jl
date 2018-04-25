@@ -24,10 +24,9 @@ macro context(Ctx)
         Base.@pure $CtxTag(x) = $CtxTag(nothing, x)
         Base.@pure $CtxTag(::E, ::X) where {E,X} = $CtxTag{E,objectid(X)}()
 
-        struct $Ctx{M,w,b,P<:Union{$Cassette.AbstractPass,$Cassette.Unused},T<:Union{$CtxTag,Nothing}} <: $Cassette.AbstractContext{w,b,P,T}
+        struct $Ctx{M,w,P<:Union{$Cassette.AbstractPass,$Cassette.Unused},T<:Union{$CtxTag,Nothing}} <: $Cassette.AbstractContext{w,P,T}
             metadata::M
             world::Val{w}
-            boxes::Val{b}
             pass::P
             tag::T
         end
@@ -35,13 +34,12 @@ macro context(Ctx)
         function $Ctx(;
                       metadata = $Cassette.UNUSED,
                       world::Val = Val($Cassette.get_world_age()),
-                      boxes::Val = Val(false),
                       pass::Union{$Cassette.AbstractPass,$Cassette.Unused} = $Cassette.UNUSED)
-            return $Ctx(metadata, world, boxes, pass, nothing)
+            return $Ctx(metadata, world, pass, nothing)
         end
 
         function $Cassette.tag(ctx::$Ctx, f)
-            return $Ctx(ctx.metadata, ctx.world, ctx.boxes, ctx.pass, $CtxTag(f))
+            return $Ctx(ctx.metadata, ctx.world, ctx.pass, $CtxTag(f))
         end
 
         # default primitives/execution definitions
@@ -51,18 +49,6 @@ macro context(Ctx)
         $Cassette.@execution function Core._apply(f, args...) where {__CONTEXT__<:$Ctx}
             flattened_args = Core._apply(tuple, args...)
             return $Cassette.overdub_execute(__context__, f, flattened_args...)
-        end
-        $Cassette.@execution function Core.getfield(x, name) where {__CONTEXT__<:$Ctx}
-            return $Cassette._getfield(x, name)
-        end
-        $Cassette.@execution function Core.setfield!(x, name, y) where {__CONTEXT__<:$Ctx}
-            return $Cassette._setfield!(x, name, y)
-        end
-        $Cassette.@execution function Core.arrayref(check, x, i) where {__CONTEXT__<:$Ctx}
-            return $Cassette._arrayref(check, x, i)
-        end
-        $Cassette.@execution function Core.arrayset(check, x, y, i) where {__CONTEXT__<:$Ctx}
-            return $Cassette._arrayset(check, x, y, i)
         end
 
         $Ctx
@@ -244,46 +230,6 @@ macro primitive(method)
     end)
 end
 
-########
-# @Box #
-########
-
-"""
-    Cassette.@Box([V, M])
-
-Used within contextual method signatures to indicate the type of a value `V` wrapped in a
-`Cassette.Box` with metadata of type `M`. `V` and `M` default to `Any` if unspecified.
-
-For example:
-
-    using Cassette: @context, @prehook, @Box
-
-    @context BoxCtx
-
-    @prehook function (f::Any)(x::@Box) where {__CONTEXT__<:BoxCtx}
-        println("The value ", unbox(__context__, x),
-                " was wrapped in a Cassette.Box and passed to ", f)
-    end
-
-    @prehook function (f::Any)(x::@Box(Number)) where {__CONTEXT__<:BoxCtx}
-        println("The numeric value ", unbox(__context__, x),
-                " was wrapped in a Cassette.Box and passed to ", f)
-    end
-
-    @prehook function (f::Any)(x::@Box(Number,String)) where {__CONTEXT__<:BoxCtx}
-        println("The numeric value ", unbox(__context__, x),
-                " was wrapped in a Cassette.Box and passed to ", f,
-                " and carries the message: ", meta(__context__, x))
-    end
-
-Note that `Cassette.@Box` can only used within a contextual method signature.
-
-For further details, see the contextual metadata propagation documentation.
-"""
-macro Box(args...)
-    error("`Cassette.@Box` can only used within a contextual method signature")
-end
-
 #############
 # utilities #
 #############
@@ -315,40 +261,13 @@ function contextual_definition!(f, signature::Expr, body::Expr)
     @assert(signature.head == :where,
             "method signature missing `where` clause; `$(CONTEXT_BINDING) <: ContextType` "*
             "must be defined in your method definition's `where` clause")
-
     signature = typify_signature(signature)
-
-    call_args = signature.args[1].args
-    for i in 1:length(call_args)
-        x = call_args[i]
-        if Base.Meta.isexpr(x, :(::))
-            xtype = last(x.args)
-            if is_macro(xtype, Symbol("@Box"))
-                box_args = xtype.args[3:end]
-                if isempty(box_args)
-                    U, M = :Any, :Any
-                elseif length(box_args) == 1
-                    U, M = first(box_args), :Any
-                elseif length(box_args) == 2
-                    U, M = box_args
-                else
-                    error("incorrect usage of `@Box`: $(xtype)")
-                end
-                new_xtype = :($Cassette.Box{$CONTEXT_TYPE_BINDING,<:$U,<:Any,<:$M})
-            else
-                new_xtype = :(Union{$Cassette.Box{<:Any,<:$xtype},$xtype})
-            end
-            x.args[end] = new_xtype
-        end
-    end
-
-    ctx_arg = :($CONTEXT_BINDING::$CONTEXT_TYPE_BINDING)
     world_binding = gensym("world")
     push!(signature.args, world_binding)
-    world_arg = :(::Val{$world_binding})
-    signature.args[1] = Expr(:call, f, ctx_arg, world_arg, call_args...)
-
+    signature.args[1] = Expr(:call, f,
+                             :($CONTEXT_BINDING::$CONTEXT_TYPE_BINDING),
+                             :(::Val{$world_binding}),
+                             signature.args[1].args...)
     pushfirst!(body.args, Expr(:meta, :inline))
-
     return esc(Expr(:function, signature, body))
 end

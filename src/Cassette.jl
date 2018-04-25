@@ -2,7 +2,7 @@ __precompile__(false)
 
 module Cassette
 
-using Core: CodeInfo, SlotNumber, NewvarNode, LabelNode, GotoNode, SSAValue, arrayref, arrayset
+using Core: CodeInfo, SlotNumber, NewvarNode, LabelNode, GotoNode, SSAValue
 
 using Logging
 
@@ -10,13 +10,12 @@ struct Unused end
 
 abstract type AbstractPass end
 abstract type AbstractTag end
-abstract type AbstractContext{w,b,P<:Union{AbstractPass,Unused},T<:Union{AbstractTag,Nothing}} end
+abstract type AbstractContext{w,P<:Union{AbstractPass,Unused},T<:Union{AbstractTag,Nothing}} end
 
 const UNUSED = Unused()
 const MAX_ARGS = 20
 
 include("utilities.jl")
-include("metadata.jl")
 include("overdub.jl")
 include("macros.jl")
 

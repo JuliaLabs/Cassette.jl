@@ -1,7 +1,7 @@
 module ExampleTests
 
 using Test, Cassette
-using Cassette: @context, @prehook, @posthook, @primitive, @pass, @overdub, box, unbox, hasmeta, meta
+using Cassette: @context, @prehook, @posthook, @primitive, @pass, @overdub
 
 ############################################################################################
 
@@ -83,67 +83,6 @@ f, x, y = hypot, rand(), rand(2)
 
 ############################################################################################
 
-struct Baz
-    x::Int
-    y::Float64
-    z::String
-end
-
-baz_identity(x::Int) = Baz(x, float(x), "$x").x
-
-@context BazCtx
-Cassette.metatype(::Type{<:BazCtx}, ::Type{<:Integer}) = Float64
-x, n = rand(Int), rand()
-result = @overdub BazCtx(boxes=Val(true)) begin
-    ctx = __context__
-    b0 = box(ctx, x, n)
-    b1 = baz_identity(b0)
-    rx = unbox(ctx, b1)
-    rn = hasmeta(ctx, b1) ? meta(ctx, b1) : nothing
-    return (rx, rn)
-end
-@test x === result[1]
-@test n === result[2]
-
-############################################################################################
-
-struct Bar{X,Y,Z}
-    x::X
-    y::Y
-    z::Z
-end
-
-mutable struct Foo
-    a::Bar{Int}
-    b
-end
-
-function foo_bar_identity(x)
-    bar = Bar(x, x + 1, x + 2)
-    foo = Foo(bar, "ha")
-    foo.b = bar
-    foo.a = Bar(4,5,6)
-    foo2 = Foo(foo.a, foo.b)
-    foo2.a = foo2.b
-    return foo2.a.x
-end
-
-@context FooBarCtx
-Cassette.metatype(::Type{<:FooBarCtx}, ::Type{<:Integer}) = Float64
-x, n = rand(Int), rand()
-result = @overdub FooBarCtx(boxes=Val(true)) begin
-    ctx = __context__
-    b0 = box(ctx, x, n)
-    b1 = foo_bar_identity(b0)
-    rx = unbox(ctx, b1)
-    rn = hasmeta(ctx, b1) ? meta(ctx, b1) : nothing
-    return (rx, rn)
-end
-@test x === result[1]
-@test n === result[2]
-
-############################################################################################
-
 sig_collection = DataType[]
 @context PassCtx
 mypass = @pass (sig, cinfo) -> (push!(sig_collection, sig); cinfo)
@@ -192,5 +131,103 @@ end
 # TODO: restore this test
 # tag_type = NestedCtx{Tag{NestedCtx{Tag{NestedCtx{Tag{Nothing,tag_id}},tag_id}},tag_id}}
 # @test any(x -> isa(x, nested_ctx_type), ctxs)
+
+############################################################################################
+# TODO: restore this test once Boxes are restored
+#=
+struct Baz
+    x::Int
+    y::Float64
+    z::String
+end
+
+baz_identity(x::Int) = Baz(x, float(x), "$x").x
+
+@context BazCtx
+Cassette.metatype(::Type{<:BazCtx}, ::Type{<:Integer}) = Float64
+x, n = rand(Int), rand()
+result = @overdub BazCtx(boxes=Val(true)) begin
+    ctx = __context__
+    b0 = Box(ctx, x, n)
+    println(b0)
+    b1 = baz_identity(b0)
+    rx = unbox(ctx, b1)
+    rn = hasmeta(ctx, b1) ? meta(ctx, b1) : nothing
+    return (rx, rn)
+end
+@test x === result[1]
+@test n === result[2]
+=#
+
+############################################################################################
+# TODO: restore this test once Boxes are restored
+#=
+struct Bar{X,Y,Z}
+    x::X
+    y::Y
+    z::Z
+end
+
+mutable struct Foo
+    a::Bar{Int}
+    b
+end
+
+function foo_bar_identity(x)
+    bar = Bar(x, x + 1, x + 2)
+    foo = Foo(bar, "ha")
+    foo.b = bar
+    foo.a = Bar(4,5,6)
+    foo2 = Foo(foo.a, foo.b)
+    foo2.a = foo2.b
+    return foo2.a.x
+end
+
+@context FooBarCtx
+Cassette.metatype(::Type{<:FooBarCtx}, ::Type{<:Integer}) = Float64
+x, n = rand(Int), rand()
+result = @overdub FooBarCtx(boxes=Val(true)) begin
+    ctx = __context__
+    b0 = box(ctx, x, n)
+    b1 = foo_bar_identity(b0)
+    rx = unbox(ctx, b1)
+    rn = hasmeta(ctx, b1) ? meta(ctx, b1) : nothing
+    return (rx, rn)
+end
+@test x === result[1]
+@test n === result[2]
+=#
+
+############################################################################################
+# TODO: The below is a highly pathological function for metadata propagation; we should turn
+# it into an actual test
+#=
+const const_binding = Float64[]
+
+global global_binding::Float64 = 0.0
+
+struct Foo
+    vector::Vector{Float64}
+end
+
+mutable struct FooContainer
+    foo::Foo
+end
+
+function f(x::Vector{Float64}, y::Vector{Float64})
+    @assert length(x) === length(y)
+    x = FooContainer(Foo(x))
+    for i in 1:length(y)
+        v = x.foo.vector[i]
+        push!(const_binding, v)
+        global_binding *= v
+        x.foo = Foo(y)
+        y = x.foo.vector
+    end
+    z = prod(const_binding) * global_binding
+    empty!(const_binding)
+    return z
+end
+=#
 
 end # module
