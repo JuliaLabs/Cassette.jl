@@ -14,7 +14,7 @@ function tag end # only overloaded on a per-context basis
 """
     Cassette.@context Ctx
 
-Defined and return a new Cassette context type with the name `Ctx`.
+Define a new Cassette context type with the name `Ctx`.
 """
 macro context(Ctx)
     @assert isa(Ctx, Symbol) "context name must be a Symbol"
@@ -50,8 +50,6 @@ macro context(Ctx)
             flattened_args = Core._apply(tuple, args...)
             return $Cassette.overdub_execute(__context__, f, flattened_args...)
         end
-
-        $Ctx
     end)
 end
 
