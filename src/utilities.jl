@@ -49,10 +49,23 @@ mutable struct Reflection
     code_info::CodeInfo
 end
 
-# Return `Reflection` for signature `S` and `world`, if possible. Otherwise, return `nothing`.
-function reflect(::Type{S}, world::UInt = typemax(UInt)) where {S<:Tuple}
+# Return `Reflection` for signature `sigtypes` and `world`, if possible. Otherwise, return `nothing`.
+function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
+    # This works around a subtyping bug. Basically, callers can deconstruct upstream
+    # `UnionAll` types in such a way that results in a type with free type variables, in
+    # which case subtyping can just break.
+    #
+    # God help you if you try to use a type parameter here (e.g. `::Type{S} where S<:Tuple`)
+    # instead of this nutty workaround, because the compiler can just rewrite `S` into
+    # whatever it thinks is "type equal" to the actual provided value. In other words, if
+    # `S` is defined as e.g. `f(::Type{S}) where S`, and you call `f(T)`, you should NOT
+    # assume that `S === T`. If you did, SHAME ON YOU. It doesn't matter that such an
+    # assumption holds true for essentially all other kinds of values. I haven't counted in
+    # a while, but I'm pretty sure I have ~40+ hellish years of Julia experience, and this
+    # still catches me every time. Who even uses this crazy language?
+    S = Tuple{map(s -> Core.Compiler.has_free_typevars(s) ? typeof(s.parameters[1]) : s, sigtypes)...}
     # @safe_debug "looking up method" signature=S world=world
-    S.parameters[1].name.module === Core.Compiler && return nothing
+    (S.parameters[1]::DataType).name.module === Core.Compiler && return nothing
     _methods = Base._methods_by_ftype(S, -1, world)
     length(_methods) == 1 || return nothing
     type_signature, raw_static_params, method = first(_methods)
