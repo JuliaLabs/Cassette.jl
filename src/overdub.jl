@@ -9,10 +9,9 @@
 @inline execution(ctx::AbstractContext, ::Val{w}, f, args...) where {w} = f(args...)
 
 @generated function _is_core_primitive(::C, args...) where {w,C<:AbstractContext{w}}
-    signature = Tuple{args...}
     # TODO: this is slow, we should try to check whether the reflection is possible
     # without going through the whole process of actually computing it
-    if isa(reflect(signature, w), Reflection)
+    if isa(reflect(args, w), Reflection)
         result = :(false)
     else
         result = :(true)
@@ -125,14 +124,14 @@ function overdub_recurse_pass!(reflection::Reflection,
     return reflection
 end
 
-function overdub_recurse_generator(world, pass, self, ctx, args)
-    signature = Tuple{args...}
+# `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
+function overdub_recurse_generator(world, pass, self, ctx, args::Tuple)
     try
-        reflection = reflect(signature, world)
+        reflection = reflect(args, world)
         if isa(reflection, Reflection)
             overdub_recurse_pass!(reflection, pass)
             body = reflection.code_info
-            @safe_debug "returning overdubbed CodeInfo" signature body
+            @safe_debug "returning overdubbed CodeInfo" args body
         else
             body = quote
                 $(Expr(:meta, :inline))
@@ -142,7 +141,7 @@ function overdub_recurse_generator(world, pass, self, ctx, args)
         end
         return body
     catch err
-        @safe_error "error compiling" signature context=ctx
+        @safe_error "error compiling" args context=ctx
         errmsg = "ERROR COMPILING $signature IN CONTEXT $ctx: " * sprint(showerror, err)
         return quote
             error($errmsg)
