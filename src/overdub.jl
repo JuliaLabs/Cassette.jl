@@ -119,7 +119,7 @@ function overdub_recurse_pass!(reflection::Reflection,
 
     code_info.code = fix_labels_and_gotos!(overdubbed_code)
     code_info.method_for_inference_limit_heuristics = method
-    code_info.inlineable = true
+    code_info.inlineable = true # TODO: don't set this
     reflection.code_info = code_info
     return reflection
 end
