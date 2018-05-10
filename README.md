@@ -8,7 +8,7 @@ Cassette relies on new reflection features and compiler performance improvements
 
 Cassette targets downstream package developers, not Julia end-users. Downstream developers are expected to have a solid understanding of Julia's type system, metaprogramming facilities, and dispatch mechanism.
 
-Last updated for Julia commit: 69e559d496c69c7909ba87631cb552295e77255f
+Last updated for Julia commit: f1b23284bb881023d3581053640f025f071a7f9c (kind of...tests aren't passing right now).
 
 ## Overview
 
@@ -44,9 +44,7 @@ f(args...) = # some function implemented in normal, GPU-unaware Julia code
 # Execute `f` in a `GPUCtx`. `Cassette.overdub` takes in a context type and a function,
 # and produces a new, "contextualized" version of that function, which can then be called
 # with the original function's arguments.
-Cassette.overdub(GPUCtx()) do
-    f(args...)
-end
+Cassette.@overdub(GPUCtx(), f(args...))
 ```
 
 Cassette provides many other mechanisms similar to the `@primitive` macro that allow context-authors to precisely alter behavior, interleave side-effects, and generally manipulate programs executed under their context.
@@ -74,8 +72,8 @@ julia> Cassette.@context CountCtx
 # Note here that we are dispatching on the type of trace-level metadata to define a prehook
 # that increments a counter every time one or more arguments of type `T` are encountered in
 # the execution trace.
-julia> Cassette.@prehook function (::Any)(arg::T, args::T...) where {T,__CONTEXT__<:CountCtx,__METADATA__<:Count{T}}
-           __trace__.metadata.count += 1
+julia> Cassette.@prehook function (::Any)(arg::T, args::T...) where {T,__CONTEXT__<:CountCtx{Count{T}}}
+           __context__.metadata.count += 1
        end
 
 julia> f(x) = map(string, x)
@@ -86,7 +84,7 @@ julia> c = Count{Union{String,Int}}(0)
 Count{Union{Int64, String}}(0)
 
 # here, `c` is our trace-local metadata
-julia> Cassette.overdub(CountCtx, f, metadata = c)(1:10)
+julia> Cassette.@overdub(CountCtx(metadata = c), f(1:10))
 10-element Array{String,1}:
  "1"
  "2"
@@ -100,7 +98,7 @@ julia> Cassette.overdub(CountCtx, f, metadata = c)(1:10)
  "10"
 
 julia> c
-Count{Union{Int64, String}}(1464)
+ Count{Union{Int64, String}}(1643)
 ```
 
 Argument-local metadata is a bit more involved, so we won't go into it in this README. See the [design document](docs/design.md) for more details.
