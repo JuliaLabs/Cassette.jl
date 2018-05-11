@@ -64,7 +64,6 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     # a while, but I'm pretty sure I have ~40+ hellish years of Julia experience, and this
     # still catches me every time. Who even uses this crazy language?
     S = Tuple{map(s -> Core.Compiler.has_free_typevars(s) ? typeof(s.parameters[1]) : s, sigtypes)...}
-    # @safe_debug "looking up method" signature=S world=world
     (S.parameters[1]::DataType).name.module === Core.Compiler && return nothing
     _methods = Base._methods_by_ftype(S, -1, world)
     length(_methods) == 1 || return nothing
@@ -75,7 +74,6 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     code_info = Core.Compiler.retrieve_code_info(method_instance)
     isa(code_info, CodeInfo) || return nothing
     code_info = Core.Compiler.copy_code_info(code_info)
-    # @safe_debug "retrieved initial method" method code_info
     return Reflection(S, method, static_params, code_info)
 end
 

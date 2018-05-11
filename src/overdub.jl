@@ -137,7 +137,7 @@ function overdub_recurse_generator(world, pass, self, ctx, args::Tuple)
                 $(Expr(:meta, :inline))
                 $Cassette.execution($OVERDUB_CTX_SYMBOL, $OVERDUB_CTX_SYMBOL.world, $OVERDUB_ARGS_SYMBOL...)
             end
-            @safe_debug "no CodeInfo found; executing as primitive"
+            @safe_debug "no CodeInfo found; executing as primitive" args
         end
         return body
     catch err
