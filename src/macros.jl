@@ -24,22 +24,20 @@ macro context(Ctx)
         Base.@pure $CtxTag(x) = $CtxTag(nothing, x)
         Base.@pure $CtxTag(::E, ::X) where {E,X} = $CtxTag{E,objectid(X)}()
 
-        struct $Ctx{M,w,P<:Union{$Cassette.AbstractPass,$Cassette.Unused},T<:Union{$CtxTag,Nothing}} <: $Cassette.AbstractContext{w,P,T}
+        struct $Ctx{M,P<:Union{$Cassette.AbstractPass,$Cassette.Unused},T<:Union{$CtxTag,Nothing}} <: $Cassette.AbstractContext{P,T}
             metadata::M
-            world::Val{w}
             pass::P
             tag::T
         end
 
         function $Ctx(;
                       metadata = $Cassette.UNUSED,
-                      world::Val = Val($Cassette.get_world_age()),
                       pass::Union{$Cassette.AbstractPass,$Cassette.Unused} = $Cassette.UNUSED)
-            return $Ctx(metadata, world, pass, nothing)
+            return $Ctx(metadata, pass, nothing)
         end
 
         function $Cassette.tag(ctx::$Ctx, f)
-            return $Ctx(ctx.metadata, ctx.world, ctx.pass, $CtxTag(f))
+            return $Ctx(ctx.metadata, ctx.pass, $CtxTag(f))
         end
 
         # default primitives/execution definitions
@@ -260,11 +258,8 @@ function contextual_definition!(f, signature::Expr, body::Expr)
             "method signature missing `where` clause; `$(CONTEXT_BINDING) <: ContextType` "*
             "must be defined in your method definition's `where` clause")
     signature = typify_signature(signature)
-    world_binding = gensym("world")
-    push!(signature.args, world_binding)
     signature.args[1] = Expr(:call, f,
                              :($CONTEXT_BINDING::$CONTEXT_TYPE_BINDING),
-                             :(::Val{$world_binding}),
                              signature.args[1].args...)
     pushfirst!(body.args, Expr(:meta, :inline))
     return esc(Expr(:function, signature, body))

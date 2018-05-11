@@ -2,16 +2,16 @@
 # contextual operations #
 #########################
 
-@inline prehook(::AbstractContext, ::Val{w}, ::Vararg{Any}) where {w} = nothing
-@inline posthook(::AbstractContext, ::Val{w}, ::Vararg{Any}) where {w} = nothing
-@inline is_user_primitive(ctx::AbstractContext, ::Val{w}, ::Vararg{Any}) where {w} = false
-@inline is_core_primitive(ctx::AbstractContext, ::Val{w}, args...) where {w} = _is_core_primitive(ctx, args...)
-@inline execution(ctx::AbstractContext, ::Val{w}, f, args...) where {w} = f(args...)
+@inline prehook(::AbstractContext, ::Vararg{Any}) = nothing
+@inline posthook(::AbstractContext, ::Vararg{Any}) = nothing
+@inline is_user_primitive(ctx::AbstractContext, ::Vararg{Any}) = false
+@inline is_core_primitive(ctx::AbstractContext, args...) = _is_core_primitive(ctx, args...)
+@inline execution(ctx::AbstractContext, f, args...) = f(args...)
 
 @generated function _is_core_primitive(::C, args...) where {w,C<:AbstractContext{w}}
     # TODO: this is slow, we should try to check whether the reflection is possible
     # without going through the whole process of actually computing it
-    if isa(reflect(args, w), Reflection)
+    if isa(reflect(args), Reflection)
         result = :(false)
     else
         result = :(true)
@@ -27,13 +27,13 @@ end
 ###################
 
 @inline function overdub_execute(ctx::AbstractContext, args...)
-    prehook(ctx, ctx.world, args...)
-    if is_user_primitive(ctx, ctx.world, args...)
-        output = execution(ctx, ctx.world, args...)
+    prehook(ctx, args...)
+    if is_user_primitive(ctx, args...)
+        output = execution(ctx, args...)
     else
         output = overdub_recurse(ctx, args...)
     end
-    posthook(ctx, ctx.world, output, args...)
+    posthook(ctx, output, args...)
     return output
 end
 
@@ -125,9 +125,9 @@ function overdub_recurse_pass!(reflection::Reflection,
 end
 
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
-function overdub_recurse_generator(world, pass, self, ctx, args::Tuple)
+function overdub_recurse_generator(pass, self, ctx, args::Tuple)
     try
-        reflection = reflect(args, world)
+        reflection = reflect(args)
         if isa(reflection, Reflection)
             overdub_recurse_pass!(reflection, pass)
             body = reflection.code_info
@@ -135,7 +135,7 @@ function overdub_recurse_generator(world, pass, self, ctx, args::Tuple)
         else
             body = quote
                 $(Expr(:meta, :inline))
-                $Cassette.execution($OVERDUB_CTX_SYMBOL, $OVERDUB_CTX_SYMBOL.world, $OVERDUB_ARGS_SYMBOL...)
+                $Cassette.execution($OVERDUB_CTX_SYMBOL, $OVERDUB_ARGS_SYMBOL...)
             end
             @safe_debug "no CodeInfo found; executing as primitive" args
         end
@@ -151,14 +151,14 @@ end
 
 function overdub_recurse_definition(pass, line, file)
     return quote
-        function overdub_recurse($OVERDUB_CTX_SYMBOL::AbstractContext{world,pass}, $OVERDUB_ARGS_SYMBOL...) where {world,pass<:$pass}
+        function overdub_recurse($OVERDUB_CTX_SYMBOL::AbstractContext{pass}, $OVERDUB_ARGS_SYMBOL...) where {pass<:$pass}
             $(Expr(:meta,
                    :generated,
                    Expr(:new,
                         Core.GeneratedFunctionStub,
                         :overdub_recurse_generator,
                         Any[:overdub_recurse, OVERDUB_CTX_SYMBOL, OVERDUB_ARGS_SYMBOL],
-                        Any[:world, :pass],
+                        Any[:pass],
                         line,
                         QuoteNode(Symbol(file)),
                         true)))

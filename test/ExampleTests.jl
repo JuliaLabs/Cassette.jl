@@ -86,7 +86,7 @@ f, x, y = hypot, rand(), rand(2)
 sig_collection = DataType[]
 @context PassCtx
 mypass = @pass (sig, cinfo) -> (push!(sig_collection, sig); cinfo)
-@overdub(PassCtx(pass=mypass), sum(rand(3)))
+@test @overdub(PassCtx(pass=mypass), sum(rand(MersenneTwister(1), 3))) === sum(rand(MersenneTwister(1), 3))
 @test !isempty(sig_collection) && all(T -> T <: Tuple, sig_collection)
 
 ############################################################################################
