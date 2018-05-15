@@ -108,6 +108,28 @@ c = Count{Union{String,Int}}(0)
 
 ############################################################################################
 
+using Cassette
+
+@context WorldCtx
+
+worldtest = 0
+oldctx = WorldCtx()
+Cassette.overdub_recurse(oldctx, sin, 1)
+
+@prehook (f::Any)(args...) where {__CONTEXT__<:WorldCtx} = (global worldtest += 1)
+Cassette.overdub_recurse(WorldCtx(), sin, 1)
+@test worldtest > 100
+
+tmp = worldtest
+Cassette.overdub_recurse(oldctx, sin, 1)
+@test tmp === worldtest
+
+@prehook (f::Any)(args...) where {__CONTEXT__<:WorldCtx} = nothing
+Cassette.overdub_recurse(WorldCtx(), sin, 1)
+@test tmp === worldtest
+
+############################################################################################
+
 @context NestedCtx
 
 function nested_test(n, x)
