@@ -257,7 +257,7 @@ end
 
 function contextual_definition!(f, signature::Expr, body::Expr)
     @assert(signature.head == :where,
-            "method signature missing `where` clause; `$(CONTEXT_BINDING) <: ContextType` "*
+            "method signature missing `where` clause; `$(CONTEXT_TYPE_BINDING) <: ContextType` "*
             "must be defined in your method definition's `where` clause")
     signature = typify_signature(signature)
     world_binding = gensym("world")
