@@ -9,7 +9,9 @@ const CONTEXT_BINDING = Symbol("__context__")
 # @context #
 ############
 
-function tag end # only overloaded on a per-context basis
+# these stubs are only overloaded on a per-context basis
+function tag end
+function similar_context end
 
 """
     Cassette.@context Ctx
@@ -40,6 +42,14 @@ macro context(Ctx)
 
         function $Cassette.tag(ctx::$Ctx, f)
             return $Ctx(ctx.metadata, ctx.world, ctx.pass, $CtxTag(f))
+        end
+
+        function $Cassette.similar_context(ctx::$Ctx;
+                                           metadata = ctx.metadata,
+                                           world = ctx.world,
+                                           pass = ctx.pass,
+                                           tag = ctx.tag)
+            return $Ctx(metadata, world, pass, tag)
         end
 
         # default primitives/execution definitions

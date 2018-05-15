@@ -130,6 +130,33 @@ Cassette.overdub_recurse(WorldCtx(), sin, 1)
 
 ############################################################################################
 
+@context TraceCtx
+
+@primitive function (f::Any)(args...) where {__CONTEXT__<:TraceCtx}
+    subtrace = Any[]
+    push!(__context__.metadata, (f, args) => subtrace)
+    if Cassette.is_core_primitive(__context__, __context__.world, f, args...)
+        return f(args...)
+    else
+        newctx = Cassette.similar_context(__context__, metadata = subtrace)
+        return Cassette.overdub_recurse(newctx, f, args...)
+    end
+end
+
+trace = Any[]
+x, y, z = rand(3)
+trtest(x, y, z) = x*y + y*z
+@test @overdub(TraceCtx(metadata = trace), trtest(x, y, z)) == trtest(x, y, z)
+@test trace == Any[
+    (trtest,(x,y,z)) => Any[
+        (*,(x,y)) => Any[(Base.mul_float,(x,y))=>Any[]]
+        (*,(y,z)) => Any[(Base.mul_float,(y,z))=>Any[]]
+        (+,(x*y,y*z)) => Any[(Base.add_float,(x*y,y*z))=>Any[]]
+    ]
+]
+
+############################################################################################
+
 @context NestedCtx
 
 function nested_test(n, x)
