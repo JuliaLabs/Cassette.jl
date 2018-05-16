@@ -67,7 +67,7 @@ A diagram of Julia's run-compile cycle is shown below. While this diagram is qui
 incomplete<sup id="f1-anchor">[1](#f1)</sup>, it is sufficient for the purposes of
 understanding Cassette.
 
-![Compilation Cycle](compile-cycle.png)
+![Compilation Cycle](compile-cycle-old.png)
 
 Here, the colored boxes are phases of the run-compile cycle, the arrows denote execution
 flow, and the gray boxes are the input/output of each phase. The red boxes are phases that
