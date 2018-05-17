@@ -109,9 +109,6 @@ function copy_prelude_code(code::Vector)
     return prelude_code
 end
 
-# there's also `ccall(:jl_get_world_counter, UInt, ())`
-get_world_age() = ccall(:jl_get_tls_world_age, UInt, ())
-
 #################
 # Miscellaneous #
 #################

@@ -108,8 +108,6 @@ c = Count{Union{String,Int}}(0)
 
 ############################################################################################
 
-using Cassette
-
 @context WorldCtx
 
 worldtest = 0
@@ -135,7 +133,7 @@ Cassette.overdub_recurse(WorldCtx(), sin, 1)
 @primitive function (f::Any)(args...) where {__CONTEXT__<:TraceCtx}
     subtrace = Any[]
     push!(__context__.metadata, (f, args) => subtrace)
-    if Cassette.is_core_primitive(__context__, __context__.world, f, args...)
+    if Cassette.is_core_primitive(__context__, f, args...)
         return f(args...)
     else
         newctx = Cassette.similar_context(__context__, metadata = subtrace)

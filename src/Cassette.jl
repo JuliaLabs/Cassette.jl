@@ -10,7 +10,7 @@ struct Unused end
 
 abstract type AbstractPass end
 abstract type AbstractTag end
-abstract type AbstractContext{w,P<:Union{AbstractPass,Unused},T<:Union{AbstractTag,Nothing}} end
+abstract type AbstractContext{P<:Union{AbstractPass,Unused},T<:Union{AbstractTag,Nothing}} end
 
 const UNUSED = Unused()
 const MAX_ARGS = 20
