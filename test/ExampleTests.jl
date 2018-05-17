@@ -168,20 +168,35 @@ function nested_test(n, x)
 end
 
 x = rand()
-ctxs = Cassette.AbstractTag[]
+tags = Cassette.AbstractTag[]
 tag_id = objectid(typeof(nested_test))
 
 @prehook function (::Any)(args...) where {__CONTEXT__<:NestedCtx}
-    !(in(__context__.tag, ctxs)) && push!(ctxs, __context__.tag)
+    !(in(__context__.tag, tags)) && push!(tags, __context__.tag)
 end
 
 @test @overdub(NestedCtx(), nested_test(2, x)) === sin(x + x + x + x)
 
-# TODO: restore this test
-# tag_type = NestedCtx{Tag{NestedCtx{Tag{NestedCtx{Tag{Nothing,tag_id}},tag_id}},tag_id}}
-# @test any(x -> isa(x, nested_ctx_type), ctxs)
+tagtypename = typeof(Cassette.tag(NestedCtx(), 1).tag).name
+prevtagtype = Nothing
+for tag in tags
+    tagtype = typeof(tag)
+    @test tagtype.parameters[1] === prevtagtype
+    @test tagtype.name === tagtypename
+    global prevtagtype = tagtype
+end
 
 ############################################################################################
+
+@context NestedReflectCtx
+r_pre = Cassette.reflect((typeof(sin), Int))
+r_post = Cassette.reflect((typeof(Cassette.overdub_recurse), typeof(NestedReflectCtx()), typeof(sin), Int))
+@test isa(r_pre, Cassette.Reflection) && isa(r_post, Cassette.Reflection)
+Cassette.overdub_recurse_pass!(r_pre)
+@test r_pre.code_info.code == r_post.code_info.code
+
+############################################################################################
+
 # TODO: restore this test once Boxes are restored
 #=
 struct Baz
