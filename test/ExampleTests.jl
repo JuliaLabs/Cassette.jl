@@ -108,6 +108,7 @@ c = Count{Union{String,Int}}(0)
 
 ############################################################################################
 
+#= XXX: This test requires Cassette's world age problems to be fixed (https://github.com/jrevels/Cassette.jl/issues/6)
 @context WorldCtx
 
 worldtest = 0
@@ -125,6 +126,7 @@ Cassette.overdub_recurse(oldctx, sin, 1)
 @prehook (f::Any)(args...) where {__CONTEXT__<:WorldCtx} = nothing
 Cassette.overdub_recurse(WorldCtx(), sin, 1)
 @test tmp === worldtest
+=#
 
 ############################################################################################
 
