@@ -161,11 +161,11 @@ input:
 
     @context CountCtx
 
-    mutable struct Count{T}
+    mutable struct Count
         count::Int
     end
 
-    @posthook function (f::Any)(output::T, input::T, ::T...) where {T,__CONTEXT__<:CountCtx{Count{T}}}
+    @posthook function (f::Any)(output::T, input::T, ::T...) where {T,__CONTEXT__<:CountCtx{Count}}
         __context__.metadata.count += 1
     end
 
