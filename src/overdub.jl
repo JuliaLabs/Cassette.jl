@@ -141,7 +141,7 @@ function overdub_recurse_generator(pass, self, ctx, args::Tuple)
         return body
     catch err
         @safe_error "error compiling" args context=ctx
-        errmsg = "ERROR COMPILING $signature IN CONTEXT $ctx: " * sprint(showerror, err)
+        errmsg = "ERROR COMPILING $args IN CONTEXT $ctx: " * sprint(showerror, err)
         return quote
             error($errmsg)
         end
