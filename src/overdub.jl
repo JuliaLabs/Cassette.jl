@@ -49,16 +49,15 @@ const OVERDUB_ARGS_SYMBOL = gensym("overdub_arguments")
 # increasing LHS SSAValues, in which case we'll have to add an extra SSA-remapping pass to
 # this function.
 function overdub_recurse_pass!(reflection::Reflection,
-                               pass::DataType = Unused)
+                               context_type::DataType,
+                               pass_type::DataType = UnusedPass)
     signature = reflection.signature
     method = reflection.method
     static_params = reflection.static_params
     code_info = reflection.code_info
 
-    # execute user-provided pass, if present
-    if !(pass <: Unused)
-        code_info = pass(signature, code_info)
-    end
+    # execute user-provided pass (is a no-op by default)
+    code_info = pass_type(context_type, signature, code_info)
 
     # construct new slotnames/slotflags for added slots
     code_info.slotnames = Any[:overdub_recurse, OVERDUB_CTX_SYMBOL, OVERDUB_ARGS_SYMBOL, code_info.slotnames...]
@@ -124,11 +123,11 @@ function overdub_recurse_pass!(reflection::Reflection,
 end
 
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
-function overdub_recurse_generator(pass, self, ctx, args::Tuple)
+function overdub_recurse_generator(pass_type, self, context_type, args::Tuple)
     try
         reflection = reflect(args)
         if isa(reflection, Reflection)
-            overdub_recurse_pass!(reflection, pass)
+            overdub_recurse_pass!(reflection, context_type, pass_type)
             body = reflection.code_info
             @safe_debug "returning overdubbed CodeInfo" args body
         else
@@ -140,8 +139,8 @@ function overdub_recurse_generator(pass, self, ctx, args::Tuple)
         end
         return body
     catch err
-        @safe_error "error compiling" args context=ctx
-        errmsg = "ERROR COMPILING $args IN CONTEXT $ctx: " * sprint(showerror, err)
+        @safe_error "error compiling" args context=context_type
+        errmsg = "ERROR COMPILING $args IN CONTEXT $(context_type): \n" * sprint(showerror, err)
         return quote
             error($errmsg)
         end
@@ -165,4 +164,4 @@ function overdub_recurse_definition(pass, line, file)
     end
 end
 
-eval(overdub_recurse_definition(:Unused, @__LINE__, @__FILE__))
+@eval $(overdub_recurse_definition(:UnusedPass, @__LINE__, @__FILE__))

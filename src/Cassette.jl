@@ -6,14 +6,16 @@ using Core: CodeInfo, SlotNumber, NewvarNode, LabelNode, GotoNode, SSAValue
 
 using Logging
 
-struct Unused end
+struct UnusedMeta end
 
 abstract type AbstractPass end
-abstract type AbstractTag end
-abstract type AbstractContext{P<:Union{AbstractPass,Unused},T<:Union{AbstractTag,Nothing}} end
+struct UnusedPass <: AbstractPass end
+(::Type{UnusedPass})(::Any, ::Any, code_info) = code_info
 
-const UNUSED = Unused()
-const MAX_ARGS = 20
+abstract type AbstractTag end
+struct BottomTag <: AbstractTag end
+
+abstract type AbstractContext{P<:AbstractPass,T<:AbstractTag} end
 
 include("utilities.jl")
 include("overdub.jl")

@@ -23,19 +23,21 @@ macro context(Ctx)
     CtxTag = gensym(string(Ctx, "Tag"))
     return esc(quote
         struct $CtxTag{E,H} <: $Cassette.AbstractTag end
-        Base.@pure $CtxTag(x) = $CtxTag(nothing, x)
+
+        # these @pure annotations have official vtjnash approval :p
+        Base.@pure $CtxTag(x) = $CtxTag($Cassette.BottomTag(), x)
         Base.@pure $CtxTag(::E, ::X) where {E,X} = $CtxTag{E,objectid(X)}()
 
-        struct $Ctx{M,P<:Union{$Cassette.AbstractPass,$Cassette.Unused},T<:Union{$CtxTag,Nothing}} <: $Cassette.AbstractContext{P,T}
+        struct $Ctx{M,P<:$Cassette.AbstractPass,T<:$CtxTag} <: $Cassette.AbstractContext{P,T}
             metadata::M
             pass::P
             tag::T
         end
 
         function $Ctx(;
-                      metadata = $Cassette.UNUSED,
-                      pass::Union{$Cassette.AbstractPass,$Cassette.Unused} = $Cassette.UNUSED)
-            return $Ctx(metadata, pass, nothing)
+                      metadata = $Cassette.UnusedMeta(),
+                      pass::$Cassette.AbstractPass = $Cassette.UnusedPass())
+            return $Ctx(metadata, pass, $CtxTag(nothing))
         end
 
         function $Cassette.tag(ctx::$Ctx, f)
@@ -86,7 +88,7 @@ end
 Return a Cassette pass that applies `transform` to all overdubbed method bodies. `transform`
 must be callable with the following signature:
 
-    transform(signature::Type{Tuple{...}}, method_body::CodeInfo)::CodeInfo
+    transform(ctxtype::Type{<:AbstractContext} signature::Type{Tuple{...}}, method_body::CodeInfo)::CodeInfo
 
 Note that this macro expands to an `eval` call and thus should only be called at top-level.
 Furthermore, to avoid world-age issues, `transform` should not be overloaded after it has
@@ -99,8 +101,8 @@ macro pass(transform)
     file = Expr(:quote, __source__.file)
     return esc(quote
         struct $Pass <: $Cassette.AbstractPass end
-        (::Type{$Pass})(signature, codeinfo) = $transform(signature, codeinfo)
-        eval($Cassette, $Cassette.overdub_recurse_definition($name, $line, $file))
+        (::Type{$Pass})(ctxtype, signature, codeinfo) = $transform(ctxtype, signature, codeinfo)
+        Core.eval($Cassette, $Cassette.overdub_recurse_definition($name, $line, $file))
         $Pass()
     end)
 end
