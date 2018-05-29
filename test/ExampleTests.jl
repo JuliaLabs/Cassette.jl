@@ -268,7 +268,7 @@ end
 #=
 const const_binding = Float64[]
 
-global global_binding::Float64 = 0.0
+global global_binding = 1.0
 
 struct Foo
     vector::Vector{Float64}
@@ -284,12 +284,13 @@ function f(x::Vector{Float64}, y::Vector{Float64})
     for i in 1:length(y)
         v = x.foo.vector[i]
         push!(const_binding, v)
-        global_binding *= v
+        global global_binding *= v
         x.foo = Foo(y)
         y = x.foo.vector
     end
     z = prod(const_binding) * global_binding
     empty!(const_binding)
+    global global_binding = 1.0
     return z
 end
 =#
