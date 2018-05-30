@@ -10,7 +10,7 @@ const CONTEXT_BINDING = Symbol("__context__")
 ############
 
 # these stubs are only overloaded on a per-context basis
-function tag end
+function generate_tag end
 function similar_context end
 
 """
@@ -40,9 +40,7 @@ macro context(Ctx)
             return $Ctx(metadata, pass, $CtxTag(nothing))
         end
 
-        function $Cassette.tag(ctx::$Ctx, f)
-            return $Ctx(ctx.metadata, ctx.pass, $CtxTag(f))
-        end
+        $Cassette.generate_tag(ctx::$Ctx, f) = $CtxTag(f)
 
         function $Cassette.similar_context(ctx::$Ctx;
                                            metadata = ctx.metadata,
@@ -73,7 +71,8 @@ A convenience macro for overdubbing and executing `expression` within the contex
 macro overdub(ctx, expr)
     return quote
         func = $(esc(CONTEXT_BINDING)) -> $(esc(expr))
-        ctx = $Cassette.tag($(esc(ctx)), func)
+        ctx = Cassette.similar_context($(esc(ctx));
+                                       tag = $Cassette.generate_tag($(esc(ctx)), func))
         $Cassette.overdub_recurse(ctx, func, ctx)
     end
 end

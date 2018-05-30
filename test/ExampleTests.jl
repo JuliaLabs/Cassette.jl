@@ -177,7 +177,7 @@ end
 
 @test @overdub(NestedCtx(), nested_test(2, x)) === sin(x + x + x + x)
 
-tagtypename = typeof(Cassette.tag(NestedCtx(), 1).tag).name
+tagtypename = typeof(Cassette.generate_tag(NestedCtx(), 1).tag).name
 prevtagtype = Nothing
 for tag in tags
     tagtype = typeof(tag)
