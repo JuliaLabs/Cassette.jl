@@ -11,7 +11,7 @@
 @generated function _is_core_primitive(::AbstractContext, args...)
     # TODO: this is slow, we should try to check whether the reflection is possible
     # without going through the whole process of actually computing it
-    if isa(reflect(args), Reflection)
+    if isa(reflect(args), Reflection) # TODO unboxtype `args`
         result = :(false)
     else
         result = :(true)
@@ -105,6 +105,14 @@ function overdub_recurse_pass!(reflection::Reflection,
         push!(overdubbed_code, :($(SlotNumber(n_method_args + n_overdub_slots)) = $final_arguments))
     end
 
+    # Scan the IR for `Module`s in the first argument position for `GlobalRef`s. For every
+    # unique such `Module`, make a new `SSAValue` at the top of the method body corresponding
+    # to `Cassette.fetch_tagged_module` called with the given context and module. Then,
+    # replace all `GlobalRef`-loads with the corresponding `Cassette._tagged_global_ref`
+    # invocation. All `GlobalRef`-stores must be preserved as-is, but need a follow-up
+    # statement calling `Cassette._tagged_global_ref_set_meta!` on the relevant arguments.
+    # TODO
+
     # For the rest of the statements in `code_info.code`, intercept every applicable call
     # expression and replace it with a corresponding call to `Cassette.overdub_execute`.
     for i in (prelude_length + 1):length(code_info.code)
@@ -116,6 +124,9 @@ function overdub_recurse_pass!(reflection::Reflection,
         push!(overdubbed_code, stmnt)
     end
 
+    # Replace `new` expressions with calls to `Cassette.tagged_new`.
+    # TODO
+
     code_info.code = fix_labels_and_gotos!(overdubbed_code)
     code_info.method_for_inference_limit_heuristics = method
     reflection.code_info = code_info
@@ -125,7 +136,7 @@ end
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
 function overdub_recurse_generator(pass_type, self, context_type, args::Tuple)
     try
-        reflection = reflect(args)
+        reflection = reflect(args) # TODO unboxtype `args`
         if isa(reflection, Reflection)
             overdub_recurse_pass!(reflection, context_type, pass_type)
             body = reflection.code_info

@@ -6,8 +6,6 @@ using Core: CodeInfo, SlotNumber, NewvarNode, LabelNode, GotoNode, SSAValue
 
 using Logging
 
-struct UnusedMeta end
-
 abstract type AbstractPass end
 struct UnusedPass <: AbstractPass end
 (::Type{UnusedPass})(::Any, ::Any, code_info) = code_info
@@ -18,6 +16,7 @@ struct BottomTag <: AbstractTag end
 abstract type AbstractContext{P<:AbstractPass,T<:AbstractTag} end
 
 include("utilities.jl")
+include("tagged.jl")
 include("overdub.jl")
 include("macros.jl")
 

@@ -32,12 +32,14 @@ macro context(Ctx)
             metadata::M
             pass::P
             tag::T
+            metamodules::$Cassette.MetaModuleCache
         end
 
         function $Ctx(;
-                      metadata = $Cassette.UnusedMeta(),
-                      pass::$Cassette.AbstractPass = $Cassette.UnusedPass())
-            return $Ctx(metadata, pass, $CtxTag(nothing))
+                      metadata = nothing,
+                      pass::$Cassette.AbstractPass = $Cassette.UnusedPass(),
+                      metamodules = $Cassette.MetaModuleCache())
+            return $Ctx(metadata, pass, $CtxTag(nothing), metamodules)
         end
 
         $Cassette.generate_tag(ctx::$Ctx, f) = $CtxTag(f)
@@ -45,8 +47,9 @@ macro context(Ctx)
         function $Cassette.similar_context(ctx::$Ctx;
                                            metadata = ctx.metadata,
                                            pass = ctx.pass,
-                                           tag = ctx.tag)
-            return $Ctx(metadata, pass, tag)
+                                           tag = ctx.tag,
+                                           metamodules = ctx.metamodules)
+            return $Ctx(metadata, pass, tag, metamodules)
         end
 
         # default primitives/execution definitions
@@ -57,6 +60,19 @@ macro context(Ctx)
             flattened_args = Core._apply(tuple, args...)
             return $Cassette.overdub_execute(__context__, f, flattened_args...)
         end
+
+        # TODO: add contextual primitives for:
+        #     Array{T,N}(...) -> tagged_new(...)
+        #     getfield(...) -> tagged_load(...)
+        #     setfield!(...) -> tagged_store!(...)
+        #     getindex(::Array, ::Int) -> tagged_load(...)
+        #     setindex!(::Array, ::Any, ::Int) -> tagged_store!(...)
+        #     _growbeg!(...) -> tagged_growbeg!(...)
+        #     _growat!(...) -> tagged_growat!(...)
+        #     _growend!(...) -> tagged_growend!(...)
+        #     _deletebeg!(...) -> tagged_deletebeg!(...)
+        #     _deleteat!(...) -> tagged_deleteat!(...)
+        #     _deleteend!(...) -> tagged_deleteend!(...)
     end)
 end
 

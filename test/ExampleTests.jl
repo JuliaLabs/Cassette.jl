@@ -265,6 +265,7 @@ end
 ############################################################################################
 # TODO: The below is a highly pathological function for metadata propagation; we should turn
 # it into an actual test
+
 #=
 const const_binding = Float64[]
 
@@ -278,13 +279,22 @@ mutable struct FooContainer
     foo::Foo
 end
 
+mutable struct MulFunc
+    x::Float64
+end
+
+(m::MulFunc)(x) = m.x * x
+
+const mulfunc = MulFunc(1.0)
+
 function f(x::Vector{Float64}, y::Vector{Float64})
     @assert length(x) === length(y)
     x = FooContainer(Foo(x))
     for i in 1:length(y)
         v = x.foo.vector[i]
         push!(const_binding, v)
-        global global_binding *= v
+        global global_binding *= mulfunc(v)
+        mulfunc.x = v
         x.foo = Foo(y)
         y = x.foo.vector
     end
