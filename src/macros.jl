@@ -92,6 +92,12 @@ must be callable with the following signature:
 Note that this macro expands to an `eval` call and thus should only be called at top-level.
 Furthermore, to avoid world-age issues, `transform` should not be overloaded after it has
 been registered with `@pass`.
+
+Note also that `transform` should be "relatively pure." More specifically, Julia's compiler
+has license to apply `transform` multiple times, even if only compiling a single method
+invocation once. Thus, it is required that `transform` always return a generically equivalent
+`CodeInfo` for a given context, method body, and signature ("generically equivalent" meaning
+`==`, not necessarily `===`).
 """
 macro pass(transform)
     Pass = gensym("PassType")
