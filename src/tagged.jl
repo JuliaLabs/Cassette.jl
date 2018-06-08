@@ -31,6 +31,9 @@ store!(x::Immutable, y) = error("cannot mutate immutable field")
 # `Meta` #
 ##########
 
+const MetaModule = Dict{Symbol,Any}
+const MetaModuleCache = IdDict{Module,Meta{NoMetaData,MetaModule}}
+
 struct NoMetaData end
 struct NoMetaMeta end
 
@@ -81,11 +84,13 @@ end
     if !(isconcretetype(T))
         return :(error("cannot call metametatype on non-concrete type ", $T))
     end
-    if T <: Array
+    if T <: Module
+        body = :(MetaModule)
+    elseif T <: Array
         body = :(Array{metatype(C, $(eltype(T))),$(ndims(T))})
     elseif fieldcount(T) == 0
         body = :(NoMetaMeta)
-    else # TODO: handle Modules
+    else
         S = isimmutable(T) ? :Immutable : :Mutable
         fnames = Expr(:tuple, map(Base.Meta.quot, fieldnames(T))...)
         ftypes = map(F -> :($S{metatype(C, $F)}), T.types)
@@ -97,18 +102,20 @@ end
     end
 end
 
-@generated function initmeta(::C, value::V, metadata::D, ::Val{isconst}) where {C<:AbstractContext,V,D,isconst}
+@generated function initmeta(context::C, value::V, metadata::D, ::Val{isconst}) where {C<:AbstractContext,V,D,isconst}
     if isconst
         metametatype_expr = :NoMetaMeta
         metameta_expr = :(NoMetaMeta())
     else
         metametatype_expr = :(metametatype(C, V))
         # TODO do we need to call `initmeta` recursively for the mutable cases?
-        if V <: Array
+        if V <: Module
+            metameta_expr = :(fetch_tagged_module(context, value))
+        elseif V <: Array
             metameta_expr = :(similar(value, eltype(M)))
         elseif fieldcount(V) == 0
             metameta_expr = :(NoMetaMeta())
-        else # TODO: handle Modules
+        else
             S = isimmutable(V) ? :Immutable : :Mutable
             fnames = fieldnames(V)
             fdatas = map(F -> :($S{metatype(C, $F)}(NOMETA), V.types)
@@ -196,9 +203,6 @@ end
 
 #=== `MetaModule` ===#
 
-const MetaModule = Dict{Symbol,Any}
-const MetaModuleCache = IdDict{Module,Meta{NoMetaData,MetaModule}}
-
 # TODO: We actually need to be able to call this kind of function at IR-generation time, as
 # opposed to at runtime. This is because, for fast methods (~ns), this fetch can cost
 # drastically more than the primal method invocation. We easily have the module at
@@ -215,7 +219,7 @@ end
 #=== `Binding` ===#
 
 mutable struct Binding
-    meta
+    meta::Any
     Binding() = new()
 end
 
@@ -271,12 +275,14 @@ end
 # `tagged_load` #
 #################
 
-function _tagged_load(context::AbstractContext{T}, x::Tagged{T}, y) where {T}
-    return tagged_load(context, x.value, x.meta.fields, untag(y, context))
+function _tagged_load(context::AbstractContext{T}, x::Tagged{T}, y, args...) where {T}
+    return tagged_load(context, x.value, x.meta.fields, untag(y, context), args...)
 end
 
-function tagged_load(context::AbstractContext, x::Array, _x::Array, index)
-    return Tagged(context.tag, x[index], _x[index])
+function tagged_load(context::AbstractContext, x::Array, _x::Array, index, boundscheck)
+    return Tagged(context.tag,
+                  Core.arrayref(boundscheck, x, index),
+                  Core.arrayref(boundscheck, _x, index))
 end
 
 function tagged_load(context::AbstractContext, x::Module, _x::MetaModule, binding)
@@ -291,16 +297,16 @@ end
 # `tagged_store!` #
 ###################
 
-function _tagged_store!(context::AbstractContext{T}, x::Tagged{T}, y, item) where {T}
-    item_meta = istagged(item, context) ? item.meta : NOMETA
+function _tagged_store!(context::AbstractContext{T}, x::Tagged{T}, y, item, args...) where {T}
     return tagged_store!(context, x.value, x.meta.fields,
                          untag(y, context), untag(item, context),
-                         item_meta)
+                         istagged(item, context) ? item.meta : NOMETA,
+                         args...)
 end
 
-function tagged_store!(context::AbstractContext, x::Array, _x::Array, index, item_value, item_meta)
-    x[index] = item_value
-    _x[index] = item_meta
+function tagged_store!(context::AbstractContext, x::Array, _x::Array, index, item_value, item_meta, boundscheck)
+    Core.arrayset(boundscheck, x, item_value, index)
+    Core.arrayset(boundscheck, x, item_meta, index)
     return nothing
 end
 

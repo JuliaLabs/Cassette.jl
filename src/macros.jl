@@ -54,10 +54,12 @@ macro context(Ctx)
             return $Ctx(metadata, pass, tag, metamodules)
         end
 
-        # default primitives/execution definitions
+        #=== default primitives/execution definitions ===#
+
         $Cassette.@primitive function $CtxTag(x) where {__CONTEXT__<:$Ctx}
             return $CtxTag(__context__.tag, x)
         end
+
         $Cassette.@execution function Core._apply(f, args...) where {__CONTEXT__<:$Ctx}
             flattened_args = Core._apply(tuple, args...)
             return $Cassette.overdub_execute(__context__, f, flattened_args...)
@@ -67,8 +69,8 @@ macro context(Ctx)
         #     Array{T,N}(...) -> tagged_new(...)
         #     getfield(...) -> tagged_load(...)
         #     setfield!(...) -> tagged_store!(...)
-        #     getindex(::Array, ::Int) -> tagged_load(...)
-        #     setindex!(::Array, ::Any, ::Int) -> tagged_store!(...)
+        #     arrayref(::Bool, ::Array, ::Int) -> tagged_load(...)
+        #     arrayset(::Bool, ::Array, ::Any, ::Int) -> tagged_store!(...)
         #     _growbeg!(...) -> tagged_growbeg!(...)
         #     _growat!(...) -> tagged_growat!(...)
         #     _growend!(...) -> tagged_growend!(...)
