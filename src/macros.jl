@@ -13,6 +13,9 @@ const CONTEXT_BINDING = Symbol("__context__")
 function generate_tag end
 function similar_context end
 
+# this @pure annotations has official vtjnash approval :p
+Base.@pure pure_objectid(x) = objectid(x)
+
 """
     Cassette.@context Ctx
 
@@ -24,9 +27,8 @@ macro context(Ctx)
     return esc(quote
         struct $CtxTag{E,H} <: $Cassette.AbstractTag end
 
-        # these @pure annotations have official vtjnash approval :p
-        Base.@pure $CtxTag(x) = $CtxTag($Cassette.BottomTag(), x)
-        Base.@pure $CtxTag(::E, ::X) where {E,X} = $CtxTag{E,objectid(X)}()
+        $CtxTag(x) = $CtxTag($Cassette.BottomTag(), x)
+        $CtxTag(::E, ::X) where {E,X} = $CtxTag{E,$Cassette.pure_objectid(X)}()
 
         struct $Ctx{M,P<:$Cassette.AbstractPass,T<:$CtxTag} <: $Cassette.AbstractContext{P,T}
             metadata::M
