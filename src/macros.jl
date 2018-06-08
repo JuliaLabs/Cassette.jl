@@ -39,7 +39,7 @@ macro context(Ctx)
 
         function $Ctx(;
                       metadata = nothing,
-                      pass::$Cassette.AbstractPass = $Cassette.UnusedPass(),
+                      pass::$Cassette.AbstractPass = $Cassette.NoPass(),
                       metamodules = $Cassette.MetaModuleCache())
             return $Ctx(metadata, pass, $CtxTag(nothing), metamodules)
         end

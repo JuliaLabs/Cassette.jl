@@ -50,7 +50,7 @@ const OVERDUB_ARGS_SYMBOL = gensym("overdub_arguments")
 # this function.
 function overdub_recurse_pass!(reflection::Reflection,
                                context_type::DataType,
-                               pass_type::DataType = UnusedPass)
+                               pass_type::DataType = NoPass)
     signature = reflection.signature
     method = reflection.method
     static_params = reflection.static_params
@@ -175,4 +175,4 @@ function overdub_recurse_definition(pass, line, file)
     end
 end
 
-@eval $(overdub_recurse_definition(:UnusedPass, @__LINE__, @__FILE__))
+@eval $(overdub_recurse_definition(:NoPass, @__LINE__, @__FILE__))

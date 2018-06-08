@@ -12,9 +12,9 @@ mutable struct Mutable{D} <: FieldStorage{D}
     Mutable{D}(data) where D = new{D}(data)
 end
 
-@inline load(x::Mutable) = x.data
+load(x::Mutable) = x.data
 
-@inline store!(x::Mutable, y) = (x.data = y)
+store!(x::Mutable, y) = (x.data = y)
 
 #=== `Immutable` ===#
 
@@ -23,39 +23,119 @@ struct Immutable{D} <: FieldStorage{D}
     Immutable{D}(data) where D = new{D}(data)
 end
 
-@inline load(x::Immutable) = x.data
+load(x::Immutable) = x.data
 
-@inline store!(x::Immutable, y) = error("cannot mutate immutable field")
+store!(x::Immutable, y) = error("cannot mutate immutable field")
 
 ##########
 # `Meta` #
 ##########
 
 struct NoMetaData end
-struct NoMetaFields end
+struct NoMetaMeta end
 
-struct Meta{D,F#=<:Union{NamedTuple,Array,MetaModule}=#}
+struct Meta{D,M#=<:Union{NamedTuple,Array,MetaModule}=#}
     data::Union{D,NoMetaData}
-    fields::Union{F,NoMetaFields}
+    meta::Union{M,NoMetaMeta}
 end
 
-# These defined to allow conversion of `Meta(NoMetaData,NoMetaFields)`
+const NOMETA = Meta(NoMetaData(), NoMetaMeta())
+
+# These defined to allow conversion of `Meta{NoMetaData,NoMetaMeta}`
 # into whatever metatype is expected by a container.
 Base.convert(::Type{M}, meta::M) where {M<:Meta} = meta
-Base.convert(::Type{Meta{D,F}}, meta::Meta) where {D,F} = Meta{D,F}(meta.data, meta.fields)
+Base.convert(::Type{Meta{D,F}}, meta::Meta) where {D,F} = Meta{D,F}(meta.data, meta.meta)
 
-# TODO metatype specification (should be relatively easy to port from the old implementation)
+#=== `metatype` specification ===#
+
+metadatatype(::Type{<:AbstractContext}, ::DataType) = NoMetaData
+
+#=
+The optimal metatype specification for a given non-leaftype is the union of the metatypes of
+its subtypes, and thus can be implemented as:
+
+```
+function metatype(::Type{C}, ::Type{T}) where {C,T}
+    if isconcretetype(T)
+        return Meta{metadatatype(C, T),metametatype(C, T)}
+    else
+        return Union{map(X -> metatype(C, X), subtypes(T))...}
+    end
+end
+```
+
+However, this is an expensive implementation of this operation. Thus, our actual `metatype`
+implementation returns a still-correct, but an extremely pessimistic metatype with the
+benefit that metatype computation is very fast. If, in the future, `metaype` is
+parameterized on world age, then we can call `subtypes` at compile time, and compute a more
+optimally bounded dualtype.
+=#
+function metatype(::Type{C}, ::Type{T}) where {C<:AbstractContext,T}
+    if isconcretetype(T)
+        return Meta{metadatatype(C, T),metametatype(C, T)}
+    end
+    return Meta
+end
+
+@generated function metametatype(::Type{C}, ::Type{T}) where {C<:AbstractContext,T}
+    if !(isconcretetype(T))
+        return :(error("cannot call metametatype on non-concrete type ", $T))
+    end
+    if T <: Array
+        body = :(Array{metatype(C, $(eltype(T))),$(ndims(T))})
+    elseif fieldcount(T) == 0
+        body = :(NoMetaMeta)
+    else # TODO: handle Modules
+        S = isimmutable(T) ? :Immutable : :Mutable
+        fnames = Expr(:tuple, map(Base.Meta.quot, fieldnames(T))...)
+        ftypes = map(F -> :($S{metatype(C, $F)}), T.types)
+        body = :(NamedTuple{$fnames,Tuple{$(ftypes...)}})
+    end
+    return quote
+        $(Expr(:meta, :inline))
+        $body
+    end
+end
+
+@generated function initmeta(::C, value::V, metadata::D, ::Val{isconst}) where {C<:AbstractContext,V,D,isconst}
+    if isconst
+        metametatype_expr = :NoMetaMeta
+        metameta_expr = :(NoMetaMeta())
+    else
+        metametatype_expr = :(metametatype(C, V))
+        # TODO do we need to call `initmeta` recursively for the mutable cases?
+        if V <: Array
+            metameta_expr = :(similar(value, eltype(M)))
+        elseif fieldcount(V) == 0
+            metameta_expr = :(NoMetaMeta())
+        else # TODO: handle Modules
+            S = isimmutable(V) ? :Immutable : :Mutable
+            fnames = fieldnames(V)
+            fdatas = map(F -> :($S{metatype(C, $F)}(NOMETA), V.types)
+            metameta_expr = Expr(:tuple)
+            for i in 1:fieldcount(V)
+                push!(metameta_expr.args, :($(fnames[i]) = $(fdatas[i])))
+            end
+        end
+    end
+    return quote
+        $(Expr(:meta, :inline))
+        _D = metadatatype(C, V)
+        M = $(metametatype_expr)
+        Meta{_D,M}(metadata, $metameta_expr)
+    end
+end
 
 ############
 # `Tagged` #
 ############
 
-struct Tagged{T<:AbstractTag,U,V,D,F}
+struct Tagged{T<:AbstractTag,U,V,D,M}
     tag::T
     value::V
-    meta::Meta{D,F}
-    function Tagged(tag::T, value::V, meta::Meta{D,F}) where {T<:AbstractTag,V,D,F}
-        return new{T,_underlying_type(V),V,D,F}(tag, value, meta)
+    meta::Meta{D,M}
+    function Tagged(tag::T, value::V, meta::Meta{D,M}) where {T<:AbstractTag,V,D,M}
+        return new{T,_underlying_type(V),V,D,M}(tag, value, meta)
     end
 end
 
@@ -66,8 +146,8 @@ _underlying_type(::Type{<:Tagged{<:AbstractTag,U}}) where {U} = U
 
 #=== `Tagged` API ===#
 
-function tag(context::AbstractContext, value, metadata = NoMetaData())
-    return Tagged(context.tag, value, initmeta(context, value, metadata))
+function tag(context::AbstractContext, value, metadata = NoMetaData(), isconst = Val(false))
+    return Tagged(context.tag, value, initmeta(context, value, metadata, isconst))
 end
 
 untag(x, context::AbstractContext) = untag(x, context.tag)
@@ -110,92 +190,127 @@ end
     end
 end
 
-###################################
-# `Module`/`GlobalRef` Primitives #
-###################################
+#######################
+# `Module` Primitives #
+#######################
+
+#=== `MetaModule` ===#
 
 const MetaModule = Dict{Symbol,Any}
 const MetaModuleCache = IdDict{Module,Meta{NoMetaData,MetaModule}}
 
-# TODO We actually need to be able to call this kind of function at IR-generation
-# time, as opposed to at runtime. This is because, for fast methods (~ns), this fetch
-# can cost drastically more than the primal method invocation. We easily have the
-# module at IR-generation time, but we don't have access to the actual context
-# object, implying we need to store/access this metamodule cache somewhere
-# else...
-function fetch_tagged_module(context::AbstractContext, m::Module)
-    if haskey(context.metamodules, m)
-        _m = context.metamodules[m]
-    else
-        _m = Meta(NoMetaData(), MetaModule())
-        context.metamodules[m] = _m
+# TODO: We actually need to be able to call this kind of function at IR-generation time, as
+# opposed to at runtime. This is because, for fast methods (~ns), this fetch can cost
+# drastically more than the primal method invocation. We easily have the module at
+# IR-generation time, but we don't have access to the actual context object.
+#
+# This `@pure` is vtjnash-approved. It should allow the compiler to do the above as an
+# optimization once we have support for it, e.g. loop invariant code motion
+@pure @noinline function fetch_tagged_module(context::AbstractContext, m::Module)
+    return get!(context.metamodules, m) do
+        Tagged(context.tag, m, Meta(NoMetaData(), MetaModule()))
     end
-    return Tagged(context.tag, m, _m::Meta{NoMetaData,MetaModule})
 end
 
-function _tagged_global_ref(m::Tagged, binding::Symbol, primal)
-    return tagged_global_ref(m.tag, m.value, m.meta.fields, binding, primal)
+#=== `Binding` ===#
+
+mutable struct Binding
+    meta
+    Binding() = new()
 end
 
-function tagged_global_ref(tag::AbstractTag, m::Module, _m::MetaModule, binding::Symbol, primal)
-    if isconst(m, binding) && isbits(primal)
+@pure @noinline function fetch_binding!(context::AbstractContext, m::Module, _m::MetaModule, name::Symbol)
+    return get!(_m, name) do
+        if isdefined(m, name)
+            return Binding(initmeta(context, getfield(m, name)))
+        else
+            # If this case occurs, it means there must be a context-observable assigment to
+            # the primal binding before we can access it again. This is okay because a) it's
+            # obvious that the primal program can't access bindings without defining them,
+            # and b) we already don't allow non-context-observable assignments that could
+            # invalidate the context's metadata.
+            return Binding()
+        end
+    end
+end
+
+function fetch_binding_meta!(context::AbstractContext, _m::MetaModule, name::Symbol, primal)
+    M = metatype(typeof(context), typeof(primal))
+    return convert(M, fetch_binding!(context, m, _m, name).meta)::M
+end
+
+#=== `GlobalRef` & assignment ===#
+
+function tagged_global_ref(context::AbstractContext{T}, m::Tagged{T}, name::Symbol, primal) where {T}
+    return tagged_module_load(context, m.value, m.meta.fields, name, primal)
+end
+
+function tagged_module_load(context::AbstractContext, m::Module, _m::MetaModule, name::Symbol, primal)
+    if isconst(m, name) && isbits(primal)
         # It's very important that this fast path exists and is taken with no runtime
         # overhead; this is the path that will be taken by, for example, access of simple
         # named function bindings.
         return primal
     else
-        # TODO: create entry in _m if not already available
-        # TODO: typeassert `_m[binding]`
-        return Tagged(tag, primal, _m[binding])
+        return Tagged(context.tag, primal, fetch_binding_meta!(context, _m, name, primal))
     end
 end
 
-function _tagged_global_ref_set_meta!(m::Tagged, binding::Symbol, primal)
-    # TODO
+# TODO: try to inline these operations into the IR so that the primal binding and meta
+# binding mutations occur directly next to one another
+function tagged_global_set!(context::AbstractContext{T}, m::Tagged{T}, name::Symbol, primal) where {T}
+    binding = fetch_binding!(context, m.value, m.meta.fields, name)
+    meta = istagged(primal, context) ? primal.meta : NOMETA
+    # this line is where the primal binding assignment should happen order-wise
+    binding.meta = meta
+    return nothing
 end
+
 
 #################
 # `tagged_load` #
 #################
 
-_tagged_load(x::Tagged, y) = tagged_load(x.tag, x.value, x.meta.fields, untag(y, x.tag))
-
-function tagged_load(tag::AbstractTag, x::Array, _x::Array, index)
-    return Tagged(tag, x[index], _x[index])
+function _tagged_load(context::AbstractContext{T}, x::Tagged{T}, y) where {T}
+    return tagged_load(context, x.value, x.meta.fields, untag(y, context))
 end
 
-function tagged_load(tag::AbstractTag, x::Module, _x::MetaModule, binding)
-    return tagged_global_ref(tag, x, _x, binding, getfield(x, binding))
+function tagged_load(context::AbstractContext, x::Array, _x::Array, index)
+    return Tagged(context.tag, x[index], _x[index])
 end
 
-function tagged_load(tag::AbstractTag, x, _x::NamedTuple, field)
-    return Tagged(tag, getfield(x, field), load(getfield(_x, field)))
+function tagged_load(context::AbstractContext, x::Module, _x::MetaModule, binding)
+    return tagged_module_load(context, x, _x, binding, getfield(x, binding))
+end
+
+function tagged_load(context::AbstractContext, x, _x::NamedTuple, field)
+    return Tagged(context.tag, getfield(x, field), load(getfield(_x, field)))
 end
 
 ###################
 # `tagged_store!` #
 ###################
 
-function _tagged_store!(x::Tagged, y, item)
-    item_meta = istagged(item, x.tag) ? item.meta : Meta(NoMetaData(), NoMetaFields())
-    return tagged_store!(x.tag, x.value, x.meta.fields,
-                         untag(y, x.tag), untag(item, x.tag),
+function _tagged_store!(context::AbstractContext{T}, x::Tagged{T}, y, item) where {T}
+    item_meta = istagged(item, context) ? item.meta : NOMETA
+    return tagged_store!(context, x.value, x.meta.fields,
+                         untag(y, context), untag(item, context),
                          item_meta)
 end
 
-function tagged_store!(tag::AbstractTag, x::Array, _x::Array, index, item_value, item_meta)
+function tagged_store!(context::AbstractContext, x::Array, _x::Array, index, item_value, item_meta)
     x[index] = item_value
     _x[index] = item_meta
     return nothing
 end
 
-function tagged_store!(tag::AbstractTag, x::Module, _x::MetaModule, binding, item_value, item_meta)
+function tagged_store!(context::AbstractContext, x::Module, _x::MetaModule, binding, item_value, item_meta)
     # Julia doesn't have a valid `setfield!`` for `Modules`, so we
     # should never run into this case in well-formed code anyway
     error("cannot assign variables in other modules")
 end
 
-function tagged_store!(tag::AbstractTag, x, _x::NamedTuple, field, item_value, item_meta)
+function tagged_store!(context::AbstractContext, x, _x::NamedTuple, field, item_value, item_meta)
     setfield!(x, field, item_value)
     store!(getfield(_x, field), item_meta)
     return nothing

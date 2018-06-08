@@ -7,8 +7,8 @@ using Core: CodeInfo, SlotNumber, NewvarNode, LabelNode, GotoNode, SSAValue
 using Logging
 
 abstract type AbstractPass end
-struct UnusedPass <: AbstractPass end
-(::Type{UnusedPass})(::Any, ::Any, code_info) = code_info
+struct NoPass <: AbstractPass end
+(::Type{NoPass})(::Any, ::Any, code_info) = code_info
 
 abstract type AbstractTag end
 struct BottomTag <: AbstractTag end
