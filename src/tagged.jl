@@ -30,6 +30,8 @@ store!(x::Immutable, y) = error("cannot mutate immutable field")
 ##########
 # `Meta` #
 ##########
+# TODO: Handle Tuples differently since integers
+# can't really be used as NamedTuple fieldnames
 
 const MetaModule = Dict{Symbol,Any}
 const MetaModuleCache = IdDict{Module,Meta{NoMetaData,MetaModule}}
@@ -47,7 +49,7 @@ const NOMETA = Meta(NoMetaData(), NoMetaMeta())
 # These defined to allow conversion of `Meta{NoMetaData,NoMetaMeta}`
 # into whatever metatype is expected by a container.
 Base.convert(::Type{M}, meta::M) where {M<:Meta} = meta
-Base.convert(::Type{Meta{D,F}}, meta::Meta) where {D,F} = Meta{D,F}(meta.data, meta.meta)
+Base.convert(::Type{Meta{D,M}}, meta::Meta) where {D,M} = Meta{D,M}(meta.data, meta.meta)
 
 #=== `metatype` specification ===#
 
@@ -68,10 +70,10 @@ end
 ```
 
 However, this is an expensive implementation of this operation. Thus, our actual `metatype`
-implementation returns a still-correct, but an extremely pessimistic metatype with the
+implementation returns a still-correct, but extremely pessimistic metatype with the
 benefit that metatype computation is very fast. If, in the future, `metaype` is
 parameterized on world age, then we can call `subtypes` at compile time, and compute a more
-optimally bounded dualtype.
+optimally bounded metatype.
 =#
 function metatype(::Type{C}, ::Type{T}) where {C<:AbstractContext,T}
     if isconcretetype(T)
@@ -91,9 +93,9 @@ end
     elseif fieldcount(T) == 0
         body = :(NoMetaMeta)
     else
-        S = isimmutable(T) ? :Immutable : :Mutable
+        F = isimmutable(T) ? :Immutable : :Mutable
         fnames = Expr(:tuple, map(Base.Meta.quot, fieldnames(T))...)
-        ftypes = map(F -> :($S{metatype(C, $F)}), T.types)
+        ftypes = map(X -> :($F{metatype(C, $X)}), T.types)
         body = :(NamedTuple{$fnames,Tuple{$(ftypes...)}})
     end
     return quote
@@ -108,7 +110,8 @@ end
         metameta_expr = :(NoMetaMeta())
     else
         metametatype_expr = :(metametatype(C, V))
-        # TODO do we need to call `initmeta` recursively for the mutable cases?
+        # TODO: do we need to call `initmeta` recursively for the mutable cases?
+        # this same question needs to be answered for `tagged_new`
         if V <: Module
             metameta_expr = :(fetch_tagged_module(context, value))
         elseif V <: Array
@@ -116,9 +119,9 @@ end
         elseif fieldcount(V) == 0
             metameta_expr = :(NoMetaMeta())
         else
-            S = isimmutable(V) ? :Immutable : :Mutable
+            F = isimmutable(V) ? :Immutable : :Mutable
             fnames = fieldnames(V)
-            fdatas = map(F -> :($S{metatype(C, $F)}(NOMETA), V.types)
+            fdatas = map(X -> :($F{metatype(C, $X)}(NOMETA), V.types)
             metameta_expr = Expr(:tuple)
             for i in 1:fieldcount(V)
                 push!(metameta_expr.args, :($(fnames[i]) = $(fdatas[i])))
@@ -137,6 +140,11 @@ end
 # `Tagged` #
 ############
 
+#=
+Here, `U` is the innermost, "underlying" type of the value being wrapped. This parameter is
+precomputed so that Cassette can directly dispatch on it in signatures generated for
+contextual primitives.
+=#
 struct Tagged{T<:AbstractTag,U,V,D,M}
     tag::T
     value::V
@@ -180,12 +188,47 @@ hasmetadata(x, tag::AbstractTag) = isa(metadata(x, tag), NoMetaData)
 # `tagged_new` #
 ################
 
+# Note that `new` supports 0 to N arguments for objects of fieldcount N; trailing unspecified
+# arguments are left uninitialized if their corresponding field type is mutable.
 @generated function tagged_new(context::C, ::Type{T}, args...) where {C<:AbstractContext,T}
-
+    untagged_args = [:(untagged(args[$i], context)) for i in 1:length(args)]
+    tagged_count = 0
+    fields = Expr(:tuple)
+    fnames = fieldnames(T)
+    ftypes = [fieldtype(T, i) for i in 1:fieldcount(T)]
+    F = isimmutable(T) ? :Immutable : :Mutable
+    for i in 1:nfields(args)
+        if args[i] <: Tagged{C}
+            tagged_count += 1
+            argmeta = :(args[$i].meta)
+        else
+            argmeta = :NOMETA
+        end
+        ftype = :(metatype(C, $(ftypes[i])))
+        push!(fields.args, :($(fnames[i]) = $F{$ftype}($argmeta)))
+    end
+    for i in (nfields(args) + 1):fieldcount(T)
+        ftype = :(metatype(C, $(ftypes[i])))
+        push!(fields.args, :($(fnames[i]) = $F{$ftype}(NOMETA)))
+    end
+    if tagged_count == 0 && isbits(T)
+        return quote
+            $(Expr(:meta, :inline))
+            _new(T, $(args...))
+        end
+    else
+        return quote
+            $(Expr(:meta, :inline))
+            M = metatype(C, T)
+            return Tagged(context,
+                          _new(T, $(untagged_args...)),
+                          convert(M, Meta(NoMetaData(), $fields)))
+        end
+    end
 end
 
 @generated function tagged_new(context::C, ::Type{T}, args...) where {C<:AbstractContext,T<:Array}
-
+    # TODO
 end
 
 # TODO: tagged_new for Module?
