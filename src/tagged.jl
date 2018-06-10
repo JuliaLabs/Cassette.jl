@@ -71,7 +71,7 @@ end
 
 However, this is an expensive implementation of this operation. Thus, our actual `metatype`
 implementation returns a still-correct, but extremely pessimistic metatype with the
-benefit that metatype computation is very fast. If, in the future, `metaype` is
+benefit that metatype computation is very fast. If, in the future, `metatype` is
 parameterized on world age, then we can call `subtypes` at compile time, and compute a more
 optimally bounded metatype.
 =#
