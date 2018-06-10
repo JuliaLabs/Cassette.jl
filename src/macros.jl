@@ -60,7 +60,7 @@ macro context(Ctx)
             return $CtxTag(__context__.tag, x)
         end
 
-        $Cassette.@execution function Core._apply(f, args...) where {__CONTEXT__<:$Ctx}
+        $Cassette.@primitive function Core._apply(f, args...) where {__CONTEXT__<:$Ctx}
             flattened_args = Core._apply(tuple, args...)
             return $Cassette.overdub_execute(__context__, f, flattened_args...)
         end

@@ -30,8 +30,6 @@ store!(x::Immutable, y) = error("cannot mutate immutable field")
 ##########
 # `Meta` #
 ##########
-# TODO: Handle Tuples differently since integers
-# can't really be used as NamedTuple fieldnames
 
 const MetaModule = Dict{Symbol,Any}
 const MetaModuleCache = IdDict{Module,Meta{NoMetaData,MetaModule}}
@@ -39,7 +37,7 @@ const MetaModuleCache = IdDict{Module,Meta{NoMetaData,MetaModule}}
 struct NoMetaData end
 struct NoMetaMeta end
 
-struct Meta{D,M#=<:Union{NamedTuple,Array,MetaModule}=#}
+struct Meta{D,M#=<:Union{Tuple,NamedTuple,Array,MetaModule}=#}
     data::Union{D,NoMetaData}
     meta::Union{M,NoMetaMeta}
 end
@@ -51,9 +49,9 @@ const NOMETA = Meta(NoMetaData(), NoMetaMeta())
 Base.convert(::Type{M}, meta::M) where {M<:Meta} = meta
 Base.convert(::Type{Meta{D,M}}, meta::Meta) where {D,M} = Meta{D,M}(meta.data, meta.meta)
 
-#=== `metatype` specification ===#
-
-metadatatype(::Type{<:AbstractContext}, ::DataType) = NoMetaData
+############################
+# `metatype` specification #
+############################
 
 #=
 The optimal metatype specification for a given non-leaftype is the union of the metatypes of
@@ -82,21 +80,28 @@ function metatype(::Type{C}, ::Type{T}) where {C<:AbstractContext,T}
     return Meta
 end
 
+#=== metadatatype ===#
+
+metadatatype(::Type{<:AbstractContext}, ::DataType) = NoMetaData
+
+#=== metametatype ===#
+
 @generated function metametatype(::Type{C}, ::Type{T}) where {C<:AbstractContext,T}
     if !(isconcretetype(T))
         return :(error("cannot call metametatype on non-concrete type ", $T))
     end
-    if T <: Module
-        body = :(MetaModule)
-    elseif T <: Array
-        body = :(Array{metatype(C, $(eltype(T))),$(ndims(T))})
-    elseif fieldcount(T) == 0
+    if fieldcount(T) == 0
         body = :(NoMetaMeta)
     else
         F = isimmutable(T) ? :Immutable : :Mutable
-        fnames = Expr(:tuple, map(Base.Meta.quot, fieldnames(T))...)
-        ftypes = map(X -> :($F{metatype(C, $X)}), T.types)
-        body = :(NamedTuple{$fnames,Tuple{$(ftypes...)}})
+        ftypes = [:($F{metatype(C, $(fieldtype(T, i)))}) for i in 1:fieldcount(T)]
+        tuplemetatype = :(Tuple{$(ftypes...)})
+        if T <: Tuple
+            body = tuplemetatype
+        else
+            fnames = Expr(:tuple, map(Base.Meta.quot, fieldnames(T))...)
+            body = :(NamedTuple{$fnames,$tuplemetatype})
+        end
     end
     return quote
         $(Expr(:meta, :inline))
@@ -104,35 +109,55 @@ end
     end
 end
 
+@generated function metametatype(::Type{C}, ::Type{T}) where {C<:AbstractContext,T<:Array}
+    return quote
+        $(Expr(:meta, :inline))
+        Array{metatype(C, $(eltype(T))),$(ndims(T))}
+    end
+end
+
+@inline metametatype(::Type{C}, ::Type{Module}) where {C<:AbstractContext} = MetaModule
+
+#=== initmetameta ===#
+
+@inline initmetameta(context::AbstractContext, value::Module) = fetch_tagged_module(context, value)
+
+@inline initmetameta(context::C, value::Array{T}) where {C<:AbstractContext,T} = similar(value, metatype(C, T))
+
+function initmetameta(context::C, value::V) where {C<:AbstractContext,V}
+    if fieldcount(V) == 0
+        metameta_expr = :(NoMetaMeta())
+    else
+        F = isimmutable(V) ? :Immutable : :Mutable
+        ftypes = [:($F{metatype(C, $(fieldtype(T, i)))}) for i in 1:fieldcount(T)]
+        fdatas = [:($S(NOMETA)) for S in ftypes]
+        metameta_expr = Expr(:tuple, fdatas...)
+        if !(T <: Tuple)
+            fnames = fieldnames(V)
+            for i in 1:fieldcount(V)
+                metameta_expr[i] = :($(fnames[i]) = $(metameta_expr[i]))
+            end
+        end
+    end
+    return quote
+        $(Expr(:meta, :inline))
+        $(metameta_expr)
+    end
+end
+
+#=== initmeta ===#
+
 @generated function initmeta(context::C, value::V, metadata::D, ::Val{isconst}) where {C<:AbstractContext,V,D,isconst}
     if isconst
         metametatype_expr = :NoMetaMeta
         metameta_expr = :(NoMetaMeta())
     else
         metametatype_expr = :(metametatype(C, V))
-        # TODO: do we need to call `initmeta` recursively for the mutable cases?
-        # this same question needs to be answered for `tagged_new`
-        if V <: Module
-            metameta_expr = :(fetch_tagged_module(context, value))
-        elseif V <: Array
-            metameta_expr = :(similar(value, eltype(M)))
-        elseif fieldcount(V) == 0
-            metameta_expr = :(NoMetaMeta())
-        else
-            F = isimmutable(V) ? :Immutable : :Mutable
-            fnames = fieldnames(V)
-            fdatas = map(X -> :($F{metatype(C, $X)}(NOMETA), V.types)
-            metameta_expr = Expr(:tuple)
-            for i in 1:fieldcount(V)
-                push!(metameta_expr.args, :($(fnames[i]) = $(fdatas[i])))
-            end
-        end
+        metameta_expr = :(initmetameta(context, value))
     end
     return quote
         $(Expr(:meta, :inline))
-        _D = metadatatype(C, V)
-        M = $(metametatype_expr)
-        Meta{_D,M}(metadata, $metameta_expr)
+        Meta{metadatatype(C, V),$(metametatype_expr)}(metadata, $(metameta_expr))
     end
 end
 
@@ -171,7 +196,7 @@ untag(x, tag::AbstractTag) = x
 
 untagtype(::Type{X}, ::Type{<:AbstractContext{P,T}}) where {X,P,T} = untagtype(X, T)
 untagtype(::Type{<:Tagged{T,U,V}}, ::Type{T}) where {T<:AbstractTag,U,V} = V
-untagtype(::Type{X}, ::Type{<:AbstractTag}) = X
+untagtype(::Type{X}, ::Type{<:AbstractTag}) where {X} = X
 
 metadata(x, context::AbstractContext) = metadata(x, context.tag)
 metadata(x::Tagged{T}, tag::T) where {T<:AbstractTag} = x.meta.data
@@ -181,6 +206,10 @@ istagged(x, context::AbstractContext) = istagged(x, context.tag)
 istagged(x::Tagged{T}, tag::T) where {T<:AbstractTag} = true
 istagged(x, tag::AbstractTag) = false
 
+istaggedtype(::Type{X}, ::Type{<:AbstractContext{P,T}}) where {X,P,T} = istaggedtype(X, T)
+istaggedtype(::Type{<:Tagged{T}}, ::Type{T}) where {T<:AbstractTag} = true
+istaggedtype(::Type{<:Any}, ::Type{<:AbstractTag}) = false
+
 hasmetadata(x, context::AbstractContext) = hasmetadata(x, context.tag)
 hasmetadata(x, tag::AbstractTag) = isa(metadata(x, tag), NoMetaData)
 
@@ -188,35 +217,49 @@ hasmetadata(x, tag::AbstractTag) = isa(metadata(x, tag), NoMetaData)
 # `tagged_new` #
 ################
 
-# Note that `new` supports 0 to N arguments for objects of fieldcount N; trailing unspecified
-# arguments are left uninitialized if their corresponding field type is mutable.
 @generated function tagged_new(context::C, ::Type{T}, args...) where {C<:AbstractContext,T}
-    untagged_args = [:(untagged(args[$i], context)) for i in 1:length(args)]
     tagged_count = 0
     fields = Expr(:tuple)
-    fnames = fieldnames(T)
     ftypes = [fieldtype(T, i) for i in 1:fieldcount(T)]
     F = isimmutable(T) ? :Immutable : :Mutable
+
+    # build `fields` expr from `args` (destructure any metadata present in arguments)
     for i in 1:nfields(args)
-        if args[i] <: Tagged{C}
+        if istaggedtype(args[i], C)
             tagged_count += 1
             argmeta = :(args[$i].meta)
         else
             argmeta = :NOMETA
         end
         ftype = :(metatype(C, $(ftypes[i])))
-        push!(fields.args, :($(fnames[i]) = $F{$ftype}($argmeta)))
+        push!(fields.args, :($F{$ftype}($argmeta)))
     end
-    for i in (nfields(args) + 1):fieldcount(T)
-        ftype = :(metatype(C, $(ftypes[i])))
-        push!(fields.args, :($(fnames[i]) = $F{$ftype}(NOMETA)))
-    end
-    if tagged_count == 0 && isbits(T)
+
+    if tagged_count == 0 && isbits(T) # no tagged args present
+        # return expr constructing the new object as-is
         return quote
             $(Expr(:meta, :inline))
             _new(T, $(args...))
         end
-    else
+    else # there were tagged args, so we continue
+
+        # build the rest of the `fields` expr, if there are fields left over that were not
+        # populated by the given `args` (since `new` supports 0 to N arguments for objects
+        # of fieldcount N).
+        for i in (nfields(args) + 1):fieldcount(T)
+            ftype = :(metatype(C, $(ftypes[i])))
+            push!(fields.args, :($F{$ftype}(NOMETA)))
+        end
+
+        if !(T <: Tuple) # if fields are identified by name as well as position, use the names
+            fnames = fieldnames(T)
+            for i in 1:fieldcount(T)
+                fields.args[i] = :($(fnames[i]) = $(fields.args[i]))
+            end
+        end
+
+        # return expr that constructs the new Tagged object
+        untagged_args = [:(untagged(args[$i], context)) for i in 1:length(args)]
         return quote
             $(Expr(:meta, :inline))
             M = metatype(C, T)
@@ -252,7 +295,7 @@ end
 # IR-generation time, but we don't have access to the actual context object.
 #
 # This `@pure` is vtjnash-approved. It should allow the compiler to do the above as an
-# optimization once we have support for it, e.g. loop invariant code motion
+# optimization once we have support for it, e.g. loop invariant code motion.
 @pure @noinline function fetch_tagged_module(context::AbstractContext, m::Module)
     return get!(context.metamodules, m) do
         Tagged(context.tag, m, Meta(NoMetaData(), MetaModule()))
@@ -332,7 +375,7 @@ function tagged_load(context::AbstractContext, x::Module, _x::MetaModule, bindin
     return tagged_module_load(context, x, _x, binding, getfield(x, binding))
 end
 
-function tagged_load(context::AbstractContext, x, _x::NamedTuple, field)
+function tagged_load(context::AbstractContext, x, _x::Union{NamedTuple,Tuple}, field)
     return Tagged(context.tag, getfield(x, field), load(getfield(_x, field)))
 end
 
@@ -359,7 +402,7 @@ function tagged_store!(context::AbstractContext, x::Module, _x::MetaModule, bind
     error("cannot assign variables in other modules")
 end
 
-function tagged_store!(context::AbstractContext, x, _x::NamedTuple, field, item_value, item_meta)
+function tagged_store!(context::AbstractContext, x, _x::Union{NamedTuple,Tuple}, field, item_value, item_meta)
     setfield!(x, field, item_value)
     store!(getfield(_x, field), item_meta)
     return nothing
