@@ -11,7 +11,7 @@
 
 - Cassette is currently poorly documented. I hope for this to change in the following months.
 
-Last updated for Julia commit: f1b23284bb881023d3581053640f025f071a7f9c
+- Cassette was last updated against Julia commit: f1b23284bb881023d3581053640f025f071a7f9c
 
 ## Overview
 
