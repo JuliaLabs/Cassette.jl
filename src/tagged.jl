@@ -13,7 +13,6 @@ mutable struct Mutable{D} <: FieldStorage{D}
 end
 
 load(x::Mutable) = x.data
-
 store!(x::Mutable, y) = (x.data = y)
 
 #=== `Immutable` ===#
@@ -24,20 +23,16 @@ struct Immutable{D} <: FieldStorage{D}
 end
 
 load(x::Immutable) = x.data
-
 store!(x::Immutable, y) = error("cannot mutate immutable field")
 
 ##########
 # `Meta` #
 ##########
 
-const MetaModule = Dict{Symbol,Any}
-const MetaModuleCache = IdDict{Module,Meta{NoMetaData,MetaModule}}
-
 struct NoMetaData end
 struct NoMetaMeta end
 
-struct Meta{D,M#=<:Union{Tuple,NamedTuple,Array,MetaModule}=#}
+struct Meta{D,M#=<:Union{Tuple,NamedTuple,Array,ModuleMeta}=#}
     data::Union{D,NoMetaData}
     meta::Union{M,NoMetaMeta}
 end
@@ -48,6 +43,91 @@ const NOMETA = Meta(NoMetaData(), NoMetaMeta())
 # into whatever metatype is expected by a container.
 Base.convert(::Type{M}, meta::M) where {M<:Meta} = meta
 Base.convert(::Type{Meta{D,M}}, meta::Meta) where {D,M} = Meta{D,M}(meta.data, meta.meta)
+
+##############################
+# `ModuleMeta`/`BindingMeta` #
+##############################
+
+mutable struct BindingMeta
+    data::Any
+    BindingMeta() = new()
+end
+
+const BindingMetaDict = Dict{Symbol,BindingMeta}
+const BindingMetaCache = IdDict{Module,BindingMetaDict}
+
+struct ModuleMeta{D,M}
+    name::Meta{D,M}
+    bindings::BindingMetaDict
+end
+
+# TODO: For fast methods (~ns), this fetch can cost drastically more than the primal method
+# invocation. We easily have the module at compile time, but we don't have access to the
+# actual context object. This `@pure` is vtjnash-approved. It should allow the compiler to
+# optimize away the fetch once we have support for it, e.g. loop invariant code motion.
+@pure @noinline function fetch_tagged_module(context::AbstractContext, m::Module)
+    bindings = get!(() -> BindingMetaDict(), context.bindings, m)
+    return Tagged(context.tag, m, Meta(NoMetaData(), ModuleMeta(NOMETA, bindings)))
+end
+
+@pure @noinline function _fetch_binding_meta!(context::AbstractContext,
+                                              m::Module,
+                                              bindings::BindingMetaDict,
+                                              name::Symbol)
+    return get!(bindings, name) do
+        if isdefined(m, name)
+            return BindingMeta(initmeta(context, getfield(m, name)))
+        else
+            # If this case occurs, it means there must be a context-observable assigment to
+            # the primal binding before we can access it again. This is okay because a) it's
+            # obvious that the primal program can't access bindings without defining them,
+            # and b) we already don't allow non-context-observable assignments that could
+            # invalidate the context's metadata.
+            return BindingMeta()
+        end
+    end
+end
+
+function fetch_binding_meta!(context::AbstractContext,
+                             m::Module,
+                             bindings::BindingMetaDict,
+                             name::Symbol,
+                             primal)
+    M = metatype(typeof(context), typeof(primal))
+    return convert(M, _fetch_binding_meta!(context, m, bindings, name).data)::M
+end
+
+function tagged_global_ref(context::AbstractContext{T},
+                           m::Tagged{T},
+                           name::Symbol,
+                           primal) where {T}
+    return _tagged_global_ref(context, m.value, m.meta.meta.bindings, name, primal)
+end
+
+function _tagged_global_ref(context::AbstractContext,
+                            m::Module,
+                            bindings::BindingMetaDict,
+                            name::Symbol,
+                            primal)
+    if isconst(m, name) && isbits(primal)
+        # It's very important that this fast path exists and is taken with no runtime
+        # overhead; this is the path that will be taken by, for example, access of simple
+        # named function bindings.
+        return primal
+    else
+        return Tagged(context.tag, primal, fetch_binding_meta!(context, m, bindings, name, primal))
+    end
+end
+
+# TODO: try to inline these operations into the IR so that the primal binding and meta
+# binding mutations occur directly next to one another
+function tagged_global_set!(context::AbstractContext{T}, m::Tagged{T}, name::Symbol, primal) where {T}
+    binding = fetch_binding!(context, m.value, m.meta.meta.bindings, name)
+    meta = istagged(primal, context) ? primal.meta : NOMETA
+    # this line is where the primal binding assignment should happen order-wise
+    binding.meta = meta
+    return nothing
+end
 
 ############################
 # `metatype` specification #
@@ -116,11 +196,13 @@ end
     end
 end
 
-@inline metametatype(::Type{C}, ::Type{Module}) where {C<:AbstractContext} = MetaModule
+@inline function metametatype(::Type{C}, ::Type{Module}) where {C<:AbstractContext}
+    return ModuleMeta{metadatatype(C, Symbol), metametatype(C, Symbol)}
+end
 
 #=== initmetameta ===#
 
-@inline initmetameta(context::AbstractContext, value::Module) = fetch_tagged_module(context, value)
+@inline initmetameta(context::AbstractContext, value::Module) = fetch_tagged_module(context, value).meta
 
 @inline initmetameta(context::C, value::Array{T}) where {C<:AbstractContext,T} = similar(value, metatype(C, T))
 
@@ -147,18 +229,8 @@ end
 
 #=== initmeta ===#
 
-@generated function initmeta(context::C, value::V, metadata::D, ::Val{isconst}) where {C<:AbstractContext,V,D,isconst}
-    if isconst
-        metametatype_expr = :NoMetaMeta
-        metameta_expr = :(NoMetaMeta())
-    else
-        metametatype_expr = :(metametatype(C, V))
-        metameta_expr = :(initmetameta(context, value))
-    end
-    return quote
-        $(Expr(:meta, :inline))
-        Meta{metadatatype(C, V),$(metametatype_expr)}(metadata, $(metameta_expr))
-    end
+@inline function initmeta(context::C, value::V, metadata::D) where {C<:AbstractContext,V,D}
+    return Meta{metadatatype(C, V),metametatype(C, V)}(metadata, initmetameta(context, value))
 end
 
 ############
@@ -186,8 +258,8 @@ _underlying_type(::Type{<:Tagged{<:AbstractTag,U}}) where {U} = U
 
 #=== `Tagged` API ===#
 
-function tag(context::AbstractContext, value, metadata = NoMetaData(), isconst = Val(false))
-    return Tagged(context.tag, value, initmeta(context, value, metadata, isconst))
+function tag(context::AbstractContext, value, metadata = NoMetaData())
+    return Tagged(context.tag, value, initmeta(context, value, metadata))
 end
 
 untag(x, context::AbstractContext) = untag(x, context.tag)
@@ -239,10 +311,9 @@ hasmetadata(x, tag::AbstractTag) = !isa(metadata(x, tag), NoMetaData)
         # return expr constructing the new object as-is
         return quote
             $(Expr(:meta, :inline))
-            _new(T, $(args...))
+            $(Expr(:new, T, Expr(:..., :args)))
         end
     else # there were tagged args, so we continue
-
         # build the rest of the `fields` expr, if there are fields left over that were not
         # populated by the given `args` (since `new` supports 0 to N arguments for objects
         # of fieldcount N).
@@ -250,21 +321,19 @@ hasmetadata(x, tag::AbstractTag) = !isa(metadata(x, tag), NoMetaData)
             ftype = :(metatype(C, $(ftypes[i])))
             push!(fields.args, :($F{$ftype}(NOMETA)))
         end
-
         if !(T <: Tuple) # if fields are identified by name as well as position, use the names
             fnames = fieldnames(T)
             for i in 1:fieldcount(T)
                 fields.args[i] = :($(fnames[i]) = $(fields.args[i]))
             end
         end
-
         # return expr that constructs the new Tagged object
-        untagged_args = [:(untagged(args[$i], context)) for i in 1:length(args)]
+        untagged_args = [:(untagged(args[$i], context)) for i in 1:nfields(args)]
         return quote
             $(Expr(:meta, :inline))
             M = metatype(C, T)
             return Tagged(context,
-                          _new(T, $(untagged_args...)),
+                          $(Expr(:new, T, untagged_args...)),
                           convert(M, Meta(NoMetaData(), $fields)))
         end
     end
@@ -274,88 +343,23 @@ end
     # TODO
 end
 
-# TODO: tagged_new for Module?
-
-@generated function _new(::Type{T}, args...) where {T}
+@generated function tagged_new(context::C, ::Type{Module}, args...) where {C<:AbstractContext}
+    if istaggedtype(args[1], C)
+        return_expr = quote
+            Tagged(tagged_module.tag, tagged_module.value,
+                   Meta(NoMetaData(),
+                        ModuleMeta(args[1].meta, tagged_module.meta.meta.bindings)))
+        end
+    else
+        return_expr = :(tagged_module)
+    end
     return quote
         $(Expr(:meta, :inline))
-        $(Expr(:new, T, [:(args[$i]) for i in 1:nfields(args)]...))
+        new_module = Module(args...)
+        tagged_module = fetch_tagged_module(context, new_module)
+        return $return_expr
     end
 end
-
-#######################
-# `Module` Primitives #
-#######################
-
-#=== `MetaModule` ===#
-
-# TODO: We actually need to be able to call this kind of function at IR-generation time, as
-# opposed to at runtime. This is because, for fast methods (~ns), this fetch can cost
-# drastically more than the primal method invocation. We easily have the module at
-# IR-generation time, but we don't have access to the actual context object.
-#
-# This `@pure` is vtjnash-approved. It should allow the compiler to do the above as an
-# optimization once we have support for it, e.g. loop invariant code motion.
-@pure @noinline function fetch_tagged_module(context::AbstractContext, m::Module)
-    return get!(context.metamodules, m) do
-        Tagged(context.tag, m, Meta(NoMetaData(), MetaModule()))
-    end
-end
-
-#=== `Binding` ===#
-
-mutable struct Binding
-    meta::Any
-    Binding() = new()
-end
-
-@pure @noinline function fetch_binding!(context::AbstractContext, m::Module, _m::MetaModule, name::Symbol)
-    return get!(_m, name) do
-        if isdefined(m, name)
-            return Binding(initmeta(context, getfield(m, name)))
-        else
-            # If this case occurs, it means there must be a context-observable assigment to
-            # the primal binding before we can access it again. This is okay because a) it's
-            # obvious that the primal program can't access bindings without defining them,
-            # and b) we already don't allow non-context-observable assignments that could
-            # invalidate the context's metadata.
-            return Binding()
-        end
-    end
-end
-
-function fetch_binding_meta!(context::AbstractContext, _m::MetaModule, name::Symbol, primal)
-    M = metatype(typeof(context), typeof(primal))
-    return convert(M, fetch_binding!(context, m, _m, name).meta)::M
-end
-
-#=== `GlobalRef` & assignment ===#
-
-function tagged_global_ref(context::AbstractContext{T}, m::Tagged{T}, name::Symbol, primal) where {T}
-    return tagged_module_load(context, m.value, m.meta.fields, name, primal)
-end
-
-function tagged_module_load(context::AbstractContext, m::Module, _m::MetaModule, name::Symbol, primal)
-    if isconst(m, name) && isbits(primal)
-        # It's very important that this fast path exists and is taken with no runtime
-        # overhead; this is the path that will be taken by, for example, access of simple
-        # named function bindings.
-        return primal
-    else
-        return Tagged(context.tag, primal, fetch_binding_meta!(context, _m, name, primal))
-    end
-end
-
-# TODO: try to inline these operations into the IR so that the primal binding and meta
-# binding mutations occur directly next to one another
-function tagged_global_set!(context::AbstractContext{T}, m::Tagged{T}, name::Symbol, primal) where {T}
-    binding = fetch_binding!(context, m.value, m.meta.fields, name)
-    meta = istagged(primal, context) ? primal.meta : NOMETA
-    # this line is where the primal binding assignment should happen order-wise
-    binding.meta = meta
-    return nothing
-end
-
 
 #################
 # `tagged_load` #
@@ -408,10 +412,11 @@ function tagged_store!(context::AbstractContext, x, _x::Union{NamedTuple,Tuple},
     return nothing
 end
 
-############################
-# Other `Array` Primitives #
-############################
+####################
+# Other Primitives #
+####################
 # TODO
+# nameof
 # _growbeg!
 # _growat!
 # _growend!

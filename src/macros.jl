@@ -34,14 +34,14 @@ macro context(Ctx)
             metadata::M
             pass::P
             tag::T
-            metamodules::$Cassette.MetaModuleCache
+            bindings::$Cassette.BindingMetaCache
         end
 
         function $Ctx(;
                       metadata = nothing,
                       pass::$Cassette.AbstractPass = $Cassette.NoPass(),
-                      metamodules = $Cassette.MetaModuleCache())
-            return $Ctx(metadata, pass, $CtxTag(nothing), metamodules)
+                      bindings = $Cassette.BindingMetaCache())
+            return $Ctx(metadata, pass, $CtxTag(nothing), bindings)
         end
 
         $Cassette.generate_tag(ctx::$Ctx, f) = $CtxTag(f)
@@ -50,8 +50,8 @@ macro context(Ctx)
                                            metadata = ctx.metadata,
                                            pass = ctx.pass,
                                            tag = ctx.tag,
-                                           metamodules = ctx.metamodules)
-            return $Ctx(metadata, pass, tag, metamodules)
+                                           bindings = ctx.bindings)
+            return $Ctx(metadata, pass, tag, bindings)
         end
 
         #=== default primitives/execution definitions ===#
@@ -77,6 +77,7 @@ macro context(Ctx)
         #     _deletebeg!(...) -> tagged_deletebeg!(...)
         #     _deleteat!(...) -> tagged_deleteat!(...)
         #     _deleteend!(...) -> tagged_deleteend!(...)
+        #     nameof(::Module) -> tagged_nameof(...)
     end)
 end
 
