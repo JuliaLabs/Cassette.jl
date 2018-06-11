@@ -211,7 +211,7 @@ istaggedtype(::Type{<:Tagged{T}}, ::Type{T}) where {T<:AbstractTag} = true
 istaggedtype(::Type{<:Any}, ::Type{<:AbstractTag}) = false
 
 hasmetadata(x, context::AbstractContext) = hasmetadata(x, context.tag)
-hasmetadata(x, tag::AbstractTag) = isa(metadata(x, tag), NoMetaData)
+hasmetadata(x, tag::AbstractTag) = !isa(metadata(x, tag), NoMetaData)
 
 ################
 # `tagged_new` #
