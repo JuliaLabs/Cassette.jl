@@ -319,6 +319,8 @@ function typify_signature(signature)
     error("malformed signature: $signature")
 end
 
+# TODO: bring back `@Tagged`?
+
 function contextual_definition!(f, method)
     @assert is_method_definition(method)
     signature, body = method.args
