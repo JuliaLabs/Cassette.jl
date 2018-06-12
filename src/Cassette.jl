@@ -6,14 +6,14 @@ using Core: CodeInfo, SlotNumber, NewvarNode, LabelNode, GotoNode, SSAValue
 
 using Logging
 
+abstract type AbstractTag end
+struct BottomTag <: AbstractTag end
+
 abstract type AbstractPass end
 struct NoPass <: AbstractPass end
 (::Type{NoPass})(::Any, ::Any, code_info) = code_info
 
-abstract type AbstractTag end
-struct BottomTag <: AbstractTag end
-
-abstract type AbstractContext{P<:AbstractPass,T<:AbstractTag} end
+abstract type AbstractContext{T<:AbstractTag,P<:AbstractPass,B} end
 
 include("utilities.jl")
 include("tagged.jl")

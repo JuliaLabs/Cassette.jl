@@ -134,7 +134,7 @@ function overdub_recurse_pass!(reflection::Reflection,
 end
 
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
-function overdub_recurse_generator(pass_type, self, context_type, args::Tuple)
+function overdub_recurse_generator(tag_type, pass_type, self, context_type, args::Tuple)
     try
         reflection = reflect(args) # TODO unboxtype `args`
         if isa(reflection, Reflection)
@@ -160,14 +160,14 @@ end
 
 function overdub_recurse_definition(pass, line, file)
     return quote
-        function overdub_recurse($OVERDUB_CTX_SYMBOL::AbstractContext{pass}, $OVERDUB_ARGS_SYMBOL...) where {pass<:$pass}
+        function overdub_recurse($OVERDUB_CTX_SYMBOL::AbstractContext{tag,pass}, $OVERDUB_ARGS_SYMBOL...) where {tag,pass<:$pass}
             $(Expr(:meta,
                    :generated,
                    Expr(:new,
                         Core.GeneratedFunctionStub,
                         :overdub_recurse_generator,
                         Any[:overdub_recurse, OVERDUB_CTX_SYMBOL, OVERDUB_ARGS_SYMBOL],
-                        Any[:pass],
+                        Any[:tag, :pass],
                         line,
                         QuoteNode(Symbol(file)),
                         true)))

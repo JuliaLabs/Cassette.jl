@@ -97,37 +97,6 @@ function fetch_binding_meta!(context::AbstractContext,
     return convert(M, _fetch_binding_meta!(context, m, bindings, name).data)::M
 end
 
-function tagged_global_ref(context::AbstractContext{T},
-                           m::Tagged{T},
-                           name::Symbol,
-                           primal) where {T}
-    return _tagged_global_ref(context, m.value, m.meta.meta.bindings, name, primal)
-end
-
-function _tagged_global_ref(context::AbstractContext,
-                            m::Module,
-                            bindings::BindingMetaDict,
-                            name::Symbol,
-                            primal)
-    if isconst(m, name) && isbits(primal)
-        # It's very important that this fast path exists and is taken with no runtime
-        # overhead; this is the path that will be taken by, for example, access of simple
-        # named function bindings.
-        return primal
-    else
-        return Tagged(context.tag, primal, fetch_binding_meta!(context, m, bindings, name, primal))
-    end
-end
-
-# TODO: try to inline these operations into the IR so that the primal binding and meta
-# binding mutations occur directly next to one another
-function tagged_global_set!(context::AbstractContext{T}, m::Tagged{T}, name::Symbol, primal) where {T}
-    binding = fetch_binding!(context, m.value, m.meta.meta.bindings, name)
-    meta = istagged(primal, context) ? primal.meta : NOMETA
-    # this line is where the primal binding assignment should happen order-wise
-    binding.meta = meta
-    return nothing
-end
 
 ############################
 # `metatype` specification #
@@ -266,7 +235,7 @@ untag(x, context::AbstractContext) = untag(x, context.tag)
 untag(x::Tagged{T}, tag::T) where {T<:AbstractTag} = x.value
 untag(x, tag::AbstractTag) = x
 
-untagtype(::Type{X}, ::Type{<:AbstractContext{P,T}}) where {X,P,T} = untagtype(X, T)
+untagtype(::Type{X}, ::Type{<:AbstractContext{T}}) where {X,T} = untagtype(X, T)
 untagtype(::Type{<:Tagged{T,U,V}}, ::Type{T}) where {T<:AbstractTag,U,V} = V
 untagtype(::Type{X}, ::Type{<:AbstractTag}) where {X} = X
 
@@ -274,16 +243,23 @@ metadata(x, context::AbstractContext) = metadata(x, context.tag)
 metadata(x::Tagged{T}, tag::T) where {T<:AbstractTag} = x.meta.data
 metadata(x, tag::AbstractTag) = NoMetaData()
 
+metameta(x, context::AbstractContext) = metameta(x, context.tag)
+metameta(x::Tagged{T}, tag::T) where {T<:AbstractTag} = x.meta.meta
+metameta(x, tag::AbstractTag) = NoMetaMeta()
+
 istagged(x, context::AbstractContext) = istagged(x, context.tag)
 istagged(x::Tagged{T}, tag::T) where {T<:AbstractTag} = true
 istagged(x, tag::AbstractTag) = false
 
-istaggedtype(::Type{X}, ::Type{<:AbstractContext{P,T}}) where {X,P,T} = istaggedtype(X, T)
+istaggedtype(::Type{X}, ::Type{<:AbstractContext{T}}) where {X,T} = istaggedtype(X, T)
 istaggedtype(::Type{<:Tagged{T}}, ::Type{T}) where {T<:AbstractTag} = true
 istaggedtype(::Type{<:Any}, ::Type{<:AbstractTag}) = false
 
 hasmetadata(x, context::AbstractContext) = hasmetadata(x, context.tag)
 hasmetadata(x, tag::AbstractTag) = !isa(metadata(x, tag), NoMetaData)
+
+hasmetameta(x, context::AbstractContext) = hasmetameta(x, context.tag)
+hasmetameta(x, tag::AbstractTag) = !isa(metameta(x, tag), NoMetaMeta)
 
 ################
 # `tagged_new` #
@@ -365,105 +341,187 @@ end
     end
 end
 
-#################
-# `tagged_load` #
-#################
+#########################
+# `tagged_*` primitives #
+#########################
 
-function _tagged_load(context::AbstractContext{T}, x::Tagged{T}, y, args...) where {T}
-    return tagged_load(context, x.value, x.meta.meta, untag(y, context), args...)
-end
+#=== tagged_nameof ===#
 
-function tagged_load(context::AbstractContext, x::Array, _x::Array, index, boundscheck)
-    return Tagged(context.tag,
-                  Core.arrayref(boundscheck, x, index),
-                  Core.arrayref(boundscheck, _x, index))
-end
-
-function tagged_load(context::AbstractContext, x::Module, _x::ModuleMeta, binding)
-    return _tagged_global_ref(context, x, _x.bindings, binding, getfield(x, binding))
-end
-
-function tagged_load(context::AbstractContext, x, _x::Union{NamedTuple,Tuple}, field)
-    return Tagged(context.tag, getfield(x, field), load(getfield(_x, field)))
-end
-
-###################
-# `tagged_store!` #
-###################
-
-function _tagged_store!(context::AbstractContext{T}, x::Tagged{T}, y, item, args...) where {T}
-    return tagged_store!(context, x.value, x.meta.meta,
-                         untag(y, context), untag(item, context),
-                         istagged(item, context) ? item.meta : NOMETA,
-                         args...)
-end
-
-function tagged_store!(context::AbstractContext, x::Array, _x::Array, index, item_value, item_meta, boundscheck)
-    Core.arrayset(boundscheck, x, item_value, index)
-    Core.arrayset(boundscheck, x, item_meta, index)
-    return nothing
-end
-
-function tagged_store!(context::AbstractContext, x::Module, _x::ModuleMeta, binding, item_value, item_meta)
-    # Julia doesn't have a valid `setfield!`` for `Modules`, so we
-    # should never run into this case in well-formed code anyway
-    error("cannot assign variables in other modules")
-end
-
-function tagged_store!(context::AbstractContext, x, _x::Union{NamedTuple,Tuple}, field, item_value, item_meta)
-    setfield!(x, field, item_value)
-    store!(getfield(_x, field), item_meta)
-    return nothing
-end
-
-####################
-# Other Primitives #
-####################
+tagged_nameof(context::AbstractContext, x) = nameof(untag(x, context))
 
 function tagged_nameof(context::AbstractContext{T}, x::Tagged{T,Module}) where {T}
-    return Tagged(context, nameof(x.value), x.meta.name)
+    name_value = nameof(x.value)
+    name_meta = hasmetameta(x, context) ? x.meta.meta.name : NOMETA
+    return Tagged(context.tag, name_value, name_meta)
 end
 
-function tagged_growbeg!(context::AbstractContext{T}, x::Tagged{T,<:Array}, delta) where {T}
-    delta_untagged = untag(delta, context)
+#=== tagged_globalref ===#
+
+function tagged_globalref(context::AbstractContext{T},
+                          m::Tagged{T},
+                          name::Symbol,
+                          primal) where {T}
+    if hasmetameta(m, context)
+        return _tagged_globalref(context, m, name, primal)
+    else
+        return primal
+    end
+end
+
+function _tagged_globalref(context::AbstractContext{T},
+                           m::Tagged{T},
+                           name::Symbol,
+                           primal) where {T}
+    if isconst(m.value, name) && isbits(primal)
+        # It's very important that this fast path exists and is taken with no runtime
+        # overhead; this is the path that will be taken by, for example, access of simple
+        # named function bindings.
+        return primal
+    else
+        meta = fetch_binding_meta!(context, m.value, m.meta.meta.bindings, name, primal)
+        return Tagged(context.tag, primal, meta)
+    end
+end
+
+#=== tagged_global_set! ===#
+
+# TODO: try to inline these operations into the IR so that the primal binding and meta
+# binding mutations occur directly next to one another
+function tagged_global_set!(context::AbstractContext{T}, m::Tagged{T}, name::Symbol, primal) where {T}
+    binding = fetch_binding!(context, m.value, m.meta.meta.bindings, name)
+    meta = istagged(primal, context) ? primal.meta : NOMETA
+    # this line is where the primal binding assignment should happen order-wise
+    binding.meta = meta
+    return nothing
+end
+
+#=== tagged_getfield ===#
+
+tagged_getfield(context::AbstractContext, x, name) = getfield(x, untag(name, context))
+
+function tagged_getfield(context::AbstractContext{T}, x::Tagged{T,Module}, name) where {T}
+    untagged_name = untag(name, context)
+    return tagged_global_ref(context, x, untagged_name, getfield(x.value, untagged_name))
+end
+
+function tagged_getfield(context::AbstractContext{T}, x::Tagged{T}, name) where {T}
+    untagged_name = untag(name, context)
+    y_value = getfield(untag(x, context), untagged_name)
+    y_meta = hasmetameta(x, context) ? load(getfield(x.meta.meta, untagged_name)) : NOMETA
+    return Tagged(context.tag, y_value, y_meta)
+end
+
+#=== tagged_setfield! ===#
+
+tagged_setfield!(context::AbstractContext, x, name, y) = setfield!(x, untag(name, context), y)
+
+function tagged_setfield!(context::AbstractContext{T}, x::Tagged{T}, name, y) where {T}
+    untagged_name = untag(name, context)
+    y_value = untag(y, context)
+    y_meta = istagged(y, context) ? y.meta : NOMETA
+    setfield!(x.value, untagged_name, y_value)
+    store!(getfield(x.meta.meta, untagged_name), y_meta)
+    return y
+end
+
+#=== tagged_arrayref ===#
+
+function tagged_arrayref(context::AbstractContext, boundscheck, x, i)
+    return Core.arrayref(untag(boundscheck, context), x, untag(i, context))
+end
+
+function tagged_arrayref(context::AbstractContext{T}, boundscheck, x::Tagged{T}, i) where {T}
+    untagged_boundscheck = untag(boundscheck, context)
+    untagged_i = untag(i, context)
+    y_value = Core.arrayref(untagged_boundscheck, untag(x, context), untagged_i)
+    y_meta = hasmetameta(x, context) ? Core.arrayref(untagged_boundscheck, x.meta.meta, untagged_i) : NOMETA
+    return Tagged(context.tag, y_value, y_meta)
+end
+
+#=== tagged_arrayset ===#
+
+function tagged_arrayset(context::AbstractContext, boundscheck, x, y, i)
+    return Core.arrayset(untag(boundscheck, context), x, y, untag(i, context))
+end
+
+function tagged_arrayset(context::AbstractContext{T}, boundscheck, x::Tagged{T}, y, i) where {T}
+    untagged_boundscheck = untag(boundscheck, context)
+    untagged_i = untag(i, context)
+    y_value = untag(y, context)
+    y_meta = istagged(y, context) ? y.meta : NOMETA
+    Core.arrayset(untagged_boundscheck, untag(x, context), y_value, untagged_i)
+    Core.arrayset(untagged_boundscheck, x.meta.meta, y_meta, untagged_i)
+    return x
+end
+
+#=== tagged_growbeg! ===#
+
+tagged_growbeg!(context::AbstractContext, x, delta) = Base._growbeg!(x, untag(delta, context))
+
+function tagged_growbeg!(context::AbstractContext{T}, x::Tagged{T}, delta) where {T}
+    untagged_delta = untag(delta, context)
     Base._growbeg!(x.value, delta_untagged)
-    Base._growbeg!(x.meta.meta, delta_untagged)
+    hasmetameta(x, context) && Base._growbeg!(x.meta.meta, delta_untagged)
     return nothing
 end
 
-function tagged_growend!(context::AbstractContext{T}, x::Tagged{T,<:Array}, delta) where {T}
-    delta_untagged = untag(delta, context)
+#=== tagged_growend! ===#
+
+tagged_growend!(context::AbstractContext, x, delta) = Base._growend!(x, untag(delta, context))
+
+function tagged_growend!(context::AbstractContext{T}, x::Tagged{T}, delta) where {T}
+    untagged_delta = untag(delta, context)
     Base._growend!(x.value, delta_untagged)
-    Base._growend!(x.meta.meta, delta_untagged)
+    hasmetameta(x, context) && Base._growend!(x.meta.meta, delta_untagged)
     return nothing
 end
 
-function tagged_growat!(context::AbstractContext{T}, x::Tagged{T,<:Array}, i, delta) where {T}
+#=== tagged_growat! ===#
+
+function tagged_growat!(context::AbstractContext, x, i, delta)
+    return Base._growat!(x, untag(i, context), untag(delta, context))
+end
+
+function tagged_growat!(context::AbstractContext{T}, x::Tagged{T}, i, delta) where {T}
     i_untagged = untag(i, context)
     delta_untagged = untag(delta, context)
     Base._growat!(x.value, i_untagged, delta_untagged)
-    Base._growat!(x.meta.meta, i_untagged, delta_untagged)
+    hasmetameta(x, context) && Base._growat!(x.meta.meta, i_untagged, delta_untagged)
     return nothing
 end
 
-function tagged_deletebeg!(context::AbstractContext{T}, x::Tagged{T,<:Array}, delta) where {T}
-    delta_untagged = untag(delta, context)
+#=== tagged_deletebeg! ===#
+
+tagged_deletebeg!(context::AbstractContext, x, delta) = Base._deletebeg!(x, untag(delta, context))
+
+function tagged_deletebeg!(context::AbstractContext{T}, x::Tagged{T}, delta) where {T}
+    untagged_delta = untag(delta, context)
     Base._deletebeg!(x.value, delta_untagged)
-    Base._deletebeg!(x.meta.meta, delta_untagged)
+    hasmetameta(x, context) && Base._deletebeg!(x.meta.meta, delta_untagged)
     return nothing
 end
 
-function tagged_deleteend!(context::AbstractContext{T}, x::Tagged{T,<:Array}, delta) where {T}
-    delta_untagged = untag(delta, context)
+#=== tagged_deleteend! ===#
+
+tagged_deleteend!(context::AbstractContext, x, delta) = Base._deleteend!(x, untag(delta, context))
+
+function tagged_deleteend!(context::AbstractContext{T}, x::Tagged{T}, delta) where {T}
+    untagged_delta = untag(delta, context)
     Base._deleteend!(x.value, delta_untagged)
-    Base._deleteend!(x.meta.meta, delta_untagged)
+    hasmetameta(x, context) && Base._deleteend!(x.meta.meta, delta_untagged)
     return nothing
 end
 
-function tagged_deleteat!(context::AbstractContext{T}, x::Tagged{T,<:Array}, i, delta) where {T}
+#=== tagged_deleteat! ===#
+
+function tagged_deleteat!(context::AbstractContext, x, i, delta)
+    return Base._deleteat!(x, untag(i, context), untag(delta, context))
+end
+
+function tagged_deleteat!(context::AbstractContext{T}, x::Tagged{T}, i, delta) where {T}
     i_untagged = untag(i, context)
     delta_untagged = untag(delta, context)
     Base._deleteat!(x.value, i_untagged, delta_untagged)
-    Base._deleteat!(x.meta.meta, i_untagged, delta_untagged)
+    hasmetameta(x, context) && Base._deleteat!(x.meta.meta, i_untagged, delta_untagged)
     return nothing
 end

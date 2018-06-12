@@ -30,31 +30,32 @@ macro context(Ctx)
         $CtxTag(x) = $CtxTag($Cassette.BottomTag(), x)
         $CtxTag(::E, ::X) where {E,X} = $CtxTag{E,$Cassette.pure_objectid(X)}()
 
-        struct $Ctx{M,P<:$Cassette.AbstractPass,T<:$CtxTag} <: $Cassette.AbstractContext{P,T}
+        struct $Ctx{M,T<:$CtxTag,P<:$Cassette.AbstractPass,B<:Union{Nothing,$Cassette.BindingMetaCache}} <: $Cassette.AbstractContext{T,P,B}
             metadata::M
-            pass::P
             tag::T
-            bindings::$Cassette.BindingMetaCache
+            pass::P
+            bindings::B # tagging functionality is considered disabled if this field is `nothing`
         end
 
         function $Ctx(;
                       metadata = nothing,
                       pass::$Cassette.AbstractPass = $Cassette.NoPass(),
-                      bindings = $Cassette.BindingMetaCache())
-            return $Ctx(metadata, pass, $CtxTag(nothing), bindings)
+                      tagging_enabled::Bool = false)
+            bindings = tagging_enabled ? $Cassette.BindingMetaCache() : nothing
+            return $Ctx(metadata, $CtxTag(nothing), pass, bindings)
         end
 
         $Cassette.generate_tag(ctx::$Ctx, f) = $CtxTag(f)
 
         function $Cassette.similar_context(ctx::$Ctx;
                                            metadata = ctx.metadata,
-                                           pass = ctx.pass,
                                            tag = ctx.tag,
+                                           pass = ctx.pass,
                                            bindings = ctx.bindings)
-            return $Ctx(metadata, pass, tag, bindings)
+            return $Ctx(metadata, tag, pass, bindings)
         end
 
-        #=== default primitives/execution definitions ===#
+        #=== default primitives ===#
 
         $Cassette.@primitive function $CtxTag(x) where {__CONTEXT__<:$Ctx}
             return $CtxTag(__context__.tag, x)
@@ -65,19 +66,53 @@ macro context(Ctx)
             return $Cassette.overdub_execute(__context__, f, flattened_args...)
         end
 
-        # TODO: add contextual primitives for:
-        #     Array{T,N}(...) -> tagged_new(...)
-        #     getfield(...) -> tagged_load(...)
-        #     setfield!(...) -> tagged_store!(...)
-        #     arrayref(::Bool, ::Array, ::Int) -> tagged_load(...)
-        #     arrayset(::Bool, ::Array, ::Any, ::Int) -> tagged_store!(...)
-        #     _growbeg!(...) -> tagged_growbeg!(...)
-        #     _growat!(...) -> tagged_growat!(...)
-        #     _growend!(...) -> tagged_growend!(...)
-        #     _deletebeg!(...) -> tagged_deletebeg!(...)
-        #     _deleteat!(...) -> tagged_deleteat!(...)
-        #     _deleteend!(...) -> tagged_deleteend!(...)
-        #     nameof(::Module) -> tagged_nameof(...)
+        $Cassette.@primitive function Array{T,N}(undef::UndefInitializer, args...) where {T,N,__CONTEXT__<:$Ctx}
+            return $Cassette.tagged_new(__context__, Array{T,N}, undef, args...)
+        end
+
+        $Cassette.@primitive function Base.nameof(m) where {__CONTEXT__<:$Ctx}
+            return $Cassette.tagged_nameof(__context__, m)
+        end
+
+        $Cassette.@primitive function Core.getfield(x, name) where {__CONTEXT__<:$Ctx}
+            return $Cassette.tagged_getfield(__context__, x, name)
+        end
+
+        $Cassette.@primitive function Core.setfield!(x, name, y) where {__CONTEXT__<:$Ctx}
+            return $Cassette.tagged_setfield!(__context__, x, name, y)
+        end
+
+        $Cassette.@primitive function Core.arrayref(boundscheck, x, i) where {__CONTEXT__<:$Ctx}
+            return $Cassette.tagged_arrayref(__context__, boundscheck, x, i)
+        end
+
+        $Cassette.@primitive function Core.arrayset(boundscheck, x, y, i) where {__CONTEXT__<:$Ctx}
+            return $Cassette.tagged_arrayset(__context__, boundscheck, x, y, i)
+        end
+
+        $Cassette.@primitive function Base._growbeg!(x, delta) where {__CONTEXT__<:$Ctx}
+            return $Cassette.tagged_growbeg!(__context__, x, delta)
+        end
+
+        $Cassette.@primitive function Base._growend!(x, delta) where {__CONTEXT__<:$Ctx}
+            return $Cassette.tagged_growend!(__context__, x, delta)
+        end
+
+        $Cassette.@primitive function Base._growat!(x, i, delta) where {__CONTEXT__<:$Ctx}
+            return $Cassette.tagged_growat!(__context__, x, i, delta)
+        end
+
+        $Cassette.@primitive function Base._deletebeg!(x, delta) where {__CONTEXT__<:$Ctx}
+            return $Cassette.tagged_deletebeg!(__context__, x, delta)
+        end
+
+        $Cassette.@primitive function Base._deleteend!(x, delta) where {__CONTEXT__<:$Ctx}
+            return $Cassette.tagged_deleteend!(__context__, x, delta)
+        end
+
+        $Cassette.@primitive function Base._deleteat!(x, i, delta) where {__CONTEXT__<:$Ctx}
+            return $Cassette.tagged_deleteat!(__context__, x, i, delta)
+        end
     end)
 end
 
