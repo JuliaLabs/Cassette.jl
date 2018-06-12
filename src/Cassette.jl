@@ -18,6 +18,7 @@ abstract type AbstractContext{T<:AbstractTag,P<:AbstractPass,B} end
 include("utilities.jl")
 include("tagged.jl")
 include("overdub.jl")
+include("contextdef.jl")
 include("macros.jl")
 
 function __init__()
