@@ -419,11 +419,51 @@ end
 ####################
 # Other Primitives #
 ####################
-# TODO
-# nameof
-# _growbeg!
-# _growat!
-# _growend!
-# _deletebeg!
-# _deleteat!
-# _deleteend!
+
+function tagged_nameof(context::AbstractContext{T}, x::Tagged{T,Module}) where {T}
+    return Tagged(context, nameof(x.value), x.meta.name)
+end
+
+function tagged_growbeg!(context::AbstractContext{T}, x::Tagged{T,<:Array}, delta) where {T}
+    delta_untagged = untag(delta, context)
+    Base._growbeg!(x.value, delta_untagged)
+    Base._growbeg!(x.meta.meta, delta_untagged)
+    return nothing
+end
+
+function tagged_growend!(context::AbstractContext{T}, x::Tagged{T,<:Array}, delta) where {T}
+    delta_untagged = untag(delta, context)
+    Base._growend!(x.value, delta_untagged)
+    Base._growend!(x.meta.meta, delta_untagged)
+    return nothing
+end
+
+function tagged_growat!(context::AbstractContext{T}, x::Tagged{T,<:Array}, i, delta) where {T}
+    i_untagged = untag(i, context)
+    delta_untagged = untag(delta, context)
+    Base._growat!(x.value, i_untagged, delta_untagged)
+    Base._growat!(x.meta.meta, i_untagged, delta_untagged)
+    return nothing
+end
+
+function tagged_deletebeg!(context::AbstractContext{T}, x::Tagged{T,<:Array}, delta) where {T}
+    delta_untagged = untag(delta, context)
+    Base._deletebeg!(x.value, delta_untagged)
+    Base._deletebeg!(x.meta.meta, delta_untagged)
+    return nothing
+end
+
+function tagged_deleteend!(context::AbstractContext{T}, x::Tagged{T,<:Array}, delta) where {T}
+    delta_untagged = untag(delta, context)
+    Base._deleteend!(x.value, delta_untagged)
+    Base._deleteend!(x.meta.meta, delta_untagged)
+    return nothing
+end
+
+function tagged_deleteat!(context::AbstractContext{T}, x::Tagged{T,<:Array}, i, delta) where {T}
+    i_untagged = untag(i, context)
+    delta_untagged = untag(delta, context)
+    Base._deleteat!(x.value, i_untagged, delta_untagged)
+    Base._deleteat!(x.meta.meta, i_untagged, delta_untagged)
+    return nothing
+end
