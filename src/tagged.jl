@@ -97,7 +97,6 @@ function fetch_binding_meta!(context::AbstractContext,
     return convert(M, _fetch_binding_meta!(context, m, bindings, name).data)::M
 end
 
-
 ############################
 # `metatype` specification #
 ############################
@@ -359,7 +358,7 @@ end
 
 function tagged_globalref(context::AbstractContext{T},
                           m::Tagged{T},
-                          name::Symbol,
+                          name,
                           primal) where {T}
     if hasmetameta(m, context)
         return _tagged_globalref(context, m, name, primal)
@@ -370,15 +369,16 @@ end
 
 function _tagged_globalref(context::AbstractContext{T},
                            m::Tagged{T},
-                           name::Symbol,
+                           name,
                            primal) where {T}
-    if isconst(m.value, name) && isbits(primal)
+    untagged_name = untag(name, context)
+    if isconst(m.value, untagged_name) && isbits(primal)
         # It's very important that this fast path exists and is taken with no runtime
         # overhead; this is the path that will be taken by, for example, access of simple
         # named function bindings.
         return primal
     else
-        meta = fetch_binding_meta!(context, m.value, m.meta.meta.bindings, name, primal)
+        meta = fetch_binding_meta!(context, m.value, m.meta.meta.bindings, untagged_name, primal)
         return Tagged(context.tag, primal, meta)
     end
 end
