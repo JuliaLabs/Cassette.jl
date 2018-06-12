@@ -33,7 +33,7 @@ function generate_context_definition(Ctx)
             metadata::M
             tag::T
             pass::P
-            bindings::B # tagging functionality is considered disabled if this field is `nothing`
+            bindings::B # tagging functionality is considered enabled if this field is of type `BindingMetaCache`
         end
 
         function $Ctx(;
@@ -65,7 +65,8 @@ function generate_context_definition(Ctx)
             return $Cassette.overdub_execute(__context__, f, flattened_args...)
         end
 
-        $Cassette.@primitive function Array{T,N}(undef::UndefInitializer, args...) where {T,N,__CONTEXT__<:$Ctx}
+        # dispatch on `B` to ensure that we don't call this when tagging is disabled
+        $Cassette.@primitive function Array{T,N}(undef::UndefInitializer, args...) where {T,N,__CONTEXT__<:$Ctx{<:Any,<:Any,<:Any,$Cassette.BindingMetaCache}}
             return $Cassette.tagged_new(__context__, Array{T,N}, undef, args...)
         end
 
