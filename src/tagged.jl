@@ -366,7 +366,7 @@ end
 #################
 
 function _tagged_load(context::AbstractContext{T}, x::Tagged{T}, y, args...) where {T}
-    return tagged_load(context, x.value, x.meta.fields, untag(y, context), args...)
+    return tagged_load(context, x.value, x.meta.meta, untag(y, context), args...)
 end
 
 function tagged_load(context::AbstractContext, x::Array, _x::Array, index, boundscheck)
@@ -375,8 +375,8 @@ function tagged_load(context::AbstractContext, x::Array, _x::Array, index, bound
                   Core.arrayref(boundscheck, _x, index))
 end
 
-function tagged_load(context::AbstractContext, x::Module, _x::MetaModule, binding)
-    return tagged_module_load(context, x, _x, binding, getfield(x, binding))
+function tagged_load(context::AbstractContext, x::Module, _x::ModuleMeta, binding)
+    return _tagged_global_ref(context, x, _x.bindings, binding, getfield(x, binding))
 end
 
 function tagged_load(context::AbstractContext, x, _x::Union{NamedTuple,Tuple}, field)
@@ -388,7 +388,7 @@ end
 ###################
 
 function _tagged_store!(context::AbstractContext{T}, x::Tagged{T}, y, item, args...) where {T}
-    return tagged_store!(context, x.value, x.meta.fields,
+    return tagged_store!(context, x.value, x.meta.meta,
                          untag(y, context), untag(item, context),
                          istagged(item, context) ? item.meta : NOMETA,
                          args...)
@@ -400,7 +400,7 @@ function tagged_store!(context::AbstractContext, x::Array, _x::Array, index, ite
     return nothing
 end
 
-function tagged_store!(context::AbstractContext, x::Module, _x::MetaModule, binding, item_value, item_meta)
+function tagged_store!(context::AbstractContext, x::Module, _x::ModuleMeta, binding, item_value, item_meta)
     # Julia doesn't have a valid `setfield!`` for `Modules`, so we
     # should never run into this case in well-formed code anyway
     error("cannot assign variables in other modules")
