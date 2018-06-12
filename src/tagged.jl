@@ -340,7 +340,11 @@ hasmetadata(x, tag::AbstractTag) = !isa(metadata(x, tag), NoMetaData)
 end
 
 @generated function tagged_new(context::C, ::Type{T}, args...) where {C<:AbstractContext,T<:Array}
-    # TODO
+    untagged_args = [:(untagged(args[$i], context)) for i in 1:nfields(args)]
+    return quote
+        $(Expr(:meta, :inline))
+        return tag(context, $(T)($(untagged_args...)))
+    end
 end
 
 @generated function tagged_new(context::C, ::Type{Module}, args...) where {C<:AbstractContext}
