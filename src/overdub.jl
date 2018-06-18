@@ -8,10 +8,11 @@
 @inline is_core_primitive(ctx::AbstractContext, args...) = _is_core_primitive(ctx, args...)
 @inline execution(::AbstractContext, f, args...) = f(args...)
 
-@generated function _is_core_primitive(::AbstractContext, args...)
+@generated function _is_core_primitive(::C, args...) where {C<:AbstractContext}
     # TODO: this is slow, we should try to check whether the reflection is possible
     # without going through the whole process of actually computing it
-    if isa(reflect(args), Reflection)
+    untagged_args = ((untagtype(args[i], C) for i in 1:nfields(args))...)
+    if isa(reflect(untagged_args), Reflection)
         result = :(false)
     else
         result = :(true)
@@ -50,7 +51,7 @@ const OVERDUB_ARGS_SYMBOL = gensym("overdub_arguments")
 # this function.
 function overdub_recurse_pass!(reflection::Reflection,
                                context_type::DataType,
-                               pass_type::DataType = UnusedPass)
+                               pass_type::DataType = NoPass)
     signature = reflection.signature
     method = reflection.method
     static_params = reflection.static_params
@@ -105,6 +106,14 @@ function overdub_recurse_pass!(reflection::Reflection,
         push!(overdubbed_code, :($(SlotNumber(n_method_args + n_overdub_slots)) = $final_arguments))
     end
 
+    # Scan the IR for `Module`s in the first argument position for `GlobalRef`s. For every
+    # unique such `Module`, make a new `SSAValue` at the top of the method body corresponding
+    # to `Cassette.fetch_tagged_module` called with the given context and module. Then,
+    # replace all `GlobalRef`-loads with the corresponding `Cassette._tagged_global_ref`
+    # invocation. All `GlobalRef`-stores must be preserved as-is, but need a follow-up
+    # statement calling `Cassette._tagged_global_ref_set_meta!` on the relevant arguments.
+    # TODO
+
     # For the rest of the statements in `code_info.code`, intercept every applicable call
     # expression and replace it with a corresponding call to `Cassette.overdub_execute`.
     for i in (prelude_length + 1):length(code_info.code)
@@ -116,6 +125,10 @@ function overdub_recurse_pass!(reflection::Reflection,
         push!(overdubbed_code, stmnt)
     end
 
+    # TODO: Replace `new` expressions with calls to `Cassette.tagged_new`.
+
+    # TODO: appropriately untag all `gotoifnot` conditionals
+
     code_info.code = fix_labels_and_gotos!(overdubbed_code)
     code_info.method_for_inference_limit_heuristics = method
     reflection.code_info = code_info
@@ -123,9 +136,10 @@ function overdub_recurse_pass!(reflection::Reflection,
 end
 
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
-function overdub_recurse_generator(pass_type, self, context_type, args::Tuple)
+function overdub_recurse_generator(tag_type, pass_type, self, context_type, args::Tuple)
     try
-        reflection = reflect(args)
+        untagged_args = ((untagtype(args[i], context_type) for i in 1:nfields(args))...)
+        reflection = reflect(untagged_args)
         if isa(reflection, Reflection)
             overdub_recurse_pass!(reflection, context_type, pass_type)
             body = reflection.code_info
@@ -149,14 +163,14 @@ end
 
 function overdub_recurse_definition(pass, line, file)
     return quote
-        function overdub_recurse($OVERDUB_CTX_SYMBOL::AbstractContext{pass}, $OVERDUB_ARGS_SYMBOL...) where {pass<:$pass}
+        function overdub_recurse($OVERDUB_CTX_SYMBOL::AbstractContext{tag,pass}, $OVERDUB_ARGS_SYMBOL...) where {tag,pass<:$pass}
             $(Expr(:meta,
                    :generated,
                    Expr(:new,
                         Core.GeneratedFunctionStub,
                         :overdub_recurse_generator,
                         Any[:overdub_recurse, OVERDUB_CTX_SYMBOL, OVERDUB_ARGS_SYMBOL],
-                        Any[:pass],
+                        Any[:tag, :pass],
                         line,
                         QuoteNode(Symbol(file)),
                         true)))
@@ -164,4 +178,4 @@ function overdub_recurse_definition(pass, line, file)
     end
 end
 
-@eval $(overdub_recurse_definition(:UnusedPass, @__LINE__, @__FILE__))
+@eval $(overdub_recurse_definition(:NoPass, @__LINE__, @__FILE__))

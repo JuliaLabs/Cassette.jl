@@ -1,17 +1,6 @@
-#######################
-# unhygeniec bindings #
-#######################
-
-const CONTEXT_TYPE_BINDING = Symbol("__CONTEXT__")
-const CONTEXT_BINDING = Symbol("__context__")
-
 ############
 # @context #
 ############
-
-# these stubs are only overloaded on a per-context basis
-function generate_tag end
-function similar_context end
 
 """
     Cassette.@context Ctx
@@ -19,45 +8,7 @@ function similar_context end
 Define a new Cassette context type with the name `Ctx`.
 """
 macro context(Ctx)
-    @assert isa(Ctx, Symbol) "context name must be a Symbol"
-    CtxTag = gensym(string(Ctx, "Tag"))
-    return esc(quote
-        struct $CtxTag{E,H} <: $Cassette.AbstractTag end
-
-        # these @pure annotations have official vtjnash approval :p
-        Base.@pure $CtxTag(x) = $CtxTag($Cassette.BottomTag(), x)
-        Base.@pure $CtxTag(::E, ::X) where {E,X} = $CtxTag{E,objectid(X)}()
-
-        struct $Ctx{M,P<:$Cassette.AbstractPass,T<:$CtxTag} <: $Cassette.AbstractContext{P,T}
-            metadata::M
-            pass::P
-            tag::T
-        end
-
-        function $Ctx(;
-                      metadata = $Cassette.UnusedMeta(),
-                      pass::$Cassette.AbstractPass = $Cassette.UnusedPass())
-            return $Ctx(metadata, pass, $CtxTag(nothing))
-        end
-
-        $Cassette.generate_tag(ctx::$Ctx, f) = $CtxTag(f)
-
-        function $Cassette.similar_context(ctx::$Ctx;
-                                           metadata = ctx.metadata,
-                                           pass = ctx.pass,
-                                           tag = ctx.tag)
-            return $Ctx(metadata, pass, tag)
-        end
-
-        # default primitives/execution definitions
-        $Cassette.@primitive function $CtxTag(x) where {__CONTEXT__<:$Ctx}
-            return $CtxTag(__context__.tag, x)
-        end
-        $Cassette.@execution function Core._apply(f, args...) where {__CONTEXT__<:$Ctx}
-            flattened_args = Core._apply(tuple, args...)
-            return $Cassette.overdub_execute(__context__, f, flattened_args...)
-        end
-    end)
+    return esc(generate_context_definition(Ctx))
 end
 
 ############
