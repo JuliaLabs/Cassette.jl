@@ -125,8 +125,9 @@ function overdub_recurse_pass!(reflection::Reflection,
         push!(overdubbed_code, stmnt)
     end
 
-    # Replace `new` expressions with calls to `Cassette.tagged_new`.
-    # TODO
+    # TODO: Replace `new` expressions with calls to `Cassette.tagged_new`.
+
+    # TODO: appropriately untag all `gotoifnot` conditionals
 
     code_info.code = fix_labels_and_gotos!(overdubbed_code)
     code_info.method_for_inference_limit_heuristics = method
