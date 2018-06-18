@@ -11,7 +11,7 @@
 @generated function _is_core_primitive(::C, args...) where {C<:AbstractContext}
     # TODO: this is slow, we should try to check whether the reflection is possible
     # without going through the whole process of actually computing it
-    untagged_args = ((untagtype(args[i], C) for i in 1:nfields(args))...)
+    untagged_args = ((untagtype(args[i], C) for i in 1:nfields(args))...,)
     if isa(reflect(untagged_args), Reflection)
         result = :(false)
     else
@@ -138,7 +138,7 @@ end
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
 function overdub_recurse_generator(tag_type, pass_type, self, context_type, args::Tuple)
     try
-        untagged_args = ((untagtype(args[i], context_type) for i in 1:nfields(args))...)
+        untagged_args = ((untagtype(args[i], context_type) for i in 1:nfields(args))...,)
         reflection = reflect(untagged_args)
         if isa(reflection, Reflection)
             overdub_recurse_pass!(reflection, context_type, pass_type)
