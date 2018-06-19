@@ -37,6 +37,8 @@ struct Meta{D,M#=<:Union{Tuple,NamedTuple,Array,ModuleMeta}=#}
     meta::Union{M,NoMetaMeta}
 end
 
+Meta(data::D, meta::M) where {D,M} = Meta{D,M}(data, meta)
+
 const NOMETA = Meta(NoMetaData(), NoMetaMeta())
 
 # These defined to allow conversion of `Meta{NoMetaData,NoMetaMeta}`
