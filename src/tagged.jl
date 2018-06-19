@@ -67,15 +67,15 @@ end
 # invocation. We easily have the module at compile time, but we don't have access to the
 # actual context object. This `@pure` is vtjnash-approved. It should allow the compiler to
 # optimize away the fetch once we have support for it, e.g. loop invariant code motion.
-@pure @noinline function fetch_tagged_module(context::AbstractContext, m::Module)
+Base.@pure @noinline function fetch_tagged_module(context::AbstractContext, m::Module)
     bindings = get!(() -> BindingMetaDict(), context.bindings, m)
     return Tagged(context.tag, m, Meta(NoMetaData(), ModuleMeta(NOMETA, bindings)))
 end
 
-@pure @noinline function _fetch_binding_meta!(context::AbstractContext,
-                                              m::Module,
-                                              bindings::BindingMetaDict,
-                                              name::Symbol)
+Base.@pure @noinline function _fetch_binding_meta!(context::AbstractContext,
+                                                   m::Module,
+                                                   bindings::BindingMetaDict,
+                                                   name::Symbol)
     return get!(bindings, name) do
         if isdefined(m, name)
             return BindingMeta(initmeta(context, getfield(m, name)))
