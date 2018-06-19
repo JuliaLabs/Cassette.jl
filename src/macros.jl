@@ -186,7 +186,7 @@ A convenience macro for simultaneously applying `Cassette.@execution` and
 """
 macro primitive(method)
     @assert is_method_definition(method)
-    signature = deepcopy(first(method.args))
+    signature = first(method.args)
     return esc(quote
         $Cassette.@execution $method
         $Cassette.@isprimitive $signature
