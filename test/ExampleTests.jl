@@ -108,7 +108,6 @@ c = Count{Union{String,Int}}(0)
 
 ############################################################################################
 
-#= XXX: This test requires Cassette's world age problems to be fixed (https://github.com/jrevels/Cassette.jl/issues/6)
 @context WorldCtx
 
 worldtest = 0
@@ -121,12 +120,12 @@ Cassette.overdub_recurse(WorldCtx(), sin, 1)
 
 tmp = worldtest
 Cassette.overdub_recurse(oldctx, sin, 1)
-@test tmp === worldtest
+@test tmp < worldtest
 
+tmp = worldtest
 @prehook (f::Any)(args...) where {__CONTEXT__<:WorldCtx} = nothing
 Cassette.overdub_recurse(WorldCtx(), sin, 1)
 @test tmp === worldtest
-=#
 
 ############################################################################################
 
@@ -138,7 +137,7 @@ Cassette.overdub_recurse(WorldCtx(), sin, 1)
     if Cassette.is_core_primitive(__context__, f, args...)
         return f(args...)
     else
-        newctx = Cassette.similar_context(__context__, metadata = subtrace)
+        newctx = Cassette.similarcontext(__context__, metadata = subtrace)
         return Cassette.overdub_recurse(newctx, f, args...)
     end
 end
@@ -157,6 +156,17 @@ trtest(x, y, z) = x*y + y*z
 
 ############################################################################################
 
+@context NestedReflectCtx
+r_pre = Cassette.reflect((typeof(sin), Int))
+r_post = Cassette.reflect((typeof(Cassette.overdub_recurse), typeof(NestedReflectCtx()), typeof(sin), Int))
+@test isa(r_pre, Cassette.Reflection) && isa(r_post, Cassette.Reflection)
+Cassette.overdub_recurse_pass!(r_pre, typeof(NestedReflectCtx()))
+@test r_pre.code_info.code == r_post.code_info.code
+
+#= TODO: The rest of the tests below should be restored for the metadata tagging system
+
+############################################################################################
+
 @context NestedCtx
 
 function nested_test(n, x)
@@ -168,7 +178,7 @@ function nested_test(n, x)
 end
 
 x = rand()
-tags = Cassette.AbstractTag[]
+tags = Cassette.Tag[]
 tag_id = objectid(typeof(nested_test))
 
 @prehook function (::Any)(args...) where {__CONTEXT__<:NestedCtx}
@@ -188,17 +198,6 @@ end
 
 ############################################################################################
 
-@context NestedReflectCtx
-r_pre = Cassette.reflect((typeof(sin), Int))
-r_post = Cassette.reflect((typeof(Cassette.overdub_recurse), typeof(NestedReflectCtx()), typeof(sin), Int))
-@test isa(r_pre, Cassette.Reflection) && isa(r_post, Cassette.Reflection)
-Cassette.overdub_recurse_pass!(r_pre)
-@test r_pre.code_info.code == r_post.code_info.code
-
-############################################################################################
-
-# TODO: restore this test once Boxes are restored
-#=
 struct Baz
     x::Int
     y::Float64
@@ -221,11 +220,9 @@ result = @overdub BazCtx(boxes=Val(true)) begin
 end
 @test x === result[1]
 @test n === result[2]
-=#
 
 ############################################################################################
-# TODO: restore this test once Boxes are restored
-#=
+
 struct Bar{X,Y,Z}
     x::X
     y::Y
@@ -260,13 +257,12 @@ result = @overdub FooBarCtx(boxes=Val(true)) begin
 end
 @test x === result[1]
 @test n === result[2]
-=#
+
 
 ############################################################################################
 # TODO: The below is a highly pathological function for metadata propagation; we should turn
 # it into an actual test
 
-#=
 const const_binding = Float64[]
 
 global global_binding = 1.0
@@ -303,6 +299,7 @@ function f(x::Vector{Float64}, y::Vector{Float64})
     global global_binding = 1.0
     return z
 end
+
 =#
 
 end # module
