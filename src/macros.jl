@@ -1,3 +1,6 @@
+const CONTEXT_TYPE_BINDING = Symbol("__CONTEXT__")
+const CONTEXT_BINDING = Symbol("__context__")
+
 ############
 # @context #
 ############
@@ -8,7 +11,75 @@
 Define a new Cassette context type with the name `Ctx`.
 """
 macro context(Ctx)
-    return esc(generate_context_definition(Ctx))
+    @assert isa(Ctx, Symbol) "context name must be a Symbol"
+    CtxName = gensym(string(Ctx, "Name"))
+    return esc(quote
+        struct $CtxName <: $Cassette.AbstractContextName end
+
+        const $Ctx{M,T<:Union{Nothing,$Cassette.Tag},P<:$Cassette.AbstractPass} = $Cassette.Context{$CtxName,M,P,T}
+
+        $Ctx(; kwargs...) = $Cassette.Context($CtxName(); kwargs...)
+
+        $Cassette.@primitive function $Cassette.Tag(::Type{N}, ::Type{X}) where {__CONTEXT__<:$Ctx,N,X}
+            return Tag(N, X, $Cassette.tagtype(__CONTEXT__))
+        end
+
+        $Cassette.@primitive function Core._apply(f, args...) where {__CONTEXT__<:$Ctx}
+            flattened_args = Core._apply(tuple, args...)
+            return $Cassette.overdub_execute(__context__, f, flattened_args...)
+        end
+
+        # enforce `T<:Cassette.Tag` to ensure that we only call the below primitive functions
+        # if the context has the tagging system enabled
+
+        $Cassette.@primitive function Array{T,N}(undef::UndefInitializer, args...) where {T,N,__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tagged_new(__context__, Array{T,N}, undef, args...)
+        end
+
+        $Cassette.@primitive function Base.nameof(m) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tagged_nameof(__context__, m)
+        end
+
+        $Cassette.@primitive function Core.getfield(x, name) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tagged_getfield(__context__, x, name)
+        end
+
+        $Cassette.@primitive function Core.setfield!(x, name, y) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tagged_setfield!(__context__, x, name, y)
+        end
+
+        $Cassette.@primitive function Core.arrayref(boundscheck, x, i) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tagged_arrayref(__context__, boundscheck, x, i)
+        end
+
+        $Cassette.@primitive function Core.arrayset(boundscheck, x, y, i) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tagged_arrayset(__context__, boundscheck, x, y, i)
+        end
+
+        $Cassette.@primitive function Base._growbeg!(x, delta) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tagged_growbeg!(__context__, x, delta)
+        end
+
+        $Cassette.@primitive function Base._growend!(x, delta) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tagged_growend!(__context__, x, delta)
+        end
+
+        $Cassette.@primitive function Base._growat!(x, i, delta) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tagged_growat!(__context__, x, i, delta)
+        end
+
+        $Cassette.@primitive function Base._deletebeg!(x, delta) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tagged_deletebeg!(__context__, x, delta)
+        end
+
+        $Cassette.@primitive function Base._deleteend!(x, delta) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tagged_deleteend!(__context__, x, delta)
+        end
+
+        $Cassette.@primitive function Base._deleteat!(x, i, delta) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tagged_deleteat!(__context__, x, i, delta)
+        end
+    end)
 end
 
 ############
@@ -20,12 +91,7 @@ end
 A convenience macro for overdubbing and executing `expression` within the context `Ctx`.
 """
 macro overdub(ctx, expr)
-    return quote
-        func = $(esc(CONTEXT_BINDING)) -> $(esc(expr))
-        ctx = Cassette.similar_context($(esc(ctx));
-                                       tag = $Cassette.generate_tag($(esc(ctx)), func))
-        $Cassette.overdub_recurse(ctx, func, ctx)
-    end
+    return :($Cassette.overdub_recurse($(esc(ctx)), () -> $(esc(expr))))
 end
 
 #########
