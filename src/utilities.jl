@@ -38,9 +38,11 @@ function replace_match!(replace, ismatch, x)
     return x
 end
 
-#######################
-# Julia IR/Reflection #
-#######################
+############
+# Julia IR #
+############
+
+#=== reflection ===#
 
 mutable struct Reflection
     signature::DataType
@@ -77,6 +79,9 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     return Reflection(S, method, static_params, code_info)
 end
 
+#=== IR Repair ===#
+
+# TODO: update this
 function fix_labels_and_gotos!(code::Vector)
     changes = Dict{Int,Int}()
     for (i, stmnt) in enumerate(code)
@@ -95,18 +100,6 @@ function fix_labels_and_gotos!(code::Vector)
         end
     end
     return code
-end
-
-function copy_prelude_code(code::Vector)
-    prelude_code = Any[]
-    for stmnt in code
-        if isa(stmnt, Nothing) || isa(stmnt, NewvarNode)
-            push!(prelude_code, stmnt)
-        else
-            break
-        end
-    end
-    return prelude_code
 end
 
 #################

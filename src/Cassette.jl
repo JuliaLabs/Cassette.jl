@@ -2,23 +2,14 @@ __precompile__(false)
 
 module Cassette
 
-using Core: CodeInfo, SlotNumber, NewvarNode, LabelNode, GotoNode, SSAValue
+using Core: CodeInfo, SlotNumber, NewvarNode, GotoNode, SSAValue
 
 using Logging
 
-abstract type AbstractTag end
-struct BottomTag <: AbstractTag end
-
-abstract type AbstractPass end
-struct NoPass <: AbstractPass end
-(::Type{NoPass})(::Any, ::Any, code_info) = code_info
-
-abstract type AbstractContext{T<:AbstractTag,P<:AbstractPass,B} end
-
 include("utilities.jl")
+include("context.jl")
 include("tagged.jl")
 include("overdub.jl")
-include("contextdef.jl")
 include("macros.jl")
 
 function __init__()
