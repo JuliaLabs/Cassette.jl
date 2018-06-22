@@ -221,7 +221,7 @@ _underlying_type(::Type{<:Tagged{<:Tag,U}}) where {U} = U
 
 #=== `Tagged` API ===#
 
-function tag(context::Context, value, metadata = NoMetaData())
+function tag(value, context::Context, metadata = NoMetaData())
     return Tagged(context.tag, value, initmeta(context, value, metadata))
 end
 
@@ -313,7 +313,7 @@ end
     untagged_args = [:(untagged(args[$i], context)) for i in 1:nfields(args)]
     return quote
         $(Expr(:meta, :inline))
-        return tag(context, $(T)($(untagged_args...)))
+        return tag($(T)($(untagged_args...)), context)
     end
 end
 
