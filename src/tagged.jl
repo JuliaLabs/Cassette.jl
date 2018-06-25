@@ -216,7 +216,7 @@ end
 
 #=== `Tagged` internals ===#
 
-_underlying_type(::Type{V}) where {V} = V
+_underlying_type(V::Type) = V
 _underlying_type(::Type{<:Tagged{<:Tag,U}}) where {U} = U
 
 #=== `Tagged` API ===#
@@ -229,9 +229,9 @@ untag(x, context::Context) = untag(x, context.tag)
 untag(x::Tagged{T}, tag::T) where {T<:Tag} = x.value
 untag(x, ::Union{Tag,Nothing}) = x
 
-untagtype(::Type{X}, ::Type{C}) where {X,C<:Context} = untagtype(X, tagtype(C))
+untagtype(X::Type, ::Type{C}) where {C<:Context} = untagtype(X, tagtype(C))
 untagtype(::Type{<:Tagged{T,U,V}}, ::Type{T}) where {T<:Tag,U,V} = V
-untagtype(::Type{X}, ::Type{<:Union{Tag,Nothing}}) where {X} = X
+untagtype(X::Type, ::Type{<:Union{Tag,Nothing}}) = X
 
 metadata(x, context::Context) = metadata(x, context.tag)
 metadata(x::Tagged{T}, tag::T) where {T<:Tag} = x.meta.data
@@ -245,7 +245,7 @@ istagged(x, context::Context) = istagged(x, context.tag)
 istagged(x::Tagged{T}, tag::T) where {T<:Tag} = true
 istagged(::Any, ::Union{Tag,Nothing}) = false
 
-istaggedtype(::Type{X}, ::Type{C}) where {X,C<:Context} = istaggedtype(X, tagtype(C))
+istaggedtype(X::Type, ::Type{C}) where {C<:Context} = istaggedtype(X, tagtype(C))
 istaggedtype(::Type{<:Tagged{T}}, ::Type{T}) where {T<:Tag} = true
 istaggedtype(::DataType, ::Type{<:Union{Tag,Nothing}}) = false
 
