@@ -82,6 +82,6 @@ tagtype(::Type{<:ContextWithTag{T}}) where {T} = T
 
 function withtagfor(context::Context, f)
     return similarcontext(context;
-                          tag = Tag(typeof(context), typeof(f)),
+                          tag = Tag(typeof(context.name), typeof(f)),
                           bindings = BindingMetaCache())
 end
