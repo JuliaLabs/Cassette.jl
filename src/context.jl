@@ -21,7 +21,7 @@ struct Tag{N<:AbstractContextName,X,E#=<:Union{Nothing,Tag}=#} end
 
 Tag(::Type{N}, ::Type{X}) where {N,X} = Tag(N, X, Nothing)
 
-Tag(::Type{N}, ::Type{X}, ::Type{E}) where {N,X,E} = Tag{N,pure_objectid(X),E}()
+Tag(::Type{N}, ::Type{X}, ::Type{E}) where {N,X,E} = Tag{N,_pure_objectid(X),E}()
 
 #################
 # `BindingMeta` #
