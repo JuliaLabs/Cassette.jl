@@ -6,7 +6,13 @@
 @inline posthook(::Context, ::Vararg{Any}) = nothing
 @inline is_user_primitive(::Context, ::Vararg{Any}) = false
 @inline is_core_primitive(ctx::Context, args...) = _is_core_primitive(ctx, args...)
-@inline execution(::Context, f, args...) = f(args...)
+@inline execution(::ContextWithTag{Nothing}, f, args...) = f(args...)
+@generated function execution(context::Context, f, args...)
+    return quote
+        $(Expr(:meta, :inline))
+        untag(f, context)($([:(untag(args[$i], context)) for i in 1:nfields(args)]...))
+    end
+end
 
 @generated function _is_core_primitive(::C, args...) where {C<:Context}
     # TODO: this is slow, we should try to check whether the reflection is possible

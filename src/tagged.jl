@@ -136,7 +136,7 @@ metadatatype(::Type{<:Context}, ::DataType) = NoMetaData
     if fieldcount(T) == 0
         body = :(NoMetaMeta)
     else
-        F = isimmutable(T) ? :Immutable : :Mutable
+        F = T.mutable ? :Mutable : :Immutable
         ftypes = [:($F{metatype(C, $(fieldtype(T, i)))}) for i in 1:fieldcount(T)]
         tuplemetatype = :(Tuple{$(ftypes...)})
         if T <: Tuple
@@ -167,20 +167,20 @@ end
 
 @inline initmetameta(context::Context, value::Module) = fetch_tagged_module(context, value).meta
 
-@inline initmetameta(context::C, value::Array{T}) where {C<:Context,T} = similar(value, metatype(C, T))
+@inline initmetameta(context::C, value::Array{V}) where {C<:Context,V} = similar(value, metatype(C, V))
 
-function initmetameta(context::C, value::V) where {C<:Context,V}
+@generated function initmetameta(context::C, value::V) where {C<:Context,V}
     if fieldcount(V) == 0
         metameta_expr = :(NoMetaMeta())
     else
-        F = isimmutable(V) ? :Immutable : :Mutable
-        ftypes = [:($F{metatype(C, $(fieldtype(T, i)))}) for i in 1:fieldcount(T)]
+        F = V.mutable ? :Mutable : :Immutable
+        ftypes = [:($F{metatype(C, $(fieldtype(V, i)))}) for i in 1:fieldcount(V)]
         fdatas = [:($S(NOMETA)) for S in ftypes]
         metameta_expr = Expr(:tuple, fdatas...)
-        if !(T <: Tuple)
+        if !(V <: Tuple)
             fnames = fieldnames(V)
             for i in 1:fieldcount(V)
-                metameta_expr[i] = :($(fnames[i]) = $(metameta_expr[i]))
+                metameta_expr.args[i] = :($(fnames[i]) = $(metameta_expr.args[i]))
             end
         end
     end
@@ -263,7 +263,7 @@ hasmetameta(x, tag::Union{Tag,Nothing}) = !isa(metameta(x, tag), NoMetaMeta)
     tagged_count = 0
     fields = Expr(:tuple)
     ftypes = [fieldtype(T, i) for i in 1:fieldcount(T)]
-    F = isimmutable(T) ? :Immutable : :Mutable
+    F = T.mutable ? :Mutable : :Immutable
 
     # build `fields` expr from `args` (destructure any metadata present in arguments)
     for i in 1:nfields(args)
@@ -281,7 +281,7 @@ hasmetameta(x, tag::Union{Tag,Nothing}) = !isa(metameta(x, tag), NoMetaMeta)
         # return expr constructing the new object as-is
         return quote
             $(Expr(:meta, :inline))
-            $(Expr(:new, T, Expr(:..., :args)))
+            $(Expr(:new, T, [:(args[$i]) for i in 1:nfields(args)]...))
         end
     else # there were tagged args, so we continue
         # build the rest of the `fields` expr, if there are fields left over that were not
@@ -298,11 +298,11 @@ hasmetameta(x, tag::Union{Tag,Nothing}) = !isa(metameta(x, tag), NoMetaMeta)
             end
         end
         # return expr that constructs the new Tagged object
-        untagged_args = [:(untagged(args[$i], context)) for i in 1:nfields(args)]
+        untagged_args = [:(untag(args[$i], context)) for i in 1:nfields(args)]
         return quote
             $(Expr(:meta, :inline))
             M = metatype(C, T)
-            return Tagged(context,
+            return Tagged(context.tag,
                           $(Expr(:new, T, untagged_args...)),
                           convert(M, Meta(NoMetaData(), $fields)))
         end
@@ -310,7 +310,7 @@ hasmetameta(x, tag::Union{Tag,Nothing}) = !isa(metameta(x, tag), NoMetaMeta)
 end
 
 @generated function tagged_new(context::C, ::Type{T}, args...) where {C<:Context,T<:Array}
-    untagged_args = [:(untagged(args[$i], context)) for i in 1:nfields(args)]
+    untagged_args = [:(untag(args[$i], context)) for i in 1:nfields(args)]
     return quote
         $(Expr(:meta, :inline))
         return tag($(T)($(untagged_args...)), context)
@@ -392,7 +392,7 @@ end
 
 #=== tagged_getfield ===#
 
-tagged_getfield(context::Context, x, name) = getfield(x, untag(name, context))
+tagged_getfield(context::ContextWithTag{T}, x, name) where {T} = getfield(x, untag(name, context))
 
 function tagged_getfield(context::ContextWithTag{T}, x::Tagged{T,Module}, name) where {T}
     untagged_name = untag(name, context)
@@ -408,7 +408,7 @@ end
 
 #=== tagged_setfield! ===#
 
-tagged_setfield!(context::Context, x, name, y) = setfield!(x, untag(name, context), y)
+tagged_setfield!(context::ContextWithTag{T}, x, name, y) where {T} = setfield!(x, untag(name, context), y)
 
 function tagged_setfield!(context::ContextWithTag{T}, x::Tagged{T}, name, y) where {T}
     untagged_name = untag(name, context)
@@ -421,7 +421,7 @@ end
 
 #=== tagged_arrayref ===#
 
-function tagged_arrayref(context::Context, boundscheck, x, i)
+function tagged_arrayref(context::ContextWithTag{T}, boundscheck, x, i) where {T}
     return Core.arrayref(untag(boundscheck, context), x, untag(i, context))
 end
 
@@ -435,7 +435,7 @@ end
 
 #=== tagged_arrayset ===#
 
-function tagged_arrayset(context::Context, boundscheck, x, y, i)
+function tagged_arrayset(context::ContextWithTag{T}, boundscheck, x, y, i) where {T}
     return Core.arrayset(untag(boundscheck, context), x, y, untag(i, context))
 end
 
@@ -445,13 +445,13 @@ function tagged_arrayset(context::ContextWithTag{T}, boundscheck, x::Tagged{T}, 
     y_value = untag(y, context)
     y_meta = istagged(y, context) ? y.meta : NOMETA
     Core.arrayset(untagged_boundscheck, untag(x, context), y_value, untagged_i)
-    Core.arrayset(untagged_boundscheck, x.meta.meta, y_meta, untagged_i)
+    Core.arrayset(untagged_boundscheck, x.meta.meta, convert(eltype(x.meta.meta), y_meta), untagged_i)
     return x
 end
 
 #=== tagged_growbeg! ===#
 
-tagged_growbeg!(context::Context, x, delta) = Base._growbeg!(x, untag(delta, context))
+tagged_growbeg!(context::ContextWithTag{T}, x, delta) where {T} = Base._growbeg!(x, untag(delta, context))
 
 function tagged_growbeg!(context::ContextWithTag{T}, x::Tagged{T}, delta) where {T}
     untagged_delta = untag(delta, context)
@@ -462,7 +462,7 @@ end
 
 #=== tagged_growend! ===#
 
-tagged_growend!(context::Context, x, delta) = Base._growend!(x, untag(delta, context))
+tagged_growend!(context::ContextWithTag{T}, x, delta) where {T} = Base._growend!(x, untag(delta, context))
 
 function tagged_growend!(context::ContextWithTag{T}, x::Tagged{T}, delta) where {T}
     untagged_delta = untag(delta, context)
@@ -473,7 +473,7 @@ end
 
 #=== tagged_growat! ===#
 
-function tagged_growat!(context::Context, x, i, delta)
+function tagged_growat!(context::ContextWithTag{T}, x, i, delta) where {T}
     return Base._growat!(x, untag(i, context), untag(delta, context))
 end
 
@@ -487,7 +487,7 @@ end
 
 #=== tagged_deletebeg! ===#
 
-tagged_deletebeg!(context::Context, x, delta) = Base._deletebeg!(x, untag(delta, context))
+tagged_deletebeg!(context::ContextWithTag{T}, x, delta) where {T} = Base._deletebeg!(x, untag(delta, context))
 
 function tagged_deletebeg!(context::ContextWithTag{T}, x::Tagged{T}, delta) where {T}
     untagged_delta = untag(delta, context)
@@ -498,7 +498,7 @@ end
 
 #=== tagged_deleteend! ===#
 
-tagged_deleteend!(context::Context, x, delta) = Base._deleteend!(x, untag(delta, context))
+tagged_deleteend!(context::ContextWithTag{T}, x, delta) where {T} = Base._deleteend!(x, untag(delta, context))
 
 function tagged_deleteend!(context::ContextWithTag{T}, x::Tagged{T}, delta) where {T}
     untagged_delta = untag(delta, context)
@@ -509,7 +509,7 @@ end
 
 #=== tagged_deleteat! ===#
 
-function tagged_deleteat!(context::Context, x, i, delta)
+function tagged_deleteat!(context::ContextWithTag{T}, x, i, delta) where {T}
     return Base._deleteat!(x, untag(i, context), untag(delta, context))
 end
 
