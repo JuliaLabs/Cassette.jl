@@ -26,7 +26,7 @@ macro context(Ctx)
 
         $Cassette.@primitive function Core._apply(f, args...) where {__CONTEXT__<:$Ctx}
             flattened_args = Core._apply(tuple, args...)
-            return $Cassette.overdub_execute(__context__, f, flattened_args...)
+            return $Cassette.overdub(__context__, f, flattened_args...)
         end
 
         # enforce `T<:Cassette.Tag` to ensure that we only call the below primitive functions

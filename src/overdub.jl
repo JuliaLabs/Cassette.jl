@@ -23,11 +23,11 @@
     end
 end
 
-###################
-# overdub_execute #
-###################
+###########
+# overdub #
+###########
 
-@inline function overdub_execute(ctx::Context, args...)
+@inline function overdub(ctx::Context, args...)
     prehook(ctx, args...)
     if is_user_primitive(ctx, args...)
         output = execution(ctx, args...)
@@ -50,7 +50,7 @@ const OVERDUB_ARGS_SYMBOL = gensym("overdub_arguments")
 #   2. Munge the reflection-generated IR into a valid form for returning from
 #      `overdub_recurse_generator` (i.e. add new argument slots, substitute static
 #      parameters, destructure overdub arguments into underlying method slots, etc.)
-#   3. Translate all function calls to `overdub_execute` calls
+#   3. Translate all function calls to `overdub` calls
 #   4. If tagging is enabled, do the necessary IR transforms for the metadata tagging system
 function overdub_recurse_pass!(reflection::Reflection,
                                context_type::DataType,
@@ -108,7 +108,7 @@ function overdub_recurse_pass!(reflection::Reflection,
         push!(overdubbed_codelocs, code_info.codelocs[1])
     end
 
-    #=== 3. Translate function calls to `overdub_execute` calls ===#
+    #=== 3. Translate function calls to `overdub` calls ===#
 
     # substitute static parameters, offset slot numbers by number of added slots, and
     # offset statement indices by the number of additional statements
@@ -116,11 +116,11 @@ function overdub_recurse_pass!(reflection::Reflection,
                                 n_overdub_slots, length(overdubbed_code), :propagate)
 
     # For the rest of the statements in `code_info.code`, intercept every applicable call
-    # expression and replace it with a corresponding call to `Cassette.overdub_execute`.
+    # expression and replace it with a corresponding call to `Cassette.overdub`.
     for i in 1:length(code_info.code)
         stmnt = code_info.code[i]
         replace_match!(is_call, stmnt) do call
-            call.args = Any[GlobalRef(Cassette, :overdub_execute), overdub_ctx_slot, call.args...]
+            call.args = Any[GlobalRef(Cassette, :overdub), overdub_ctx_slot, call.args...]
             return call
         end
         push!(overdubbed_code, stmnt)
