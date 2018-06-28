@@ -225,13 +225,6 @@ function tag(value, context::Context, metadata = NoMetaData())
     return Tagged(context.tag, value, initmeta(context, value, metadata))
 end
 
-# # This function returns `tag.(value, context, metadata)` as a `Tagged` object (instead of,
-# # for example, the `Array{<:Tagged}`). TODO: This implementation is essentially a hack that
-# # will only work for contexts that don't interfere with
-# function tagcast(value, context::Context, metadata = NoMetaData())
-#     return overdub(context, broadcast, identity, tag.(value, context, metadata))
-# end
-
 untag(x, context::Context) = untag(x, context.tag)
 untag(x::Tagged{T}, tag::T) where {T<:Tag} = x.value
 untag(x, ::Union{Tag,Nothing}) = x
