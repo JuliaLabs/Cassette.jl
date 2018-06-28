@@ -421,9 +421,9 @@ end
 
 #=== tagged_arrayref ===#
 
-function tagged_arrayref(context::ContextWithTag{T}, boundscheck, x, i) where {T}
-    return Core.arrayref(untag(boundscheck, context), x, untag(i, context))
-end
+# function tagged_arrayref(context::ContextWithTag{T}, boundscheck, x, i) where {T}
+#     return Core.arrayref(untag(boundscheck, context), x, untag(i, context))
+# end
 
 function tagged_arrayref(context::ContextWithTag{T}, boundscheck, x::Tagged{T}, i) where {T}
     untagged_boundscheck = untag(boundscheck, context)
@@ -435,9 +435,9 @@ end
 
 #=== tagged_arrayset ===#
 
-function tagged_arrayset(context::ContextWithTag{T}, boundscheck, x, y, i) where {T}
-    return Core.arrayset(untag(boundscheck, context), x, y, untag(i, context))
-end
+# function tagged_arrayset(context::ContextWithTag{T}, boundscheck, x, y, i) where {T}
+#     return Core.arrayset(untag(boundscheck, context), x, y, untag(i, context))
+# end
 
 function tagged_arrayset(context::ContextWithTag{T}, boundscheck, x::Tagged{T}, y, i) where {T}
     untagged_boundscheck = untag(boundscheck, context)
@@ -519,4 +519,15 @@ function tagged_deleteat!(context::ContextWithTag{T}, x::Tagged{T}, i, delta) wh
     Base._deleteat!(x.value, i_untagged, delta_untagged)
     hasmetameta(x, context) && Base._deleteat!(x.meta.meta, i_untagged, delta_untagged)
     return nothing
+end
+
+#=== tagged_typeassert ===#
+
+function tagged_typeassert(context::ContextWithTag{T}, x, typ) where {T}
+    return Core.typeassert(x, untag(typ, context))
+end
+
+function tagged_typeassert(context::ContextWithTag{T}, x::Tagged{T}, typ) where {T}
+    untagged_result = Core.typeassert(untag(x, context), untag(typ, context))
+    return Tagged(context.tag, untagged_result, x.meta)
 end

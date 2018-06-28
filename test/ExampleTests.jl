@@ -163,6 +163,71 @@ r_post = Cassette.reflect((typeof(Cassette.overdub_recurse), typeof(NestedReflec
 Cassette.overdub_recurse_pass!(r_pre, typeof(NestedReflectCtx()))
 @test r_pre.code_info.code == r_post.code_info.code
 
+############################################################################################
+
+struct Baz
+    x::Int
+    y::Float64
+    z::String
+end
+
+baz_identity(x::Int) = Baz(x, float(x), "$x").x
+
+@context BazCtx
+Cassette.metadatatype(::Type{<:BazCtx}, ::Type{<:Integer}) = Float64
+x, n = rand(Int), rand()
+ctx = Cassette.withtagfor(BazCtx(), baz_identity)
+result = Cassette.overdub(ctx, baz_identity, Cassette.tag(x, ctx, n))
+
+@test Cassette.untag(result, ctx) === x
+@test Cassette.untagtype(typeof(result), typeof(ctx)) === typeof(x)
+@test Cassette.istagged(result, ctx)
+@test Cassette.istaggedtype(typeof(result), typeof(ctx))
+
+@test Cassette.metadata(result, ctx) === n
+@test Cassette.metameta(result, ctx) === Cassette.NoMetaMeta()
+@test Cassette.hasmetadata(result, ctx)
+@test !Cassette.hasmetameta(result, ctx)
+
+############################################################################################
+
+struct Bar{X,Y,Z}
+    x::X
+    y::Y
+    z::Z
+end
+
+mutable struct Foo
+    a::Bar{Int}
+    b
+end
+
+function foo_bar_identity(x)
+    bar = Bar(x, x + 1, x + 2)
+    foo = Foo(bar, "ha")
+    foo.b = bar
+    foo.a = Bar(4,5,6)
+    foo2 = Foo(foo.a, foo.b)
+    foo2.a = foo2.b
+    return [foo2.a.x][1]
+end
+
+@context FooBarCtx
+Cassette.metadatatype(::Type{<:FooBarCtx}, ::Type{<:Integer}) = Float64
+x, n = rand(Int), rand()
+ctx = Cassette.withtagfor(FooBarCtx(), foo_bar_identity)
+result = Cassette.overdub(ctx, foo_bar_identity, Cassette.tag(x, ctx, n))
+
+@test Cassette.untag(result, ctx) === x
+@test Cassette.untagtype(typeof(result), typeof(ctx)) === typeof(x)
+@test Cassette.istagged(result, ctx)
+@test Cassette.istaggedtype(typeof(result), typeof(ctx))
+
+@test Cassette.metadata(result, ctx) === n
+@test Cassette.metameta(result, ctx) === Cassette.NoMetaMeta()
+@test Cassette.hasmetadata(result, ctx)
+@test !Cassette.hasmetameta(result, ctx)
+
 #= TODO: The rest of the tests below should be restored for the metadata tagging system
 
 ############################################################################################
@@ -195,69 +260,6 @@ for tag in tags
     @test tagtype.name === tagtypename
     global prevtagtype = tagtype
 end
-
-############################################################################################
-
-struct Baz
-    x::Int
-    y::Float64
-    z::String
-end
-
-baz_identity(x::Int) = Baz(x, float(x), "$x").x
-
-@context BazCtx
-Cassette.metatype(::Type{<:BazCtx}, ::Type{<:Integer}) = Float64
-x, n = rand(Int), rand()
-result = @overdub BazCtx(boxes=Val(true)) begin
-    ctx = __context__
-    b0 = Box(ctx, x, n)
-    println(b0)
-    b1 = baz_identity(b0)
-    rx = unbox(ctx, b1)
-    rn = hasmeta(ctx, b1) ? meta(ctx, b1) : nothing
-    return (rx, rn)
-end
-@test x === result[1]
-@test n === result[2]
-
-############################################################################################
-
-struct Bar{X,Y,Z}
-    x::X
-    y::Y
-    z::Z
-end
-
-mutable struct Foo
-    a::Bar{Int}
-    b
-end
-
-function foo_bar_identity(x)
-    bar = Bar(x, x + 1, x + 2)
-    foo = Foo(bar, "ha")
-    foo.b = bar
-    foo.a = Bar(4,5,6)
-    foo2 = Foo(foo.a, foo.b)
-    foo2.a = foo2.b
-    return foo2.a.x
-end
-
-@context FooBarCtx
-Cassette.metatype(::Type{<:FooBarCtx}, ::Type{<:Integer}) = Float64
-x, n = rand(Int), rand()
-result = @overdub FooBarCtx(boxes=Val(true)) begin
-    ctx = __context__
-    b0 = box(ctx, x, n)
-    b1 = foo_bar_identity(b0)
-    rx = unbox(ctx, b1)
-    rn = hasmeta(ctx, b1) ? meta(ctx, b1) : nothing
-    return (rx, rn)
-end
-@test x === result[1]
-@test n === result[2]
-
 
 ############################################################################################
 # TODO: The below is a highly pathological function for metadata propagation; we should turn

@@ -79,6 +79,10 @@ macro context(Ctx)
         $Cassette.@primitive function Base._deleteat!(x, i, delta) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
             return $Cassette.tagged_deleteat!(__context__, x, i, delta)
         end
+
+        $Cassette.@primitive function Core.typeassert(x, typ) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tagged_typeassert(__context__, x, typ)
+        end
     end)
 end
 
