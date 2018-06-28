@@ -130,19 +130,23 @@ function overdub_recurse_pass!(reflection::Reflection,
     #=== 4. IR transforms for the metadata tagging system ===#
 
     if has_tagging_enabled(context_type)
-        changemap = fill(0, length(code_info.code))
-        # Scan the IR for `Module`s in the first argument position for `GlobalRef`s. For every
-        # unique such `Module`, make a new `SSAValue` at the top of the method body corresponding
-        # to `Cassette.fetch_tagged_module` called with the given context and module. Then,
-        # replace all `GlobalRef`-loads with the corresponding `Cassette._tagged_global_ref`
-        # invocation. All `GlobalRef`-stores must be preserved as-is, but need a follow-up
-        # statement calling `Cassette._tagged_global_ref_set_meta!` on the relevant arguments.
-        # TODO
+        # changemap = fill(0, length(code_info.code))
 
-        # TODO: Replace `new` expressions with calls to `Cassette.tagged_new`.
+        # TODO: Scan the IR for `Module`s in the first argument position for `GlobalRef`s.
+        # For every unique such `Module`, make a new `SSAValue` at the top of the method body
+        # corresponding to `Cassette.fetch_tagged_module` called with the given context and
+        # module. Then, replace all `GlobalRef`-loads with the corresponding
+        # `Cassette._tagged_global_ref` invocation. All `GlobalRef`-stores must be preserved
+        # as-is, but need a follow-up statement calling
+        # `Cassette._tagged_global_ref_set_meta!` on the relevant arguments.
+
+        replace_match!(x -> Base.Meta.isexpr(x, :new), overdubbed_code) do x
+            return Expr(:call, GlobalRef(Cassette, :tagged_new), overdub_ctx_slot, x.args...)
+        end
 
         # TODO: appropriately untag all `gotoifnot` conditionals
-        Core.Compiler.renumber_ir_elements!(overdubbed_code, changemap)
+
+        # Core.Compiler.renumber_ir_elements!(overdubbed_code, changemap)
     end
 
     #=== 5. Set `code_info`/`reflection` fields accordingly ===#
