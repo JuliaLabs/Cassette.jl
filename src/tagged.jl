@@ -277,7 +277,7 @@ hasmetameta(x, tag::Union{Tag,Nothing}) = !isa(metameta(x, tag), NoMetaMeta)
         push!(fields.args, :($F{$ftype}($argmeta)))
     end
 
-    if tagged_count == 0 && isbits(T) # no tagged args present
+    if tagged_count == 0 && isbitstype(T) # no tagged args present
         # return expr constructing the new object as-is
         return quote
             $(Expr(:meta, :inline))
