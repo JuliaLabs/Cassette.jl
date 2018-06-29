@@ -105,7 +105,11 @@ function overdub_recurse_pass!(reflection::Reflection,
             pop!(overdubbed_code)
             pop!(overdubbed_codelocs)
         end
-        trailing_arguments = Expr(:call, GlobalRef(Core, :tuple))
+        if has_tagging_enabled(context_type)
+            trailing_arguments = Expr(:call, GlobalRef(Cassette, :_tagged_new_tuple_unsafe), overdub_ctx_slot)
+        else
+            trailing_arguments = Expr(:call, GlobalRef(Core, :tuple))
+        end
         for i in n_method_args:n_actual_args
             push!(overdubbed_code, Expr(:call, GlobalRef(Core, :getfield), overdub_args_slot, i))
             push!(overdubbed_codelocs, code_info.codelocs[1])

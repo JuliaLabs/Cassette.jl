@@ -327,6 +327,23 @@ end
     end
 end
 
+# has an extra optimization that can be used when you can assume
+# the given args are provided by the caller of the caller of
+# _tagged_new_tuple_unsafe
+@generated function _tagged_new_tuple_unsafe(context::C, args...) where {C<:Context}
+    if all(!istaggedtype(arg, C) for arg in args)
+        return quote
+            $(Expr(:meta, :inline))
+            Core.tuple(args...)
+        end
+    else
+        return quote
+            $(Expr(:meta, :inline))
+            tagged_new_tuple(context, args...)
+        end
+    end
+end
+
 #########################
 # `tagged_*` primitives #
 #########################

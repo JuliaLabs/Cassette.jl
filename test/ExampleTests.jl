@@ -258,6 +258,23 @@ applytest(x) = Core._apply(hypot, (x,), (1,x), 1, x, (1,2))
 ctx = Cassette.withtagfor(ApplyCtx(), 1)
 @test Cassette.overdub(ctx, applytest, Cassette.tag(x, ctx)) === applytest(x)
 
+############################################################################################
+
+@context VATupleCtx
+x = rand(5)
+ctx = Cassette.withtagfor(VATupleCtx(), 1)
+result = Cassette.overdub(ctx, broadcast, sin, x)
+
+@test Cassette.untag(result, ctx) == sin.(x)
+@test Cassette.untagtype(typeof(result), typeof(ctx)) === typeof(sin.(x))
+@test Cassette.istagged(result, ctx)
+@test Cassette.istaggedtype(typeof(result), typeof(ctx))
+
+@test Cassette.metadata(result, ctx) === Cassette.NoMetaData()
+@test Cassette.metameta(result, ctx) == fill(Cassette.NOMETA, length(x))
+@test !Cassette.hasmetadata(result, ctx)
+@test Cassette.hasmetameta(result, ctx)
+
 #= TODO: The rest of the tests below should be restored for the metadata tagging system
 
 ############################################################################################
