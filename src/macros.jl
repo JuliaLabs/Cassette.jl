@@ -27,8 +27,7 @@ macro context(Ctx)
         end
 
         $Cassette.@primitive function Core._apply(f, args...) where {__CONTEXT__<:$Ctx}
-            flattened_args = Core._apply(tuple, args...)
-            return $Cassette.overdub(__context__, f, flattened_args...)
+            return $Cassette.overdub(__context__, f, Core._apply(tuple, args...)...)
         end
 
         # enforce `T<:Cassette.Tag` to ensure that we only call the below primitive functions
@@ -44,6 +43,10 @@ macro context(Ctx)
 
         $Cassette.@primitive function Core.tuple(args...) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
             return $Cassette.tagged_new_tuple(__context__, args...)
+        end
+
+        $Cassette.@primitive function Core._apply(f, args...) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tagged_apply(__context__, f, args...)
         end
 
         $Cassette.@primitive function Base.nameof(m) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}

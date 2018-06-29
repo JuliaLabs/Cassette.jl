@@ -250,6 +250,14 @@ result = Cassette.overdub(ctx, x -> (x, [x], 1), x)
 @test !Cassette.hasmetadata(result, ctx)
 @test Cassette.hasmetameta(result, ctx)
 
+############################################################################################
+
+@context ApplyCtx
+x = rand()
+applytest(x) = Core._apply(hypot, (x,), (1,x), 1, x, (1,2))
+ctx = Cassette.withtagfor(ApplyCtx(), 1)
+@test Cassette.overdub(ctx, applytest, Cassette.tag(x, ctx)) === applytest(x)
+
 #= TODO: The rest of the tests below should be restored for the metadata tagging system
 
 ############################################################################################

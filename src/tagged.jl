@@ -524,6 +524,27 @@ function tagged_typeassert(context::ContextWithTag{T}, x::Tagged{T}, typ) where 
     return Tagged(context.tag, untagged_result, x.meta)
 end
 
+#=== tagged_apply ===#
+
+@generated function tagged_apply(context::ContextWithTag{T}, f, args...) where {T}
+    flattened = Any[]
+    for i in 1:nfields(args)
+        x = args[i]
+        if x <: Tuple
+            push!(flattened, Expr(:..., Expr(:ref, :args, i)))
+        elseif istaggedtype(x, context) && untagtype(x, context) <: Tuple
+            for j in 1:fieldcount(untagtype(x, context))
+                push!(flattened, :(tagged_getfield(context, args[$i], $j)))
+            end
+        else
+            push!(flattened, :(args[$i]))
+        end
+    end
+    return quote
+        overdub(context, f, $(flattened...))
+    end
+end
+
 ###################
 # Pretty Printing #
 ###################
