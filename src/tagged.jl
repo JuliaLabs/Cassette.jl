@@ -446,7 +446,7 @@ end
 tagged_growbeg!(context::ContextWithTag{T}, x, delta) where {T} = Base._growbeg!(x, untag(delta, context))
 
 function tagged_growbeg!(context::ContextWithTag{T}, x::Tagged{T}, delta) where {T}
-    untagged_delta = untag(delta, context)
+    delta_untagged = untag(delta, context)
     Base._growbeg!(x.value, delta_untagged)
     hasmetameta(x, context) && Base._growbeg!(x.meta.meta, delta_untagged)
     return nothing
@@ -457,7 +457,7 @@ end
 tagged_growend!(context::ContextWithTag{T}, x, delta) where {T} = Base._growend!(x, untag(delta, context))
 
 function tagged_growend!(context::ContextWithTag{T}, x::Tagged{T}, delta) where {T}
-    untagged_delta = untag(delta, context)
+    delta_untagged = untag(delta, context)
     Base._growend!(x.value, delta_untagged)
     hasmetameta(x, context) && Base._growend!(x.meta.meta, delta_untagged)
     return nothing
@@ -482,7 +482,7 @@ end
 tagged_deletebeg!(context::ContextWithTag{T}, x, delta) where {T} = Base._deletebeg!(x, untag(delta, context))
 
 function tagged_deletebeg!(context::ContextWithTag{T}, x::Tagged{T}, delta) where {T}
-    untagged_delta = untag(delta, context)
+    delta_untagged = untag(delta, context)
     Base._deletebeg!(x.value, delta_untagged)
     hasmetameta(x, context) && Base._deletebeg!(x.meta.meta, delta_untagged)
     return nothing
@@ -493,7 +493,7 @@ end
 tagged_deleteend!(context::ContextWithTag{T}, x, delta) where {T} = Base._deleteend!(x, untag(delta, context))
 
 function tagged_deleteend!(context::ContextWithTag{T}, x::Tagged{T}, delta) where {T}
-    untagged_delta = untag(delta, context)
+    delta_untagged = untag(delta, context)
     Base._deleteend!(x.value, delta_untagged)
     hasmetameta(x, context) && Base._deleteend!(x.meta.meta, delta_untagged)
     return nothing
