@@ -228,6 +228,28 @@ result = Cassette.overdub(ctx, foo_bar_identity, Cassette.tag(x, ctx, n))
 @test Cassette.hasmetadata(result, ctx)
 @test !Cassette.hasmetameta(result, ctx)
 
+############################################################################################
+
+@context TaggedTupleCtx
+Cassette.metadatatype(::Type{<:TaggedTupleCtx}, ::DataType) = Float64
+x = rand()
+ctx = Cassette.withtagfor(TaggedTupleCtx(), 1)
+result = Cassette.overdub(ctx, x -> (x, [x], 1), x)
+
+@test Cassette.untag(result, ctx) == (x, [x], 1)
+@test Cassette.untagtype(typeof(result), typeof(ctx)) === typeof((x, [x], 1))
+@test Cassette.istagged(result, ctx)
+@test Cassette.istaggedtype(typeof(result), typeof(ctx))
+
+@test Cassette.metadata(result, ctx) === Cassette.NoMetaData()
+@test isa(Cassette.metameta(result, ctx), Tuple{
+    Cassette.Immutable{Cassette.Meta{Float64,Cassette.NoMetaMeta}},
+    Cassette.Immutable{Cassette.Meta{Float64,Array{Cassette.Meta{Float64,Cassette.NoMetaMeta},1}}},
+    Cassette.Immutable{Cassette.Meta{Float64,Cassette.NoMetaMeta}}
+})
+@test !Cassette.hasmetadata(result, ctx)
+@test Cassette.hasmetameta(result, ctx)
+
 #= TODO: The rest of the tests below should be restored for the metadata tagging system
 
 ############################################################################################

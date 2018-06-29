@@ -2,7 +2,9 @@
 # Expression Predicates #
 #########################
 
-is_call(x) = Base.Meta.isexpr(x, :call) && (x.args[1] !== GlobalRef(Core, :tuple))
+is_call(x) = Base.Meta.isexpr(x, :call)
+
+is_new(x) = Base.Meta.isexpr(x, :new)
 
 is_macro(x, name) = Base.Meta.isexpr(x, :macrocall) && x.args[1] == name
 

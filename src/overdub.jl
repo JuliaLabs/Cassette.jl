@@ -6,8 +6,9 @@
 @inline posthook(::Context, ::Vararg{Any}) = nothing
 @inline is_user_primitive(::Context, ::Vararg{Any}) = false
 @inline is_core_primitive(ctx::Context, args...) = _is_core_primitive(ctx, args...)
-@inline execution(::ContextWithTag{Nothing}, f, args...) = f(args...)
-@generated function execution(context::Context, f, args...)
+@inline execute(::ContextWithTag{Nothing}, f, args...) = f(args...)
+
+@generated function execute(context::Context, f, args...)
     return quote
         $(Expr(:meta, :inline))
         untag(f, context)($([:(untag(args[$i], context)) for i in 1:nfields(args)]...))
@@ -36,7 +37,7 @@ end
 @inline function overdub(ctx::Context, args...)
     prehook(ctx, args...)
     if is_user_primitive(ctx, args...)
-        output = execution(ctx, args...)
+        output = execute(ctx, args...)
     else
         output = overdub_recurse(ctx, args...)
     end
@@ -146,7 +147,7 @@ function overdub_recurse_pass!(reflection::Reflection,
         # as-is, but need a follow-up statement calling
         # `Cassette._tagged_global_ref_set_meta!` on the relevant arguments.
 
-        replace_match!(x -> Base.Meta.isexpr(x, :new), overdubbed_code) do x
+        replace_match!(is_new, overdubbed_code) do x
             return Expr(:call, GlobalRef(Cassette, :tagged_new), overdub_ctx_slot, x.args...)
         end
 
@@ -178,7 +179,7 @@ function overdub_recurse_generator(pass_type, self, context_type, args::Tuple)
         else
             body = quote
                 $(Expr(:meta, :inline))
-                $Cassette.execution($OVERDUB_CTX_SYMBOL, $OVERDUB_ARGS_SYMBOL...)
+                $Cassette.execute($OVERDUB_CTX_SYMBOL, $OVERDUB_ARGS_SYMBOL...)
             end
             @safe_debug "no CodeInfo found; executing as primitive" args
         end

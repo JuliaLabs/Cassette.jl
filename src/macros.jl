@@ -35,7 +35,15 @@ macro context(Ctx)
         # if the context has the tagging system enabled
 
         $Cassette.@primitive function Array{T,N}(undef::UndefInitializer, args...) where {T,N,__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_new(__context__, Array{T,N}, undef, args...)
+            return $Cassette.tagged_new_array(__context__, Array{T,N}, undef, args...)
+        end
+
+        $Cassette.@primitive function Core.Module(args...) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tagged_new_module(__context__, args...)
+        end
+
+        $Cassette.@primitive function Core.tuple(args...) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tagged_new_tuple(__context__, args...)
         end
 
         $Cassette.@primitive function Base.nameof(m) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
@@ -223,7 +231,7 @@ For details regarding the format of `contextual_method_definition`, see the cont
 dispatch documentation.
 """
 macro execution(method)
-    return contextual_definition!(:($Cassette.execution), method)
+    return contextual_definition!(:($Cassette.execute), method)
 end
 
 ################

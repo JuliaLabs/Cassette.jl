@@ -165,28 +165,32 @@ end
 
 #=== initmetameta ===#
 
+function _metametaexpr(::Type{C}, ::Type{V}, metaexprs::Vector) where {C,V}
+    if fieldcount(V) == 0 || (all(x == :NOMETA for x in metaexprs) && isbitstype(V))
+        return :(NoMetaMeta())
+    else
+        F = V.mutable ? :Mutable : :Immutable
+        metatypes = [:(metatype(C, $(fieldtype(V, i)))) for i in 1:fieldcount(V)]
+        metaconverts = [:(convert($(metatypes[i]), $(metaexprs[i]))) for i in 1:fieldcount(V)]
+        metametafields = [:($F{$(metatypes[i])}($(metaconverts[i]))) for i in 1:fieldcount(V)]
+        if !(V <: Tuple)
+            fnames = fieldnames(V)
+            for i in 1:fieldcount(V)
+                metametafields[i] = :($(fnames[i]) = $(metametafields[i]))
+            end
+        end
+        return Expr(:tuple, metametafields...)
+    end
+end
+
 @inline initmetameta(context::Context, value::Module) = fetch_tagged_module(context, value).meta
 
 @inline initmetameta(context::C, value::Array{V}) where {C<:Context,V} = similar(value, metatype(C, V))
 
 @generated function initmetameta(context::C, value::V) where {C<:Context,V}
-    if fieldcount(V) == 0
-        metameta_expr = :(NoMetaMeta())
-    else
-        F = V.mutable ? :Mutable : :Immutable
-        ftypes = [:($F{metatype(C, $(fieldtype(V, i)))}) for i in 1:fieldcount(V)]
-        fdatas = [:($S(NOMETA)) for S in ftypes]
-        metameta_expr = Expr(:tuple, fdatas...)
-        if !(V <: Tuple)
-            fnames = fieldnames(V)
-            for i in 1:fieldcount(V)
-                metameta_expr.args[i] = :($(fnames[i]) = $(metameta_expr.args[i]))
-            end
-        end
-    end
     return quote
         $(Expr(:meta, :inline))
-        $(metameta_expr)
+        $(_metametaexpr(C, V, [:NOMETA for i in 1:fieldcount(V)]))
     end
 end
 
@@ -260,56 +264,36 @@ hasmetameta(x, tag::Union{Tag,Nothing}) = !isa(metameta(x, tag), NoMetaMeta)
 ################
 
 @generated function tagged_new(context::C, ::Type{T}, args...) where {C<:Context,T}
-    tagged_count = 0
-    fields = Expr(:tuple)
-    ftypes = [fieldtype(T, i) for i in 1:fieldcount(T)]
-    F = T.mutable ? :Mutable : :Immutable
-
-    # build `fields` expr from `args` (destructure any metadata present in arguments)
-    for i in 1:nfields(args)
-        if istaggedtype(args[i], C)
-            tagged_count += 1
-            argmeta = :(args[$i].meta)
+    argmetaexprs = Any[]
+    for i in 1:fieldcount(T)
+        if i <= nfields(args) && istaggedtype(args[i], C)
+            push!(argmetaexprs, :(args[$i].meta))
         else
-            argmeta = :NOMETA
+            push!(argmetaexprs, :NOMETA)
         end
-        ftype = :(metatype(C, $(ftypes[i])))
-        push!(fields.args, :($F{$ftype}($argmeta)))
     end
-
-    if tagged_count == 0 && isbitstype(T) # no tagged args present
-        # return expr constructing the new object as-is
+    if all(x == :NOMETA for x in argmetaexprs) && isbitstype(T)
         return quote
             $(Expr(:meta, :inline))
             $(Expr(:new, T, [:(args[$i]) for i in 1:nfields(args)]...))
         end
-    else # there were tagged args, so we continue
-        # build the rest of the `fields` expr, if there are fields left over that were not
-        # populated by the given `args` (since `new` supports 0 to N arguments for objects
-        # of fieldcount N).
-        for i in (nfields(args) + 1):fieldcount(T)
-            ftype = :(metatype(C, $(ftypes[i])))
-            push!(fields.args, :($F{$ftype}(NOMETA)))
-        end
-        if !(T <: Tuple) # if fields are identified by name as well as position, use the names
-            fnames = fieldnames(T)
-            for i in 1:fieldcount(T)
-                fields.args[i] = :($(fnames[i]) = $(fields.args[i]))
-            end
-        end
-        # return expr that constructs the new Tagged object
+    else
+        metametaexpr = _metametaexpr(C, T, argmetaexprs)
         untagged_args = [:(untag(args[$i], context)) for i in 1:nfields(args)]
+        if T <: Tuple
+            newexpr = Expr(:tuple, untagged_args...)
+        else
+            newexpr = Expr(:new, T, untagged_args...)
+        end
         return quote
             $(Expr(:meta, :inline))
             M = metatype(C, T)
-            return Tagged(context.tag,
-                          $(Expr(:new, T, untagged_args...)),
-                          convert(M, Meta(NoMetaData(), $fields)))
+            return Tagged(context.tag, $newexpr, convert(M, Meta(NoMetaData(), $metametaexpr)))
         end
     end
 end
 
-@generated function tagged_new(context::C, ::Type{T}, args...) where {C<:Context,T<:Array}
+@generated function tagged_new_array(context::C, ::Type{T}, args...) where {C<:Context,T<:Array}
     untagged_args = [:(untag(args[$i], context)) for i in 1:nfields(args)]
     return quote
         $(Expr(:meta, :inline))
@@ -317,7 +301,7 @@ end
     end
 end
 
-@generated function tagged_new(context::C, ::Type{Module}, args...) where {C<:Context}
+@generated function tagged_new_module(context::C, args...) where {C<:Context}
     if istaggedtype(args[1], C)
         return_expr = quote
             Tagged(tagged_module.tag, tagged_module.value,
@@ -332,6 +316,14 @@ end
         new_module = Module(args...)
         tagged_module = fetch_tagged_module(context, new_module)
         return $return_expr
+    end
+end
+
+@generated function tagged_new_tuple(context::C, args...) where {C<:Context}
+    T = Tuple{[untagtype(args[i], C) for i in 1:nfields(args)]...}
+    return quote
+        $(Expr(:meta, :inline))
+        tagged_new(context, $T, args...)
     end
 end
 
@@ -556,15 +548,27 @@ function Base.show(io::IO, meta::Meta)
                 end
             end
             metametastr = String(take!(tmp))
+        elseif isa(meta.meta, Tuple)
+            tmp = IOBuffer()
+            write(tmp, "(")
+            i = 1
+            for v in meta.meta
+                print(tmp, load(v))
+                if i == length(meta.meta)
+                    print(tmp, ")")
+                else
+                    print(tmp, ", ")
+                    i += 1
+                end
+            end
+            metametastr = String(take!(tmp))
         else
-            metametastr = sprint(meta.meta)
+            metametastr = sprint(show, meta.meta)
         end
         print(io, "Meta(", meta.data, ", ", metametastr, ")")
     end
 end
 
-Base.show(io::IO, x::Tagged) = print(io, "Tagged(", x.tag,
-                                     "\n       value: ", x.value,
-                                     "\n       meta:  ", x.meta, ")")
+Base.show(io::IO, x::Tagged) = print(io, "Tagged(", x.tag, ", ", x.value, ", ", x.meta, ")")
 
 Base.show(io::IO, ::Tag{N,X,E}) where {N,X,E} = print(io, "Tag{", N, ",", X, ",", E, "}()")
