@@ -421,9 +421,9 @@ end
 
 #=== tagged_arrayref ===#
 
-# function tagged_arrayref(context::ContextWithTag{T}, boundscheck, x, i) where {T}
-#     return Core.arrayref(untag(boundscheck, context), x, untag(i, context))
-# end
+function tagged_arrayref(context::ContextWithTag{T}, boundscheck, x, i) where {T}
+    return Core.arrayref(untag(boundscheck, context), x, untag(i, context))
+end
 
 function tagged_arrayref(context::ContextWithTag{T}, boundscheck, x::Tagged{T}, i) where {T}
     untagged_boundscheck = untag(boundscheck, context)
@@ -435,9 +435,9 @@ end
 
 #=== tagged_arrayset ===#
 
-# function tagged_arrayset(context::ContextWithTag{T}, boundscheck, x, y, i) where {T}
-#     return Core.arrayset(untag(boundscheck, context), x, y, untag(i, context))
-# end
+function tagged_arrayset(context::ContextWithTag{T}, boundscheck, x, y, i) where {T}
+    return Core.arrayset(untag(boundscheck, context), x, y, untag(i, context))
+end
 
 function tagged_arrayset(context::ContextWithTag{T}, boundscheck, x::Tagged{T}, y, i) where {T}
     untagged_boundscheck = untag(boundscheck, context)
