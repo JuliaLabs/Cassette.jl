@@ -531,3 +531,40 @@ function tagged_typeassert(context::ContextWithTag{T}, x::Tagged{T}, typ) where 
     untagged_result = Core.typeassert(untag(x, context), untag(typ, context))
     return Tagged(context.tag, untagged_result, x.meta)
 end
+
+###################
+# Pretty Printing #
+###################
+
+Base.show(io::IO, meta::Union{NoMetaMeta,NoMetaData}) = print(io, "_")
+
+function Base.show(io::IO, meta::Meta)
+    if isa(meta.data, NoMetaData) && isa(meta.meta, NoMetaMeta)
+        print(io, "_")
+    else
+        if isa(meta.meta, NamedTuple)
+            tmp = IOBuffer()
+            write(tmp, "(")
+            i = 1
+            for (k, v) in pairs(meta.meta)
+                print(tmp, k, " = ", load(v))
+                if i == length(meta.meta)
+                    print(tmp, ")")
+                else
+                    print(tmp, ", ")
+                    i += 1
+                end
+            end
+            metametastr = String(take!(tmp))
+        else
+            metametastr = sprint(meta.meta)
+        end
+        print(io, "Meta(", meta.data, ", ", metametastr, ")")
+    end
+end
+
+Base.show(io::IO, x::Tagged) = print(io, "Tagged(", x.tag,
+                                     "\n       value: ", x.value,
+                                     "\n       meta:  ", x.meta, ")")
+
+Base.show(io::IO, ::Tag{N,X,E}) where {N,X,E} = print(io, "Tag{", N, ",", X, ",", E, "}()")

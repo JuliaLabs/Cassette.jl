@@ -85,3 +85,5 @@ function withtagfor(context::Context, f)
                           tag = Tag(typeof(context.name), typeof(f)),
                           bindings = BindingMetaCache())
 end
+
+nametype(::Type{<:Context{N}}) where {N} = N

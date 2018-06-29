@@ -16,6 +16,8 @@ macro context(Ctx)
     return esc(quote
         struct $CtxName <: $Cassette.AbstractContextName end
 
+        Base.show(io::IO, ::Type{$CtxName}) = print(io, "nametype(", $(string(Ctx)), ")")
+
         const $Ctx{M,T<:Union{Nothing,$Cassette.Tag},P<:$Cassette.AbstractPass} = $Cassette.Context{$CtxName,M,P,T}
 
         $Ctx(; kwargs...) = $Cassette.Context($CtxName(); kwargs...)
