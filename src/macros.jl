@@ -108,7 +108,7 @@ end
 A convenience macro for overdubbing and executing `expression` within the context `Ctx`.
 """
 macro overdub(ctx, expr)
-    return :($Cassette.overdub_recurse($(esc(ctx)), () -> $(esc(expr))))
+    return :($Cassette.recurse($(esc(ctx)), () -> $(esc(expr))))
 end
 
 #########
@@ -141,7 +141,7 @@ macro pass(transform)
     return esc(quote
         struct $Pass <: $Cassette.AbstractPass end
         (::Type{$Pass})(ctxtype, signature, codeinfo) = $transform(ctxtype, signature, codeinfo)
-        Core.eval($Cassette, $Cassette.overdub_recurse_definition($name, $line, $file))
+        Core.eval($Cassette, $Cassette.recurse_definition($name, $line, $file))
         $Pass()
     end)
 end

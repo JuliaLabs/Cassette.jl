@@ -39,27 +39,27 @@ end
     if is_user_primitive(ctx, args...)
         output = execute(ctx, args...)
     else
-        output = overdub_recurse(ctx, args...)
+        output = recurse(ctx, args...)
     end
     posthook(ctx, output, args...)
     return output
 end
 
-###################
-# overdub_recurse #
-###################
+###########
+# recurse #
+###########
 
-const OVERDUB_CTX_SYMBOL = gensym("overdub_context")
-const OVERDUB_ARGS_SYMBOL = gensym("overdub_arguments")
+const RECURSE_CTX_SYMBOL = gensym("recurse_context")
+const RECURSE_ARGS_SYMBOL = gensym("recurse_arguments")
 
-# The `overdub_recurse` pass has four intertwined tasks:
+# The `recurse` pass has four intertwined tasks:
 #   1. Apply the user-provided pass, if one is given
 #   2. Munge the reflection-generated IR into a valid form for returning from
-#      `overdub_recurse_generator` (i.e. add new argument slots, substitute static
+#      `recurse_generator` (i.e. add new argument slots, substitute static
 #      parameters, destructure overdub arguments into underlying method slots, etc.)
 #   3. Translate all function calls to `overdub` calls
 #   4. If tagging is enabled, do the necessary IR transforms for the metadata tagging system
-function overdub_recurse_pass!(reflection::Reflection,
+function recurse_pass!(reflection::Reflection,
                                context_type::DataType,
                                pass_type::DataType = NoPass)
     signature = reflection.signature
@@ -71,10 +71,10 @@ function overdub_recurse_pass!(reflection::Reflection,
 
     code_info = pass_type(context_type, signature, code_info)
 
-    #=== 2. Munge the code into a valid form for `overdub_recurse_generator` ===#
+    #=== 2. Munge the code into a valid form for `recurse_generator` ===#
 
     # construct new slotnames/slotflags for added slots
-    code_info.slotnames = Any[:overdub_recurse, OVERDUB_CTX_SYMBOL, OVERDUB_ARGS_SYMBOL, code_info.slotnames...]
+    code_info.slotnames = Any[:recurse, RECURSE_CTX_SYMBOL, RECURSE_ARGS_SYMBOL, code_info.slotnames...]
     code_info.slotflags = UInt8[0x00, 0x00, 0x00, code_info.slotflags...]
     n_overdub_slots = 3
     overdub_ctx_slot = SlotNumber(2)
@@ -172,18 +172,18 @@ function overdub_recurse_pass!(reflection::Reflection,
 end
 
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
-function overdub_recurse_generator(pass_type, self, context_type, args::Tuple)
+function recurse_generator(pass_type, self, context_type, args::Tuple)
     try
         untagged_args = ((untagtype(args[i], context_type) for i in 1:nfields(args))...,)
         reflection = reflect(untagged_args)
         if isa(reflection, Reflection)
-            overdub_recurse_pass!(reflection, context_type, pass_type)
+            recurse_pass!(reflection, context_type, pass_type)
             body = reflection.code_info
             @safe_debug "returning overdubbed CodeInfo" args body
         else
             body = quote
                 $(Expr(:meta, :inline))
-                $Cassette.execute($OVERDUB_CTX_SYMBOL, $OVERDUB_ARGS_SYMBOL...)
+                $Cassette.execute($RECURSE_CTX_SYMBOL, $RECURSE_ARGS_SYMBOL...)
             end
             @safe_debug "no CodeInfo found; executing as primitive" args
         end
@@ -196,15 +196,15 @@ function overdub_recurse_generator(pass_type, self, context_type, args::Tuple)
     end
 end
 
-function overdub_recurse_definition(pass, line, file)
+function recurse_definition(pass, line, file)
     return quote
-        function overdub_recurse($OVERDUB_CTX_SYMBOL::ContextWithPass{pass}, $OVERDUB_ARGS_SYMBOL...) where {pass<:$pass}
+        function recurse($RECURSE_CTX_SYMBOL::ContextWithPass{pass}, $RECURSE_ARGS_SYMBOL...) where {pass<:$pass}
             $(Expr(:meta,
                    :generated,
                    Expr(:new,
                         Core.GeneratedFunctionStub,
-                        :overdub_recurse_generator,
-                        Any[:overdub_recurse, OVERDUB_CTX_SYMBOL, OVERDUB_ARGS_SYMBOL],
+                        :recurse_generator,
+                        Any[:recurse, RECURSE_CTX_SYMBOL, RECURSE_ARGS_SYMBOL],
                         Any[:pass],
                         line,
                         QuoteNode(Symbol(file)),
@@ -213,4 +213,4 @@ function overdub_recurse_definition(pass, line, file)
     end
 end
 
-@eval $(overdub_recurse_definition(:NoPass, @__LINE__, @__FILE__))
+@eval $(recurse_definition(:NoPass, @__LINE__, @__FILE__))

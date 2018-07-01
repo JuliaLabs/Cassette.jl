@@ -112,19 +112,19 @@ c = Count{Union{String,Int}}(0)
 
 worldtest = 0
 oldctx = WorldCtx()
-Cassette.overdub_recurse(oldctx, sin, 1)
+Cassette.recurse(oldctx, sin, 1)
 
 @prehook (f::Any)(args...) where {__CONTEXT__<:WorldCtx} = (global worldtest += 1)
-Cassette.overdub_recurse(WorldCtx(), sin, 1)
+Cassette.recurse(WorldCtx(), sin, 1)
 @test worldtest > 100
 
 tmp = worldtest
-Cassette.overdub_recurse(oldctx, sin, 1)
+Cassette.recurse(oldctx, sin, 1)
 @test tmp < worldtest
 
 tmp = worldtest
 @prehook (f::Any)(args...) where {__CONTEXT__<:WorldCtx} = nothing
-Cassette.overdub_recurse(WorldCtx(), sin, 1)
+Cassette.recurse(WorldCtx(), sin, 1)
 @test tmp === worldtest
 
 ############################################################################################
@@ -138,7 +138,7 @@ Cassette.overdub_recurse(WorldCtx(), sin, 1)
         return f(args...)
     else
         newctx = Cassette.similarcontext(__context__, metadata = subtrace)
-        return Cassette.overdub_recurse(newctx, f, args...)
+        return Cassette.recurse(newctx, f, args...)
     end
 end
 
@@ -158,9 +158,9 @@ trtest(x, y, z) = x*y + y*z
 
 @context NestedReflectCtx
 r_pre = Cassette.reflect((typeof(sin), Int))
-r_post = Cassette.reflect((typeof(Cassette.overdub_recurse), typeof(NestedReflectCtx()), typeof(sin), Int))
+r_post = Cassette.reflect((typeof(Cassette.recurse), typeof(NestedReflectCtx()), typeof(sin), Int))
 @test isa(r_pre, Cassette.Reflection) && isa(r_post, Cassette.Reflection)
-Cassette.overdub_recurse_pass!(r_pre, typeof(NestedReflectCtx()))
+Cassette.recurse_pass!(r_pre, typeof(NestedReflectCtx()))
 @test r_pre.code_info.code == r_post.code_info.code
 
 ############################################################################################
