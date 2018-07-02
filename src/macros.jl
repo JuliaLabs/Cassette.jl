@@ -98,6 +98,10 @@ macro context(Ctx)
         $Cassette.@primitive function Core.typeassert(x, typ) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
             return $Cassette.tagged_typeassert(__context__, x, typ)
         end
+
+        $Cassette.@primitive function Base.sitofp(F, x) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tagged_sitofp(__context__, F, x)
+        end
     end)
 end
 

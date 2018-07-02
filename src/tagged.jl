@@ -44,7 +44,18 @@ const NOMETA = Meta(NoMetaData(), NoMetaMeta())
 # These defined to allow conversion of `Meta{NoMetaData,NoMetaMeta}`
 # into whatever metatype is expected by a container.
 Base.convert(::Type{M}, meta::M) where {M<:Meta} = meta
-Base.convert(::Type{Meta{D,M}}, meta::Meta) where {D,M} = Meta{D,M}(meta.data, meta.meta)
+
+function Base.convert(::Type{Meta{D,M}}, meta::Meta) where {D,M}
+    metadata = _metadataconvert(D, meta.data)
+    metameta = _metametaconvert(M, meta.meta)
+    return Meta{D,M}(metadata, metameta)
+end
+
+_metadataconvert(T, x::NoMetaData) = x
+_metadataconvert(T, x) = convert(T, x)
+
+_metametaconvert(T, x::NoMetaMeta) = x
+_metametaconvert(T, x) = convert(T, x)
 
 ################
 # `ModuleMeta` #
@@ -342,9 +353,9 @@ end
     end
 end
 
-#########################
-# `tagged_*` primitives #
-#########################
+##################################
+# `tagged_*` intrisic primitives #
+##################################
 
 #=== tagged_nameof ===#
 
@@ -580,6 +591,16 @@ end
     return quote
         overdub(context, f, $(flattened...))
     end
+end
+
+#=== tagged_sitofp ===#
+
+function tagged_sitofp(context::ContextWithTag{T}, F, x) where {T}
+    return Base.sitofp(F, x)
+end
+
+function tagged_sitofp(context::ContextWithTag{T}, F, x::Tagged{T}) where {T}
+    return Tagged(context.tag, Base.sitofp(F, x.value), x.meta)
 end
 
 ###################
