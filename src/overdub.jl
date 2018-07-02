@@ -41,9 +41,13 @@ end
     else
         output = recurse(ctx, args...)
     end
-    posthook(ctx, output, args...)
+    _posthook(ctx, output, args...)
     return output
 end
+
+# switch order to match API; TODO: instead might be
+# better to rework API to respect the order here
+_posthook(ctx, output, f, args...) = posthook(ctx, f, output, args...)
 
 ###########
 # recurse #
