@@ -99,12 +99,14 @@ macro context(Ctx)
             return $Cassette.tagged_typeassert(__context__, x, typ)
         end
 
-        $Cassette.@primitive function Base.sitofp(F, x) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_sitofp(__context__, F, x)
-        end
-
-        $Cassette.@primitive function Base.sle_int(x, y) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return Base.sle_int($Cassette.untag(x, __context__), $Cassette.untag(y, __context__))
+        $Cassette.@primitive function (f::Core.IntrinsicFunction)(args...) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            if f === Base.sitofp
+                return $Cassette.tagged_sitofp(__context__, args...)
+            elseif f === Base.sle_int
+                return $Cassette.tagged_sle_int(__context__, args...)
+            else # TODO: add more cases
+                return $Cassette.call(__context__, f, args...)
+            end
         end
     end)
 end

@@ -6,9 +6,11 @@
 @inline posthook(::Context, ::Vararg{Any}) = nothing
 @inline is_user_primitive(::Context, ::Vararg{Any}) = false
 @inline is_core_primitive(ctx::Context, args...) = _is_core_primitive(ctx, args...)
-@inline execute(::ContextWithTag{Nothing}, f, args...) = f(args...)
+@inline execute(ctx::Context, args...) = call(ctx, args...)
 
-@generated function execute(context::Context, f, args...)
+@inline call(::ContextWithTag{Nothing}, f, args...) = f(args...)
+
+@generated function call(context::Context, f, args...)
     return quote
         $(Expr(:meta, :inline))
         untag(f, context)($([:(untag(args[$i], context)) for i in 1:nfields(args)]...))

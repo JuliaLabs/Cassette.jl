@@ -596,12 +596,16 @@ end
 #=== tagged_sitofp ===#
 
 function tagged_sitofp(context::ContextWithTag{T}, F, x) where {T}
-    return Base.sitofp(F, x)
+    return Base.sitofp(untag(F, context), x)
 end
 
 function tagged_sitofp(context::ContextWithTag{T}, F, x::Tagged{T}) where {T}
-    return Tagged(context.tag, Base.sitofp(F, x.value), x.meta)
+    return Tagged(context.tag, Base.sitofp(untag(F, context), x.value), x.meta)
 end
+
+#=== tagged_sle_int ===#
+
+tagged_sle_int(context::Context, x, y) = Base.sle_int(untag(x, context), untag(y, context))
 
 ###################
 # Pretty Printing #
