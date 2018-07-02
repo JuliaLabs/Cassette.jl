@@ -147,19 +147,15 @@ metadatatype(::Type{<:Context}, ::DataType) = NoMetaData
         end
     end
     return quote
-        $(Expr(:meta, :inline))
         $body
     end
 end
 
 @generated function metametatype(::Type{C}, ::Type{T}) where {C<:Context,T<:Array}
-    return quote
-        $(Expr(:meta, :inline))
-        Array{metatype(C, $(eltype(T))),$(ndims(T))}
-    end
+    return :(Array{metatype(C, $(eltype(T))),$(ndims(T))})
 end
 
-@inline function metametatype(::Type{C}, ::Type{Module}) where {C<:Context}
+function metametatype(::Type{C}, ::Type{Module}) where {C<:Context}
     return ModuleMeta{metadatatype(C, Symbol), metametatype(C, Symbol)}
 end
 
@@ -183,20 +179,26 @@ function _metametaexpr(::Type{C}, ::Type{V}, metaexprs::Vector) where {C,V}
     end
 end
 
-@inline initmetameta(context::Context, value::Module) = fetch_tagged_module(context, value).meta
+initmetameta(context::Context, value::Module) = fetch_tagged_module(context, value).meta
 
-@inline initmetameta(context::C, value::Array{V}) where {C<:Context,V} = similar(value, metatype(C, V))
+function initmetameta(context::C, value::Array{V}) where {C<:Context,V}
+    M = metatype(C, V)
+    if M <: typeof(NOMETA)
+        return NoMetaMeta()
+    else
+        return fill!(similar(value, M), NOMETA)
+    end
+end
 
 @generated function initmetameta(context::C, value::V) where {C<:Context,V}
     return quote
-        $(Expr(:meta, :inline))
         $(_metametaexpr(C, V, [:NOMETA for i in 1:fieldcount(V)]))
     end
 end
 
 #=== initmeta ===#
 
-@inline function initmeta(context::C, value::V, metadata::D) where {C<:Context,V,D}
+function initmeta(context::C, value::V, metadata::D) where {C<:Context,V,D}
     return Meta{metadatatype(C, V),metametatype(C, V)}(metadata, initmetameta(context, value))
 end
 
@@ -213,8 +215,11 @@ struct Tagged{T<:Tag,U,V,D,M}
     tag::T
     value::V
     meta::Meta{D,M}
-    function Tagged(tag::T, value::V, meta::Meta{D,M}) where {T<:Tag,V,D,M}
-        return new{T,_underlying_type(V),V,D,M}(tag, value, meta)
+    function Tagged(tag::T, value::V, meta::Meta) where {T<:Tag,V}
+        C = contexttype(T)
+        D = metadatatype(C, V)
+        M = metametatype(C, V)
+        return new{T,_underlying_type(V),V,D,M}(tag, value, convert(Meta{D,M}, meta))
     end
 end
 
@@ -274,7 +279,6 @@ hasmetameta(x, tag::Union{Tag,Nothing}) = !isa(metameta(x, tag), NoMetaMeta)
     end
     if all(x == :NOMETA for x in argmetaexprs) && isbitstype(T)
         return quote
-            $(Expr(:meta, :inline))
             $(Expr(:new, T, [:(args[$i]) for i in 1:nfields(args)]...))
         end
     else
@@ -286,9 +290,8 @@ hasmetameta(x, tag::Union{Tag,Nothing}) = !isa(metameta(x, tag), NoMetaMeta)
             newexpr = Expr(:new, T, untagged_args...)
         end
         return quote
-            $(Expr(:meta, :inline))
             M = metatype(C, T)
-            return Tagged(context.tag, $newexpr, convert(M, Meta(NoMetaData(), $metametaexpr)))
+            return Tagged(context.tag, $newexpr, Meta(NoMetaData(), $metametaexpr))
         end
     end
 end
@@ -296,7 +299,6 @@ end
 @generated function tagged_new_array(context::C, ::Type{T}, args...) where {C<:Context,T<:Array}
     untagged_args = [:(untag(args[$i], context)) for i in 1:nfields(args)]
     return quote
-        $(Expr(:meta, :inline))
         return tag($(T)($(untagged_args...)), context)
     end
 end
@@ -312,7 +314,6 @@ end
         return_expr = :(tagged_module)
     end
     return quote
-        $(Expr(:meta, :inline))
         new_module = Module(args...)
         tagged_module = fetch_tagged_module(context, new_module)
         return $return_expr
@@ -322,7 +323,6 @@ end
 @generated function tagged_new_tuple(context::C, args...) where {C<:Context}
     T = Tuple{[untagtype(args[i], C) for i in 1:nfields(args)]...}
     return quote
-        $(Expr(:meta, :inline))
         tagged_new(context, $T, args...)
     end
 end
@@ -333,12 +333,10 @@ end
 @generated function _tagged_new_tuple_unsafe(context::C, args...) where {C<:Context}
     if all(!istaggedtype(arg, C) for arg in args)
         return quote
-            $(Expr(:meta, :inline))
             Core.tuple(args...)
         end
     else
         return quote
-            $(Expr(:meta, :inline))
             tagged_new_tuple(context, args...)
         end
     end
@@ -411,7 +409,11 @@ end
 function tagged_getfield(context::ContextWithTag{T}, x::Tagged{T}, name) where {T}
     untagged_name = untag(name, context)
     y_value = getfield(untag(x, context), untagged_name)
-    y_meta = hasmetameta(x, context) ? load(getfield(x.meta.meta, untagged_name)) : NOMETA
+    if hasmetameta(x, context)
+        y_meta = load(getfield(x.meta.meta, untagged_name))
+    else
+        y_meta = NOMETA
+    end
     return Tagged(context.tag, y_value, y_meta)
 end
 
@@ -424,7 +426,9 @@ function tagged_setfield!(context::ContextWithTag{T}, x::Tagged{T}, name, y) whe
     y_value = untag(y, context)
     y_meta = istagged(y, context) ? y.meta : NOMETA
     setfield!(x.value, untagged_name, y_value)
-    store!(getfield(x.meta.meta, untagged_name), y_meta)
+    if hasmetameta(x, context)
+        store!(getfield(x.meta.meta, untagged_name), y_meta)
+    end
     return y
 end
 
@@ -438,7 +442,11 @@ function tagged_arrayref(context::ContextWithTag{T}, boundscheck, x::Tagged{T}, 
     untagged_boundscheck = untag(boundscheck, context)
     untagged_i = untag(i, context)
     y_value = Core.arrayref(untagged_boundscheck, untag(x, context), untagged_i)
-    y_meta = hasmetameta(x, context) ? Core.arrayref(untagged_boundscheck, x.meta.meta, untagged_i) : NOMETA
+    if hasmetameta(x, context)
+        y_meta = Core.arrayref(untagged_boundscheck, x.meta.meta, untagged_i)
+    else
+        y_meta = NOMETA
+    end
     return Tagged(context.tag, y_value, y_meta)
 end
 
@@ -454,7 +462,9 @@ function tagged_arrayset(context::ContextWithTag{T}, boundscheck, x::Tagged{T}, 
     y_value = untag(y, context)
     y_meta = istagged(y, context) ? y.meta : NOMETA
     Core.arrayset(untagged_boundscheck, untag(x, context), y_value, untagged_i)
-    Core.arrayset(untagged_boundscheck, x.meta.meta, convert(eltype(x.meta.meta), y_meta), untagged_i)
+    if hasmetameta(x, context)
+        Core.arrayset(untagged_boundscheck, x.meta.meta, convert(eltype(x.meta.meta), y_meta), untagged_i)
+    end
     return x
 end
 
@@ -465,7 +475,10 @@ tagged_growbeg!(context::ContextWithTag{T}, x, delta) where {T} = Base._growbeg!
 function tagged_growbeg!(context::ContextWithTag{T}, x::Tagged{T}, delta) where {T}
     delta_untagged = untag(delta, context)
     Base._growbeg!(x.value, delta_untagged)
-    hasmetameta(x, context) && Base._growbeg!(x.meta.meta, delta_untagged)
+    if hasmetameta(x, context)
+        Base._growbeg!(x.meta.meta, delta_untagged)
+        x.meta.meta[1:delta_untagged] .= NOMETA
+    end
     return nothing
 end
 
@@ -476,7 +489,11 @@ tagged_growend!(context::ContextWithTag{T}, x, delta) where {T} = Base._growend!
 function tagged_growend!(context::ContextWithTag{T}, x::Tagged{T}, delta) where {T}
     delta_untagged = untag(delta, context)
     Base._growend!(x.value, delta_untagged)
-    hasmetameta(x, context) && Base._growend!(x.meta.meta, delta_untagged)
+    if hasmetameta(x, context)
+        old_length = length(x.meta.meta)
+        Base._growend!(x.meta.meta, delta_untagged)
+        x.meta.meta[(old_length + 1):(old_length + delta_untagged)] .= NOMETA
+    end
     return nothing
 end
 
@@ -490,7 +507,10 @@ function tagged_growat!(context::ContextWithTag{T}, x::Tagged{T}, i, delta) wher
     i_untagged = untag(i, context)
     delta_untagged = untag(delta, context)
     Base._growat!(x.value, i_untagged, delta_untagged)
-    hasmetameta(x, context) && Base._growat!(x.meta.meta, i_untagged, delta_untagged)
+    if hasmetameta(x, context)
+        Base._growat!(x.meta.meta, i_untagged, delta_untagged)
+        x.meta.meta[i_untagged:(i_untagged + delta_untagged - 1)] .= NOMETA
+    end
     return nothing
 end
 

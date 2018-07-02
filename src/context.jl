@@ -23,6 +23,8 @@ Tag(::Type{N}, ::Type{X}) where {N,X} = Tag(N, X, Nothing)
 
 Tag(::Type{N}, ::Type{X}, ::Type{E}) where {N,X,E} = Tag{N,_pure_objectid(X),E}()
 
+contexttype(::Type{<:Tag{N}}) where N = invnametype(N)
+
 #################
 # `BindingMeta` #
 #################
@@ -87,3 +89,8 @@ function withtagfor(context::Context, f)
 end
 
 nametype(::Type{<:Context{N}}) where {N} = N
+
+# pseudoinverse of the nametype function above
+# this is just a stub that Cassette overloadeds
+# when new context types are defined
+function invnametype end
