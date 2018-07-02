@@ -35,6 +35,10 @@ macro context(Ctx)
         # enforce `T<:Cassette.Tag` to ensure that we only call the below primitive functions
         # if the context has the tagging system enabled
 
+        $Cassette.@primitive function $Cassette.tag(value, ::__CONTEXT__, metadata) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tag(value, __context__, metadata)
+        end
+
         $Cassette.@primitive function Array{T,N}(undef::UndefInitializer, args...) where {T,N,__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
             return $Cassette.tagged_new_array(__context__, Array{T,N}, undef, args...)
         end
