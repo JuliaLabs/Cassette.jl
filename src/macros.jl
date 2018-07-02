@@ -102,6 +102,10 @@ macro context(Ctx)
         $Cassette.@primitive function Base.sitofp(F, x) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
             return $Cassette.tagged_sitofp(__context__, F, x)
         end
+
+        $Cassette.@primitive function Base.sle_int(x, y) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return Base.sle_int($Cassette.untag(x, __context__), $Cassette.untag(y, __context__))
+        end
     end)
 end
 
