@@ -134,7 +134,7 @@ Cassette.recurse(WorldCtx(), sin, 1)
 @primitive function (f::Any)(args...) where {__CONTEXT__<:TraceCtx}
     subtrace = Any[]
     push!(__context__.metadata, (f, args) => subtrace)
-    if Cassette.is_core_primitive(__context__, f, args...)
+    if Cassette.canrecurse(__context__, f, args...)
         return f(args...)
     else
         newctx = Cassette.similarcontext(__context__, metadata = subtrace)

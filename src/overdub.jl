@@ -4,8 +4,8 @@
 
 @inline prehook(::Context, ::Vararg{Any}) = nothing
 @inline posthook(::Context, ::Vararg{Any}) = nothing
-@inline is_user_primitive(::Context, ::Vararg{Any}) = false
-@inline is_core_primitive(ctx::Context, args...) = _is_core_primitive(ctx, args...)
+@inline isprimitive(::Context, ::Vararg{Any}) = false
+@inline canrecurse(ctx::Context, args...) = _canrecurse(ctx, args...)
 @inline execute(ctx::Context, args...) = call(ctx, args...)
 
 @inline call(::ContextWithTag{Nothing}, f, args...) = f(args...)
@@ -17,7 +17,7 @@
     end
 end
 
-@generated function _is_core_primitive(::C, args...) where {C<:Context}
+@generated function _canrecurse(::C, args...) where {C<:Context}
     # TODO: this is slow, we should try to check whether the reflection is possible
     # without going through the whole process of actually computing it
     untagged_args = ((untagtype(args[i], C) for i in 1:nfields(args))...,)
@@ -38,7 +38,7 @@ end
 
 @inline function overdub(ctx::Context, args...)
     prehook(ctx, args...)
-    if is_user_primitive(ctx, args...)
+    if isprimitive(ctx, args...)
         output = execute(ctx, args...)
     else
         output = recurse(ctx, args...)
