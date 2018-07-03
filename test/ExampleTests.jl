@@ -310,6 +310,47 @@ end
 @test !Cassette.hasmetadata(result, ctx)
 @test Cassette.hasmetameta(result, ctx)
 
+############################################################################################
+
+using Test, Cassette
+using Cassette: @context, @prehook, @posthook, @primitive, @pass, @overdub
+
+@context BroadcastCtx2
+
+Cassette.metadatatype(::Type{<:BroadcastCtx2{Int}}, ::Type{T}) where {T<:Number} = Vector{T}
+Cassette.metadatatype(::Type{<:BroadcastCtx2{Val{N}}}, ::Type{T}) where {N,T<:Number} = NTuple{N,T}
+
+v, m = rand(5), rand(5)
+ctx = Cassette.withtagfor(BroadcastCtx2(metadata=10), 1)
+result = Cassette.overdub(ctx, broadcast, (v, m) -> Cassette.tag(v, ctx, m), v, [m])
+@test Cassette.untag(result, ctx) == v
+@test Cassette.untagtype(typeof(result), typeof(ctx)) === typeof(v)
+@test Cassette.istagged(result, ctx)
+@test Cassette.istaggedtype(typeof(result), typeof(ctx))
+@test Cassette.metadata(result, ctx) === Cassette.NoMetaData()
+@test all(e -> e == m, map(Cassette.metameta(result, ctx)) do x
+    @test x.meta === Cassette.NoMetaMeta()
+    return x.data
+end)
+@test !Cassette.hasmetadata(result, ctx)
+@test Cassette.hasmetameta(result, ctx)
+
+v, m = rand(5), (1.0,2.0,3.0)
+ctx = Cassette.withtagfor(BroadcastCtx2(metadata=Val(3)), 1)
+result = Cassette.overdub(ctx, broadcast, (v, m) -> Cassette.tag(v, ctx, m), v, [m])
+@test Cassette.untag(result, ctx) == v
+@test Cassette.untagtype(typeof(result), typeof(ctx)) === typeof(v)
+@test Cassette.istagged(result, ctx)
+@test Cassette.istaggedtype(typeof(result), typeof(ctx))
+@test Cassette.metadata(result, ctx) === Cassette.NoMetaData()
+foreach(Cassette.metameta(result, ctx)) do x
+    @test x.meta === Cassette.NoMetaMeta()
+    @test x.data === m[1]
+end
+@test !Cassette.hasmetadata(result, ctx)
+@test Cassette.hasmetameta(result, ctx)
+
+
 #= TODO: The rest of the tests below should be restored for the metadata tagging system
 
 ############################################################################################

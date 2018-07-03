@@ -22,8 +22,6 @@ macro context(Ctx)
 
         $Ctx(; kwargs...) = $Cassette.Context($CtxName(); kwargs...)
 
-        $Cassette.invnametype(::Type{$CtxName}) = $Ctx
-
         $Cassette.@primitive function $Cassette.Tag(::Type{N}, ::Type{X}) where {__CONTEXT__<:$Ctx,N,X}
             return Tag(N, X, $Cassette.tagtype(__CONTEXT__))
         end

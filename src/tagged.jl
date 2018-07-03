@@ -73,7 +73,7 @@ end
 # optimize away the fetch once we have support for it, e.g. loop invariant code motion.
 Base.@pure @noinline function fetch_tagged_module(context::Context, m::Module)
     bindings = get!(() -> BindingMetaDict(), context.bindings, m)
-    return Tagged(context.tag, m, Meta(NoMetaData(), ModuleMeta(NOMETA, bindings)))
+    return Tagged(context, m, Meta(NoMetaData(), ModuleMeta(NOMETA, bindings)))
 end
 
 Base.@pure @noinline function _fetch_binding_meta!(context::Context,
@@ -226,11 +226,10 @@ struct Tagged{T<:Tag,U,V,D,M}
     tag::T
     value::V
     meta::Meta{D,M}
-    function Tagged(tag::T, value::V, meta::Meta) where {T<:Tag,V}
-        C = contexttype(T)
+    function Tagged(context::C, value::V, meta::Meta) where {T<:Tag,V,C<:ContextWithTag{T}}
         D = metadatatype(C, V)
         M = metametatype(C, V)
-        return new{T,_underlying_type(V),V,D,M}(tag, value, convert(Meta{D,M}, meta))
+        return new{T,_underlying_type(V),V,D,M}(context.tag, value, convert(Meta{D,M}, meta))
     end
 end
 
@@ -242,7 +241,7 @@ _underlying_type(::Type{<:Tagged{<:Tag,U}}) where {U} = U
 #=== `Tagged` API ===#
 
 function tag(value, context::Context, metadata = NoMetaData())
-    return Tagged(context.tag, value, initmeta(context, value, metadata))
+    return Tagged(context, value, initmeta(context, value, metadata))
 end
 
 untag(x, context::Context) = untag(x, context.tag)
@@ -302,7 +301,7 @@ hasmetameta(x, tag::Union{Tag,Nothing}) = !isa(metameta(x, tag), NoMetaMeta)
         end
         return quote
             M = metatype(C, T)
-            return Tagged(context.tag, $newexpr, Meta(NoMetaData(), $metametaexpr))
+            return Tagged(context, $newexpr, Meta(NoMetaData(), $metametaexpr))
         end
     end
 end
@@ -317,7 +316,7 @@ end
 @generated function tagged_new_module(context::C, args...) where {C<:Context}
     if istaggedtype(args[1], C)
         return_expr = quote
-            Tagged(tagged_module.tag, tagged_module.value,
+            Tagged(context, tagged_module.value,
                    Meta(NoMetaData(),
                         ModuleMeta(args[1].meta, tagged_module.meta.meta.bindings)))
         end
@@ -364,7 +363,7 @@ tagged_nameof(context::Context, x) = nameof(untag(x, context))
 function tagged_nameof(context::ContextWithTag{T}, x::Tagged{T,Module}) where {T}
     name_value = nameof(x.value)
     name_meta = hasmetameta(x, context) ? x.meta.meta.name : NOMETA
-    return Tagged(context.tag, name_value, name_meta)
+    return Tagged(context, name_value, name_meta)
 end
 
 #=== tagged_globalref ===#
@@ -392,7 +391,7 @@ function _tagged_globalref(context::ContextWithTag{T},
         return primal
     else
         meta = fetch_binding_meta!(context, m.value, m.meta.meta.bindings, untagged_name, primal)
-        return Tagged(context.tag, primal, meta)
+        return Tagged(context, primal, meta)
     end
 end
 
@@ -425,7 +424,7 @@ function tagged_getfield(context::ContextWithTag{T}, x::Tagged{T}, name, boundsc
     else
         y_meta = NOMETA
     end
-    return Tagged(context.tag, y_value, y_meta)
+    return Tagged(context, y_value, y_meta)
 end
 
 #=== tagged_setfield! ===#
@@ -458,7 +457,7 @@ function tagged_arrayref(context::ContextWithTag{T}, boundscheck, x::Tagged{T}, 
     else
         y_meta = NOMETA
     end
-    return Tagged(context.tag, y_value, y_meta)
+    return Tagged(context, y_value, y_meta)
 end
 
 #=== tagged_arrayset ===#
@@ -569,7 +568,7 @@ end
 
 function tagged_typeassert(context::ContextWithTag{T}, x::Tagged{T}, typ) where {T}
     untagged_result = Core.typeassert(untag(x, context), untag(typ, context))
-    return Tagged(context.tag, untagged_result, x.meta)
+    return Tagged(context, untagged_result, x.meta)
 end
 
 #=== tagged_apply ===#
@@ -600,7 +599,7 @@ function tagged_sitofp(context::ContextWithTag{T}, F, x) where {T}
 end
 
 function tagged_sitofp(context::ContextWithTag{T}, F, x::Tagged{T}) where {T}
-    return Tagged(context.tag, Base.sitofp(untag(F, context), x.value), x.meta)
+    return Tagged(context, Base.sitofp(untag(F, context), x.value), x.meta)
 end
 
 #=== tagged_sle_int ===#
