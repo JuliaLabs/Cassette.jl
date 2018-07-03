@@ -163,6 +163,8 @@ function recurse_pass!(reflection::Reflection,
 
         # TODO: appropriately untag all `gotoifnot` conditionals
 
+        # TODO: appropriately untag all `ccall` arguments
+
         # Core.Compiler.renumber_ir_elements!(overdubbed_code, changemap)
     end
 
