@@ -87,3 +87,14 @@ function withtagfor(context::Context, f)
 end
 
 nametype(::Type{<:Context{N}}) where {N} = N
+
+###############
+# `Primitive` #
+###############
+
+struct Primitive{F,C<:Context}
+    func::F
+    context::C
+end
+
+(p::Primitive)(args...) = error("Cassette.Primitive($(p.func), $(p.context)) can only be executed in a context with the same type as $(p.context)")

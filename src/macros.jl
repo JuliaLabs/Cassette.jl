@@ -30,6 +30,10 @@ macro context(Ctx)
             return $Cassette.overdub(__context__, f, Core._apply(tuple, args...)...)
         end
 
+        $Cassette.@primitive function (p::$Cassette.Primitive{F,__CONTEXT__})(args...) where {F,__CONTEXT__<:$Ctx}
+            return $Cassette.execute(__context__, p.func, args...)
+        end
+
         # enforce `T<:Cassette.Tag` to ensure that we only call the below primitive functions
         # if the context has the tagging system enabled
 

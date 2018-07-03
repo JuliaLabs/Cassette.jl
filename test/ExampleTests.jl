@@ -312,9 +312,6 @@ end
 
 ############################################################################################
 
-using Test, Cassette
-using Cassette: @context, @prehook, @posthook, @primitive, @pass, @overdub
-
 @context BroadcastCtx2
 
 Cassette.metadatatype(::Type{<:BroadcastCtx2{Int}}, ::Type{T}) where {T<:Number} = Vector{T}
@@ -350,6 +347,25 @@ end
 @test !Cassette.hasmetadata(result, ctx)
 @test Cassette.hasmetameta(result, ctx)
 
+############################################################################################
+
+@context PrimitiveCtx
+
+data = Any[]
+Cassette.@prehook (f::Any)(input...) where {__CONTEXT__<:PrimitiveCtx} = push!(data, (f, input...))
+
+ctx = PrimitiveCtx()
+p = Cassette.Primitive(sin, ctx)
+x = rand()
+@test sin(x) === Cassette.overdub(ctx, p, x)
+@test length(data) == 1 && data[1] === (p, x)
+empty!(data)
+
+ctx = PrimitiveCtx()
+p = Cassette.Primitive(sin, ctx)
+x = rand()
+@test x + sin(x) === Cassette.overdub(ctx, x -> x + p(x), x)
+@test length(data) < 10 && in((+, x, sin(x)), data) && in((p, x), data)
 
 #= TODO: The rest of the tests below should be restored for the metadata tagging system
 
