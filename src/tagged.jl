@@ -410,18 +410,18 @@ end
 
 #=== tagged_getfield ===#
 
-tagged_getfield(context::ContextWithTag{T}, x, name) where {T} = getfield(x, untag(name, context))
+tagged_getfield(context::ContextWithTag{T}, x, name, boundscheck...) where {T} = getfield(x, untag(name, context), boundscheck...)
 
 function tagged_getfield(context::ContextWithTag{T}, x::Tagged{T,Module}, name) where {T}
     untagged_name = untag(name, context)
     return tagged_global_ref(context, x, untagged_name, getfield(x.value, untagged_name))
 end
 
-function tagged_getfield(context::ContextWithTag{T}, x::Tagged{T}, name) where {T}
+function tagged_getfield(context::ContextWithTag{T}, x::Tagged{T}, name, boundscheck...) where {T}
     untagged_name = untag(name, context)
-    y_value = getfield(untag(x, context), untagged_name)
+    y_value = getfield(untag(x, context), untagged_name, boundscheck...)
     if hasmetameta(x, context)
-        y_meta = load(getfield(x.meta.meta, untagged_name))
+        y_meta = load(getfield(x.meta.meta, untagged_name, boundscheck...))
     else
         y_meta = NOMETA
     end
@@ -430,15 +430,15 @@ end
 
 #=== tagged_setfield! ===#
 
-tagged_setfield!(context::ContextWithTag{T}, x, name, y) where {T} = setfield!(x, untag(name, context), y)
+tagged_setfield!(context::ContextWithTag{T}, x, name, y, boundscheck...) where {T} = setfield!(x, untag(name, context), y, boundscheck...)
 
-function tagged_setfield!(context::ContextWithTag{T}, x::Tagged{T}, name, y) where {T}
+function tagged_setfield!(context::ContextWithTag{T}, x::Tagged{T}, name, y, boundscheck...) where {T}
     untagged_name = untag(name, context)
     y_value = untag(y, context)
     y_meta = istagged(y, context) ? y.meta : NOMETA
-    setfield!(x.value, untagged_name, y_value)
+    setfield!(x.value, untagged_name, y_value, boundscheck...)
     if hasmetameta(x, context)
-        store!(getfield(x.meta.meta, untagged_name), y_meta)
+        store!(getfield(x.meta.meta, untagged_name, boundscheck...), y_meta)
     end
     return y
 end

@@ -57,12 +57,12 @@ macro context(Ctx)
             return $Cassette.tagged_nameof(__context__, m)
         end
 
-        $Cassette.@primitive function Core.getfield(x, name) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_getfield(__context__, x, name)
+        $Cassette.@primitive function Core.getfield(x, name, boundscheck...) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tagged_getfield(__context__, x, name, boundscheck...)
         end
 
-        $Cassette.@primitive function Core.setfield!(x, name, y) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_setfield!(__context__, x, name, y)
+        $Cassette.@primitive function Core.setfield!(x, name, y, boundscheck...) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+            return $Cassette.tagged_setfield!(__context__, x, name, y, boundscheck...)
         end
 
         $Cassette.@primitive function Core.arrayref(boundscheck, x, i) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}

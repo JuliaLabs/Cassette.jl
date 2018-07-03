@@ -174,7 +174,7 @@ end
 baz_identity(x::Int) = Baz(x, float(x), "$x").x
 
 @context BazCtx
-Cassette.metadatatype(::Type{<:BazCtx}, ::Type{<:Integer}) = Float64
+Cassette.metadatatype(::Type{<:BazCtx}, ::Type{<:Number}) = Float64
 x, n = rand(Int), rand()
 ctx = Cassette.withtagfor(BazCtx(), baz_identity)
 result = Cassette.overdub(ctx, baz_identity, Cassette.tag(x, ctx, n))
@@ -271,9 +271,9 @@ result = Cassette.overdub(ctx, broadcast, sin, x)
 @test Cassette.istaggedtype(typeof(result), typeof(ctx))
 
 @test Cassette.metadata(result, ctx) === Cassette.NoMetaData()
-@test Cassette.metameta(result, ctx) == fill(Cassette.NOMETA, length(x))
+@test Cassette.metameta(result, ctx) === Cassette.NoMetaMeta()
 @test !Cassette.hasmetadata(result, ctx)
-@test Cassette.hasmetameta(result, ctx)
+@test !Cassette.hasmetameta(result, ctx)
 
 ############################################################################################
 
