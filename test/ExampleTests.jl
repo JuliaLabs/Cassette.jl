@@ -209,21 +209,23 @@ function foo_bar_identity(x)
     foo.a = Bar(4,5,6)
     foo2 = Foo(foo.a, foo.b)
     foo2.a = foo2.b
-    return [foo2.a.x][1]
+    array = Float64[]
+    push!(array, foo2.a.x)
+    return [array[1]][1]
 end
 
 @context FooBarCtx
-Cassette.metadatatype(::Type{<:FooBarCtx}, ::Type{<:Integer}) = Float64
-x, n = rand(Int), rand()
+Cassette.metadatatype(::Type{<:FooBarCtx}, ::Type{T}) where T<:Number = T
+x, n = 1, 2
 ctx = Cassette.withtagfor(FooBarCtx(), foo_bar_identity)
 result = Cassette.overdub(ctx, foo_bar_identity, Cassette.tag(x, ctx, n))
 
-@test Cassette.untag(result, ctx) === x
-@test Cassette.untagtype(typeof(result), typeof(ctx)) === typeof(x)
+@test Cassette.untag(result, ctx) === float(x)
+@test Cassette.untagtype(typeof(result), typeof(ctx)) === Float64
 @test Cassette.istagged(result, ctx)
 @test Cassette.istaggedtype(typeof(result), typeof(ctx))
 
-@test Cassette.metadata(result, ctx) === n
+@test Cassette.metadata(result, ctx) === float(n)
 @test Cassette.metameta(result, ctx) === Cassette.NoMetaMeta()
 @test Cassette.hasmetadata(result, ctx)
 @test !Cassette.hasmetameta(result, ctx)
