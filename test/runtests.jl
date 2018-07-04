@@ -133,10 +133,10 @@ Cassette.recurse(WorldCtx(), sin, 1)
     subtrace = Any[]
     push!(__context__.metadata, (f, args) => subtrace)
     if Cassette.canrecurse(__context__, f, args...)
-        return f(args...)
-    else
         newctx = Cassette.similarcontext(__context__, metadata = subtrace)
         return Cassette.recurse(newctx, f, args...)
+    else
+        return f(args...)
     end
 end
 

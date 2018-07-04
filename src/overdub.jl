@@ -22,9 +22,9 @@ end
     # without going through the whole process of actually computing it
     untagged_args = ((untagtype(args[i], C) for i in 1:nfields(args))...,)
     if isa(reflect(untagged_args), Reflection)
-        result = :(false)
-    else
         result = :(true)
+    else
+        result = :(false)
     end
     return quote
         $(Expr(:meta, :inline))
