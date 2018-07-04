@@ -23,7 +23,7 @@ macro context(Ctx)
         $Ctx(; kwargs...) = $Cassette.Context($CtxName(); kwargs...)
 
         $Cassette.@primitive function $Cassette.Tag(::Type{N}, ::Type{X}) where {__CONTEXT__<:$Ctx,N,X}
-            return Tag(N, X, $Cassette.tagtype(__CONTEXT__))
+            return $Cassette.Tag(N, X, $Cassette.tagtype(__CONTEXT__))
         end
 
         $Cassette.@primitive function Core._apply(f, args...) where {__CONTEXT__<:$Ctx}
