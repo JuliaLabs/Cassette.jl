@@ -73,6 +73,7 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     length(_methods) == 1 || return nothing
     type_signature, raw_static_params, method = first(_methods)
     method_instance = Core.Compiler.code_for_method(method, type_signature, raw_static_params, world, false)
+    method_instance === nothing && return nothing
     method_signature = method.sig
     static_params = Any[raw_static_params...]
     code_info = Core.Compiler.retrieve_code_info(method_instance)
