@@ -128,7 +128,7 @@ parameterized on world age, then we can call `subtypes` at compile time, and com
 optimally bounded metatype.
 =#
 function metatype(::Type{C}, ::Type{T}) where {C<:Context,T}
-    if isconcretetype(T)
+    if isconcretetype(T) || T <: Type
         return Meta{metadatatype(C, T),metametatype(C, T)}
     end
     return Meta
@@ -141,11 +141,10 @@ metadatatype(::Type{<:Context}, ::DataType) = NoMetaData
 #=== metametatype ===#
 
 @generated function metametatype(::Type{C}, ::Type{T}) where {C<:Context,T}
-    if !(isconcretetype(T))
-        return :(error("cannot call metametatype on non-concrete type ", $T))
-    end
-    if fieldcount(T) == 0
+    if T <: Type || fieldcount(T) == 0
         body = :(NoMetaMeta)
+    elseif !(isconcretetype(T))
+        body = :(error("cannot call metametatype on non-concrete type ", $T))
     else
         F = T.mutable ? :Mutable : :Immutable
         ftypes = [:($F{metatype(C, $(fieldtype(T, i)))}) for i in 1:fieldcount(T)]
@@ -173,7 +172,7 @@ end
 #=== initmetameta ===#
 
 function _metametaexpr(::Type{C}, ::Type{V}, metaexprs::Vector) where {C,V}
-    if fieldcount(V) == 0 || (all(x == :NOMETA for x in metaexprs) && isbitstype(V))
+    if V <: Type || fieldcount(V) == 0 || (all(x == :NOMETA for x in metaexprs) && isbitstype(V))
         return :(NoMetaMeta())
     else
         F = V.mutable ? :Mutable : :Immutable
@@ -287,18 +286,19 @@ hasmetameta(x, tag::Union{Tag,Nothing}) = !isa(metameta(x, tag), NoMetaMeta)
             push!(argmetaexprs, :NOMETA)
         end
     end
-    if all(x == :NOMETA for x in argmetaexprs) && isbitstype(T)
-        return quote
-            $(Expr(:new, T, [:(args[$i]) for i in 1:nfields(args)]...))
+    untagged_args = [:(untag(args[$i], context)) for i in 1:nfields(args)]
+    newexpr = (T <: Tuple) ? Expr(:tuple, untagged_args...) : Expr(:new, T, untagged_args...)
+    onlytypeargs = true
+    for arg in args
+        if !(arg <: Type)
+            onlytypeargs = false
+            break
         end
+    end
+    if (all(x == :NOMETA for x in argmetaexprs) && isbitstype(T)) || onlytypeargs
+        return newexpr
     else
         metametaexpr = _metametaexpr(C, T, argmetaexprs)
-        untagged_args = [:(untag(args[$i], context)) for i in 1:nfields(args)]
-        if T <: Tuple
-            newexpr = Expr(:tuple, untagged_args...)
-        else
-            newexpr = Expr(:new, T, untagged_args...)
-        end
         return quote
             M = metatype(C, T)
             return Tagged(context, $newexpr, Meta(NoMetaData(), $metametaexpr))
