@@ -487,7 +487,7 @@ function tagged_growbeg!(context::ContextWithTag{T}, x::Tagged{T}, delta) where 
     Base._growbeg!(x.value, delta_untagged)
     if hasmetameta(x, context)
         Base._growbeg!(x.meta.meta, delta_untagged)
-        x.meta.meta[1:delta_untagged] .= NOMETA
+        x.meta.meta[1:delta_untagged] .= Ref(NOMETA)
     end
     return nothing
 end
@@ -502,7 +502,7 @@ function tagged_growend!(context::ContextWithTag{T}, x::Tagged{T}, delta) where 
     if hasmetameta(x, context)
         old_length = length(x.meta.meta)
         Base._growend!(x.meta.meta, delta_untagged)
-        x.meta.meta[(old_length + 1):(old_length + delta_untagged)] .= NOMETA
+        x.meta.meta[(old_length + 1):(old_length + delta_untagged)] .= Ref(NOMETA)
     end
     return nothing
 end
@@ -519,7 +519,7 @@ function tagged_growat!(context::ContextWithTag{T}, x::Tagged{T}, i, delta) wher
     Base._growat!(x.value, i_untagged, delta_untagged)
     if hasmetameta(x, context)
         Base._growat!(x.meta.meta, i_untagged, delta_untagged)
-        x.meta.meta[i_untagged:(i_untagged + delta_untagged - 1)] .= NOMETA
+        x.meta.meta[i_untagged:(i_untagged + delta_untagged - 1)] .= Ref(NOMETA)
     end
     return nothing
 end
