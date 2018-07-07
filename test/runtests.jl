@@ -1,5 +1,6 @@
 using Test, Cassette
-using Cassette: @context, @prehook, @posthook, @primitive, @pass, @overdub
+using Cassette: @context, @prehook, @posthook, @primitive, @pass, @overdub,
+                overdub, hasmetadata, metadata, untag, tag, Tagged, withtagfor
 
 ############################################################################################
 
@@ -374,6 +375,54 @@ x = rand()
 ctx = Cassette.withtagfor(MetaTypeCtx(), 1)
 
 @test Cassette.overdub(ctx, T -> (T,T), Float64) === (Float64, Float64)
+
+############################################################################################
+
+@context DiffCtx
+
+const DiffCtxWithTag{T} = DiffCtx{Nothing,T}
+
+Cassette.metadatatype(::Type{<:DiffCtx}, ::Type{T}) where {T<:Real} = T
+
+tangent(x, context) = hasmetadata(x, context) ? metadata(x, context) : zero(untag(x, context))
+
+function D(f, x)
+    ctx = withtagfor(DiffCtx(), f)
+    result = overdub(ctx, f, tag(x, ctx, oftype(x, 1.0)))
+    return tangent(result, ctx)
+end
+
+@primitive function Base.sin(x::Tagged{T,<:Real}) where {T,__CONTEXT__<:DiffCtxWithTag{T}}
+    vx, dx = untag(x, __context__), tangent(x, __context__)
+    return tag(sin(vx), __context__, cos(vx) * dx)
+end
+
+@primitive function Base.cos(x::Tagged{T,<:Real}) where {T,__CONTEXT__<:DiffCtxWithTag{T}}
+    vx, dx = untag(x, __context__), tangent(x, __context__)
+    return tag(cos(vx), __context__, -sin(vx) * dx)
+end
+
+@primitive function Base.:*(x::Tagged{T,<:Real}, y::Tagged{T,<:Real}) where {T,__CONTEXT__<:DiffCtxWithTag{T}}
+    vx, dx = untag(x, __context__), tangent(x, __context__)
+    vy, dy = untag(y, __context__), tangent(y, __context__)
+    return tag(vx * vy, __context__, vy * dx + vx * dy)
+end
+
+@primitive function Base.:*(x::Tagged{T,<:Real}, y::Real) where {T,__CONTEXT__<:DiffCtxWithTag{T}}
+    vx, dx = untag(x, __context__), tangent(x, __context__)
+    return tag(vx * y, __context__, y * dx)
+end
+
+@primitive function Base.:*(x::Real, y::Tagged{T,<:Real}) where {T,__CONTEXT__<:DiffCtxWithTag{T}}
+    vy, dy = untag(y, __context__), tangent(y, __context__)
+    return tag(x * vy, __context__, x * dy)
+end
+
+@test D(sin, 1) === cos(1)
+@test D(x -> sin(x) * cos(x), 1) === cos(1)^2 - sin(1)^2
+@test D(x -> x * D(y -> x * y, 1), 2) === 4
+@test D(x -> x * D(y -> x * y, 2), 1) === 2
+@test D(x -> x * foo_bar_identity(x), 1) === 2.0
 
 #= TODO: The rest of the tests below should be restored for the metadata tagging system
 
