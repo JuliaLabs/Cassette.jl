@@ -26,6 +26,7 @@ macro context(Ctx)
             return $Cassette.Tag(N, X, $Cassette.tagtype(__CONTEXT__))
         end
 
+        # TODO avoid JuliaLang/julia#28070
         $Cassette.@primitive function Core._apply(f, args...) where {__CONTEXT__<:$Ctx}
             return $Cassette.overdub(__context__, f, Core._apply(tuple, args...)...)
         end
