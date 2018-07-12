@@ -5,6 +5,7 @@ const CONTEXT_BINDING = Symbol("__context__")
 # @context #
 ############
 
+
 """
     Cassette.@context Ctx
 
@@ -26,9 +27,8 @@ macro context(Ctx)
             return $Cassette.Tag(N, X, $Cassette.tagtype(__CONTEXT__))
         end
 
-        # TODO avoid JuliaLang/julia#28070
         $Cassette.@primitive function Core._apply(f, args...) where {__CONTEXT__<:$Ctx}
-            return $Cassette.overdub(__context__, f, Core._apply(tuple, args...)...)
+            return $Cassette.overdub(__context__, f, $Cassette.specialized_tuple_apply(args...)...)
         end
 
         $Cassette.@primitive function (p::$Cassette.Primitive{F,__CONTEXT__})(args...) where {F,__CONTEXT__<:$Ctx}

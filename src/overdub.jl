@@ -8,15 +8,7 @@
 @inline canrecurse(ctx::Context, args...) = _canrecurse(ctx, args...)
 @inline execute(ctx::Context, args...) = call(ctx, args...)
 @inline call(::ContextWithTag{Nothing}, f, args...) = f(args...)
-
-# avoid JuliaLang/julia#28070
-@generated function call(::ContextWithTag{Nothing}, ::typeof(Core._apply), f, args...)
-    return quote
-        $(Expr(:meta, :inline))
-        Core._apply(f, $([:(args[$i]) for i = 1:nfields(args)]...))
-    end
-end
-
+@inline call(::ContextWithTag{Nothing}, ::typeof(Core._apply), f, args...) = specialized_apply(f, args...)
 @inline call(context::Context, f, args...) = untag(f, context)(ntuple(i -> untag(args[i], context), Val(nfields(args)))...)
 
 @generated function _canrecurse(::C, args...) where {C<:Context}
