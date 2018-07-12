@@ -5,26 +5,11 @@
 @inline prehook(::Context, ::Vararg{Any}) = nothing
 @inline posthook(::Context, ::Vararg{Any}) = nothing
 @inline isprimitive(::Context, ::Vararg{Any}) = false
-@inline canrecurse(ctx::Context, args...) = _canrecurse(ctx, args...)
 @inline execute(ctx::Context, args...) = call(ctx, args...)
 @inline call(::ContextWithTag{Nothing}, f, args...) = f(args...)
 @inline call(::ContextWithTag{Nothing}, ::typeof(Core._apply), f, args...) = specialized_apply(f, args...)
 @inline call(context::Context, f, args...) = untag(f, context)(ntuple(i -> untag(args[i], context), Val(nfields(args)))...)
-
-@generated function _canrecurse(::C, args...) where {C<:Context}
-    # TODO: this is slow, we should try to check whether the reflection is possible
-    # without going through the whole process of actually computing it
-    untagged_args = ((untagtype(args[i], C) for i in 1:nfields(args))...,)
-    if isa(reflect(untagged_args), Reflection)
-        result = :(true)
-    else
-        result = :(false)
-    end
-    return quote
-        $(Expr(:meta, :inline))
-        $(result)
-    end
-end
+@inline canrecurse(ctx::Context, f, args...) = !isa(untag(f, ctx), Core.Builtin)
 
 ###########
 # overdub #
