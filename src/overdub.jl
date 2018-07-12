@@ -45,8 +45,8 @@ const RECURSE_ARGS_SYMBOL = gensym("recurse_arguments")
 #   3. Translate all function calls to `overdub` calls
 #   4. If tagging is enabled, do the necessary IR transforms for the metadata tagging system
 function recurse_pass!(reflection::Reflection,
-                               context_type::DataType,
-                               pass_type::DataType = NoPass)
+                       context_type::DataType,
+                       pass_type::DataType = NoPass)
     signature = reflection.signature
     method = reflection.method
     static_params = reflection.static_params
