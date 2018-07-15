@@ -7,7 +7,6 @@
 @inline isprimitive(::Context, ::Vararg{Any}) = false
 @inline execute(ctx::Context, args...) = call(ctx, args...)
 @inline call(::ContextWithTag{Nothing}, f, args...) = f(args...)
-@inline call(::ContextWithTag{Nothing}, ::typeof(Core._apply), f, args...) = specialized_apply(f, args...)
 @inline call(context::Context, f, args...) = untag(f, context)(ntuple(i -> untag(args[i], context), Val(nfields(args)))...)
 @inline canrecurse(ctx::Context, f, args...) = !isa(untag(f, ctx), Core.Builtin)
 
