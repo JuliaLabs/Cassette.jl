@@ -433,8 +433,11 @@ using LinearAlgebra
 α, β = 1.0, 2.0
 A, X, Y = rand(Float64, 10, 10), rand(Float64, 10), rand(Float64, 10)
 Y_copy = copy(Y)
-@test overdub(GemvCtx(), LinearAlgebra.BLAS.gemv!, 'T', α, A, X, β, Y) ==
-      LinearAlgebra.BLAS.gemv!('T', α, A, X, β, Y_copy)
+Y_out = overdub(GemvCtx(), LinearAlgebra.BLAS.gemv!, 'T', α, A, X, β, Y)
+Y_copy_out = LinearAlgebra.BLAS.gemv!('T', α, A, X, β, Y_copy)
+@test Y_out == Y_copy_out
+@test Y_out === Y
+@test Y_copy_out === Y_copy
 
 #= TODO: The rest of the tests below should be restored for the metadata tagging system
 
