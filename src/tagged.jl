@@ -226,9 +226,10 @@ struct Tagged{T<:Tag,U,V,D,M}
     value::V
     meta::Meta{D,M}
     function Tagged(context::C, value::V, meta::Meta) where {T<:Tag,V,C<:ContextWithTag{T}}
+        U = _underlying_type(V)
         D = metadatatype(C, V)
         M = metametatype(C, V)
-        return new{T,_underlying_type(V),V,D,M}(context.tag, value, convert(Meta{D,M}, meta))
+        return new{T,U,V,D,M}(context.tag, value, convert(Meta{D,M}, meta))
     end
 end
 
