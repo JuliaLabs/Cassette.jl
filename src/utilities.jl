@@ -137,18 +137,3 @@ for level in [:debug, :info, :warn, :error]
         end
     end
 end
-
-# avoid JuliaLang/julia#28070
-@generated function specialized_apply(f, args...)
-    quote
-        $(Expr(:meta, :inline))
-        Core._apply(f, $([:(args[$i]) for i = 1:nfields(args)]...))
-    end
-end
-
-@generated function specialized_tuple_apply(args...)
-    quote
-        $(Expr(:meta, :inline))
-        Core._apply(Core.tuple, $([:(args[$i]) for i = 1:nfields(args)]...))
-    end
-end

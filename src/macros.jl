@@ -28,7 +28,8 @@ macro context(Ctx)
         end
 
         $Cassette.@primitive function Core._apply(f, args...) where {__CONTEXT__<:$Ctx}
-            return $Cassette.overdub(__context__, f, $Cassette.specialized_tuple_apply(args...)...)
+            overdubbed_f = (args...) -> $Cassette.overdub(__context__, f, args...)
+            return Core._apply(overdubbed_f, args...)
         end
 
         $Cassette.@primitive function (p::$Cassette.Primitive{F,__CONTEXT__})(args...) where {F,__CONTEXT__<:$Ctx}
