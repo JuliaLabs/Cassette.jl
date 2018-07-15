@@ -356,14 +356,14 @@ Cassette.@prehook (f::Any)(input...) where {__CONTEXT__<:PrimitiveCtx} = push!(d
 ctx = PrimitiveCtx()
 p = Cassette.Primitive(sin, ctx)
 x = rand()
-@test sin(x) === Cassette.overdub(ctx, p, x)
+@test sin(x) === overdub(ctx, p, x)
 @test length(data) == 1 && data[1] === (p, x)
 empty!(data)
 
 ctx = PrimitiveCtx()
 p = Cassette.Primitive(sin, ctx)
 x = rand()
-@test x + sin(x) === Cassette.overdub(ctx, x -> x + p(x), x)
+@test x + sin(x) === overdub(ctx, x -> x + p(x), x)
 @test length(data) < 10 && in((+, x, sin(x)), data) && in((p, x), data)
 
 ############################################################################################
@@ -372,9 +372,9 @@ x = rand()
 
 @test Cassette.metatype(typeof(MetaTypeCtx()), DataType) === Cassette.Meta{Cassette.NoMetaData,Cassette.NoMetaMeta}
 
-ctx = Cassette.withtagfor(MetaTypeCtx(), 1)
+ctx = withtagfor(MetaTypeCtx(), 1)
 
-@test Cassette.overdub(ctx, T -> (T,T), Float64) === (Float64, Float64)
+@test overdub(ctx, T -> (T,T), Float64) === (Float64, Float64)
 
 ############################################################################################
 
@@ -423,6 +423,18 @@ end
 @test D(x -> x * D(y -> x * y, 1), 2) === 4
 @test D(x -> x * D(y -> x * y, 2), 1) === 2
 @test D(x -> x * foo_bar_identity(x), 1) === 2.0
+
+############################################################################################
+
+# issue #51
+@context GemvCtx
+using LinearAlgebra
+
+α, β = 1.0, 2.0
+A, X, Y = rand(Float64, 10, 10), rand(Float64, 10), rand(Float64, 10)
+Y_copy = copy(Y)
+@test overdub(GemvCtx(), LinearAlgebra.BLAS.gemv!, 'T', α, A, X, β, Y) ==
+      LinearAlgebra.BLAS.gemv!('T', α, A, X, β, Y_copy)
 
 #= TODO: The rest of the tests below should be restored for the metadata tagging system
 
