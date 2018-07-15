@@ -115,7 +115,8 @@ function recurse_pass!(reflection::Reflection,
     # expression and replace it with a corresponding call to `Cassette.overdub`.
     for i in 1:length(code_info.code)
         stmnt = code_info.code[i]
-        replace_match!(is_call, stmnt) do call
+        replaceable = Base.Meta.isexpr(stmnt, :foreigncall) ? view(stmnt.args, 2:length(stmnt.args)) : stmnt
+        replace_match!(is_call, replaceable) do call
             call.args = Any[GlobalRef(Cassette, :overdub), overdub_ctx_slot, call.args...]
             return call
         end

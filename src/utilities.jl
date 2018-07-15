@@ -30,7 +30,7 @@ end
 function replace_match!(replace, ismatch, x)
     if ismatch(x)
         return replace(x)
-    elseif isa(x, Array)
+    elseif isa(x, Array) || isa(x, SubArray)
         for i in eachindex(x)
             x[i] = replace_match!(replace, ismatch, x[i])
         end
