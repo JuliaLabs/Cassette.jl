@@ -442,11 +442,17 @@ Y_copy_out = LinearAlgebra.BLAS.gemv!('T', α, A, X, β, Y_copy)
 ############################################################################################
 
 @context TypeJoinInferCtx
-@inferred(overdub(TypeJoinInferCtx(), typejoin, Float32, Float32, Float32))
-
-#= TODO: The rest of the tests below should be restored for the metadata tagging system
+ctyped = @code_typed(overdub(TypeJoinInferCtx(), typejoin, Float32, Float32, Float32))
+@test ctyped.second === Type{Float32}
 
 ############################################################################################
+
+@context ApplyTypeInferCtx
+ctyped = @code_typed(overdub(ApplyTypeInferCtx(), (a, b) -> Core.apply_type(a, b), AbstractVector, Int))
+@test ctyped.second === Type{AbstractVector{Int}}
+
+############################################################################################
+#= TODO: The rest of the tests below should be restored for the metadata tagging system
 
 @context NestedCtx
 
