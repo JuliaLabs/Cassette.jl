@@ -120,6 +120,10 @@ end
 
 unqualify_name(name::Symbol) = name
 
+#############
+# Debugging #
+#############
+
 # define safe loggers for use in generated functions (where task switches are not allowed)
 for level in [:debug, :info, :warn, :error]
     @eval begin
@@ -137,3 +141,5 @@ for level in [:debug, :info, :warn, :error]
         end
     end
 end
+
+recurse_typed(args...; optimize=false) = code_typed(Cassette.recurse, map(Core.Typeof, args); optimize=optimize)
