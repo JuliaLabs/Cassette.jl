@@ -142,4 +142,6 @@ for level in [:debug, :info, :warn, :error]
     end
 end
 
-recurse_typed(args...; optimize=false) = code_typed(Cassette.recurse, map(Core.Typeof, args); optimize=optimize)
+_typed(f, args...; optimize=false) = code_typed(f, map(Core.Typeof, args); optimize=optimize)
+recurse_typed(args...; optimize=false) = _typed(recurse, args...; optimize=optimize)
+overdub_typed(args...; optimize=false) = _typed(overdub, args...; optimize=optimize)
