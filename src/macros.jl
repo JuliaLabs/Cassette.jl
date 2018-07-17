@@ -263,14 +263,14 @@ macro execution(method)
     return contextual_definition!(:($Cassette.execute), method)
 end
 
-################
-# @isprimitive #
-################
+##############################
+# @isprimitive/@notprimitive #
+##############################
 
 """
     Cassette.@isprimitive contextual_method_signature
 
-Place in front of a contextual method signature to mark matching method calls as Cassette
+Place in front of a contextual method signature to mark matching method calls as contextual
 primitives. Cassette primitives are executed using the contextual method definitions
 provided via `Cassette.@execution`.
 
@@ -280,6 +280,26 @@ dispatch documentation.
 macro isprimitive(signature)
     body = Expr(:block)
     push!(body.args, :(return true))
+    return contextual_definition!(:($Cassette.isprimitive), signature, body)
+end
+
+"""
+    Cassette.@notprimitive contextual_method_signature
+
+Place in front of a contextual method signature to cause matching method calls to *not* be
+treated as contextual primitives.
+
+This essentially allows context authors to "undo" prior `@isprimitive` declarations, and is
+thus useful for disabling default contextual primitive definitions. Note that disabling
+default contextual primitive definitions can result in undefined behavior and should be done
+with caution.
+
+For details regarding the format of `contextual_method_signature`, see the contextual
+dispatch documentation.
+"""
+macro notprimitive(signature)
+    body = Expr(:block)
+    push!(body.args, :(return false))
     return contextual_definition!(:($Cassette.isprimitive), signature, body)
 end
 
