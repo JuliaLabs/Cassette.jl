@@ -10,6 +10,13 @@
 @inline call(context::Context, f, args...) = untag(f, context)(ntuple(i -> untag(args[i], context), Val(nfields(args)))...)
 @inline canrecurse(ctx::Context, f, args...) = !isa(untag(f, ctx), Core.Builtin)
 
+# TODO: This is currently needed to force the compiler to specialize on the type arguments
+# to `Core.apply_type`. In the future, it would be best for Julia's compiler to better handle
+# varargs calls to such functions with type arguments, or at least provide a better way to
+# force specialization on the type arguments.
+@inline call(::ContextWithTag{Nothing}, f::typeof(Core.apply_type), ::Type{A}, ::Type{B}) where {A,B} = f(A, B)
+@inline call(::Context, f::typeof(Core.apply_type), ::Type{A}, ::Type{B}) where {A,B} = f(A, B)
+
 ###########
 # overdub #
 ###########

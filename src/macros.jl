@@ -36,6 +36,14 @@ macro context(Ctx)
             return $Cassette.execute(__context__, p.func, args...)
         end
 
+        # TODO: There are certain non-`Core.Builtin` functions which the compiler often
+        # relies upon constant propagation to infer, such as `isdispatchtuple`. Such
+        # functions should generally be contextual primitives by default for the sake of
+        # performance, and we should add more of them here as we encounter them.
+        $Cassette.@isprimitive Base.isdispatchtuple(::Type) where {__CONTEXT__<:$Ctx}
+        $Cassette.@isprimitive Base.eltype(::Type) where {__CONTEXT__<:$Ctx}
+        $Cassette.@isprimitive Base.convert(::Type, ::Tuple) where {__CONTEXT__<:$Ctx}
+
         # enforce `T<:Cassette.Tag` to ensure that we only call the below primitive functions
         # if the context has the tagging system enabled
 
