@@ -451,6 +451,7 @@ dispatchtupletest(::Type{T}) where {T} = Base.isdispatchtuple(Tuple{T}) ? T : An
 @inferred(overdub(InferCtx(), eltype, rand(1)))
 @inferred(overdub(InferCtx(), *, rand(1, 1), rand(1, 1)))
 @inferred(overdub(InferCtx(), *, rand(Float32, 1, 1), rand(Float32, 1, 1)))
+@inferred(overdub(InferCtx(), *, rand(Float32, 1, 1), rand(Float32, 1)))
 @inferred(overdub(InferCtx(), rosenbrock, rand(1)))
 @test_broken @inferred(overdub(InferCtx(), rand, Float32, 1))
 
