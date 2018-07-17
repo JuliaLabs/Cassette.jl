@@ -452,6 +452,13 @@ ctyped = @code_typed(overdub(ApplyTypeInferCtx(), (a, b) -> Core.apply_type(a, b
 @test ctyped.second === Type{AbstractVector{Int}}
 
 ############################################################################################
+
+@context DispatchTupleInferCtx
+dispatchtupletest(::Type{T}) where {T} = Base.isdispatchtuple(Tuple{T}) ? T : Any
+ctyped = @code_typed(overdub(DispatchTupleInferCtx(), dispatchtupletest, Float32))
+@test ctyped.second === Type{Float32}
+
+############################################################################################
 #= TODO: The rest of the tests below should be restored for the metadata tagging system
 
 @context NestedCtx
