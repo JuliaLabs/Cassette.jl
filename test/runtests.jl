@@ -441,22 +441,17 @@ Y_copy_out = LinearAlgebra.BLAS.gemv!('T', α, A, X, β, Y_copy)
 
 ############################################################################################
 
-@context TypeJoinInferCtx
-ctyped = @code_typed(overdub(TypeJoinInferCtx(), typejoin, Float32, Float32, Float32))
-@test ctyped.second === Type{Float32}
+@context InferCtx
 
-############################################################################################
-
-@context ApplyTypeInferCtx
-ctyped = @code_typed(overdub(ApplyTypeInferCtx(), (a, b) -> Core.apply_type(a, b), AbstractVector, Int))
-@test ctyped.second === Type{AbstractVector{Int}}
-
-############################################################################################
-
-@context DispatchTupleInferCtx
 dispatchtupletest(::Type{T}) where {T} = Base.isdispatchtuple(Tuple{T}) ? T : Any
-ctyped = @code_typed(overdub(DispatchTupleInferCtx(), dispatchtupletest, Float32))
-@test ctyped.second === Type{Float32}
+
+@inferred(overdub(InferCtx(), typejoin, Float32, Float32, Float32))
+@inferred(overdub(InferCtx(), dispatchtupletest, Float32))
+@inferred(overdub(InferCtx(), (a, b) -> Core.apply_type(a, b), AbstractVector, Int))
+@inferred(overdub(InferCtx(), eltype, rand(1)))
+@inferred(overdub(InferCtx(), *, rand(1, 1), rand(1, 1)))
+@inferred(overdub(InferCtx(), rosenbrock, rand(1)))
+@test_broken @inferred(overdub(InferCtx(), rand, Float32, 1))
 
 ############################################################################################
 #= TODO: The rest of the tests below should be restored for the metadata tagging system

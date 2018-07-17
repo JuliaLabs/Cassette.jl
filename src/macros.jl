@@ -41,6 +41,7 @@ macro context(Ctx)
         # functions should generally be contextual primitives by default for the sake of
         # performance, and we should add more of them here as we encounter them.
         $Cassette.@isprimitive Base.isdispatchtuple(T::Type) where {__CONTEXT__<:$Ctx}
+        $Cassette.@isprimitive Base.eltype(T::Type) where {__CONTEXT__<:$Ctx}
 
         # enforce `T<:Cassette.Tag` to ensure that we only call the below primitive functions
         # if the context has the tagging system enabled
