@@ -88,13 +88,13 @@ end
 
 nametype(::Type{<:Context{N}}) where {N} = N
 
-###############
-# `Primitive` #
-###############
+##############
+# `Fallback` #
+##############
 
-struct Primitive{F,C<:Context}
+struct Fallback{F,C<:Context}
     func::F
     context::C
 end
 
-(p::Primitive)(args...) = error("Cassette.Primitive($(p.func), $(p.context)) can only be executed in a context with the same type as $(p.context)")
+(f::Fallback)(args...) = error("Cassette.Fallback($(p.func), $(p.context)) can only be executed in a context with the same type as $(p.context)")

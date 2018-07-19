@@ -1,6 +1,7 @@
 using Test, Cassette
-using Cassette: @context, @prehook, @posthook, @primitive, @pass, @overdub,
-                overdub, hasmetadata, metadata, untag, tag, Tagged, withtagfor
+using Cassette: @context, @pass, @overdub, overdub, hasmetadata, metadata, hasmetameta,
+                metameta, untag, tag, withtagfor, untagtype, istagged, istaggedtype,
+                Tagged, recurse, fallback, canrecurse, similarcontext
 
 ############################################################################################
 
@@ -19,17 +20,17 @@ x = rand(2)
 @context RosCtx
 
 messages = String[]
-@prehook (f::Any)(args...) where {__CONTEXT__<:RosCtx} = push!(messages, string("calling ", f, args))
+Cassette.prehook(::RosCtx, f, args...) = push!(messages, string("calling ", f, args))
 @test @overdub(RosCtx(), rosenbrock(x)) == rosenbrock(x)
 @test length(messages) > 90
 
-@prehook (f::Any)(args...) where {__CONTEXT__<:RosCtx} = push!(__context__.metadata, string("calling ", f, args))
+Cassette.prehook(ctx::RosCtx, f, args...) = push!(ctx.metadata, string("calling ", f, args))
 messages2 = String[]
 @test @overdub(RosCtx(metadata=messages2), rosenbrock(x)) == rosenbrock(x)
 @test messages == messages2
 
-@prehook (f::Any)(args...) where {__CONTEXT__<:RosCtx} = nothing
-@prehook (f::Any)(args::Number...) where {__CONTEXT__<:RosCtx} = push!(__context__.metadata, args)
+Cassette.prehook(::RosCtx, f, args...) = nothing
+Cassette.prehook(ctx::RosCtx, f, args::Number...) = push!(ctx.metadata, args)
 argslog = Any[]
 @test @overdub(RosCtx(metadata=argslog), rosenbrock(x)) == rosenbrock(x)
 for args in argslog
@@ -42,7 +43,7 @@ x = rand()
 sin_plus_cos(x) = sin(x) + cos(x)
 @context SinCtx
 @test @overdub(SinCtx(), sin_plus_cos(x)) === sin_plus_cos(x)
-@primitive sin(x) where {__CONTEXT__<:SinCtx} = cos(x)
+Cassette.execute(::SinCtx, ::typeof(sin), x) = cos(x)
 @test @overdub(SinCtx(), sin_plus_cos(x)) === (2 * cos(x))
 
 ############################################################################################
@@ -56,9 +57,9 @@ foldmul(x, args...) = Core._apply(Base.afoldl, (*, x), args...)
 
 @context CountCtx
 count1 = Ref(0)
-@prehook (f::Any)(args::Number...) where {__CONTEXT__<:CountCtx} = (__context__.metadata[] += 1)
+Cassette.prehook(ctx::CountCtx, f, args::Number...) = (ctx.metadata[] += 1)
 @overdub(CountCtx(metadata=count1), sin(1))
-@prehook (f::Any)(args::Number...) where {__CONTEXT__<:CountCtx} = (__context__.metadata[] += 2)
+Cassette.prehook(ctx::CountCtx, f, args::Number...) = (ctx.metadata[] += 2)
 count2 = Ref(0)
 @overdub(CountCtx(metadata=count2), sin(1))
 @test (2 * count1[]) === count2[]
@@ -96,8 +97,8 @@ end
 
 @context CountCtx2
 
-@prehook function (::Any)(arg::T, args::T...) where {T,__CONTEXT__<:CountCtx2{Count{T}}}
-    __context__.metadata.count += 1
+function Cassette.prehook(ctx::CountCtx2{Count{T}}, f, arg::T, args::T...) where {T}
+    ctx.metadata.count += 1
 end
 
 mapstr(x) = map(string, x)
@@ -111,33 +112,33 @@ c = Count{Union{String,Int}}(0)
 
 worldtest = 0
 oldctx = WorldCtx()
-Cassette.recurse(oldctx, sin, 1)
+recurse(oldctx, sin, 1)
 
-@prehook (f::Any)(args...) where {__CONTEXT__<:WorldCtx} = (global worldtest += 1)
-Cassette.recurse(WorldCtx(), sin, 1)
+Cassette.prehook(::WorldCtx, args...) = (global worldtest += 1)
+recurse(WorldCtx(), sin, 1)
 @test worldtest > 100
 
 tmp = worldtest
-Cassette.recurse(oldctx, sin, 1)
+recurse(oldctx, sin, 1)
 @test tmp < worldtest
 
 tmp = worldtest
-@prehook (f::Any)(args...) where {__CONTEXT__<:WorldCtx} = nothing
-Cassette.recurse(WorldCtx(), sin, 1)
+Cassette.prehook(::WorldCtx, args...) = nothing
+recurse(WorldCtx(), sin, 1)
 @test tmp === worldtest
 
 ############################################################################################
 
 @context TraceCtx
 
-@primitive function (f::Any)(args...) where {__CONTEXT__<:TraceCtx}
+function Cassette.execute(ctx::TraceCtx, args...)
     subtrace = Any[]
-    push!(__context__.metadata, (f, args) => subtrace)
-    if Cassette.canrecurse(__context__, f, args...)
-        newctx = Cassette.similarcontext(__context__, metadata = subtrace)
-        return Cassette.recurse(newctx, f, args...)
+    push!(ctx.metadata, args => subtrace)
+    if canrecurse(ctx, args...)
+        newctx = similarcontext(ctx, metadata = subtrace)
+        return recurse(newctx, args...)
     else
-        return f(args...)
+        return fallback(ctx, args...)
     end
 end
 
@@ -146,10 +147,10 @@ x, y, z = rand(3)
 trtest(x, y, z) = x*y + y*z
 @test @overdub(TraceCtx(metadata = trace), trtest(x, y, z)) == trtest(x, y, z)
 @test trace == Any[
-    (trtest,(x,y,z)) => Any[
-        (*,(x,y)) => Any[(Base.mul_float,(x,y))=>Any[]]
-        (*,(y,z)) => Any[(Base.mul_float,(y,z))=>Any[]]
-        (+,(x*y,y*z)) => Any[(Base.add_float,(x*y,y*z))=>Any[]]
+    (trtest,x,y,z) => Any[
+        (*,x,y) => Any[(Base.mul_float,x,y)=>Any[]]
+        (*,y,z) => Any[(Base.mul_float,y,z)=>Any[]]
+        (+,x*y,y*z) => Any[(Base.add_float,x*y,y*z)=>Any[]]
     ]
 ]
 
@@ -157,7 +158,7 @@ trtest(x, y, z) = x*y + y*z
 
 @context NestedReflectCtx
 r_pre = Cassette.reflect((typeof(sin), Int))
-r_post = Cassette.reflect((typeof(Cassette.recurse), typeof(NestedReflectCtx()), typeof(sin), Int))
+r_post = Cassette.reflect((typeof(recurse), typeof(NestedReflectCtx()), typeof(sin), Int))
 @test isa(r_pre, Cassette.Reflection) && isa(r_post, Cassette.Reflection)
 Cassette.recurse_pass!(r_pre, typeof(NestedReflectCtx()))
 @test r_pre.code_info.code == r_post.code_info.code
@@ -175,18 +176,18 @@ baz_identity(x::Int) = Baz(x, float(x), "$x").x
 @context BazCtx
 Cassette.metadatatype(::Type{<:BazCtx}, ::Type{<:Number}) = Float64
 x, n = rand(Int), rand()
-ctx = Cassette.withtagfor(BazCtx(), baz_identity)
-result = Cassette.overdub(ctx, baz_identity, Cassette.tag(x, ctx, n))
+ctx = withtagfor(BazCtx(), baz_identity)
+result = overdub(ctx, baz_identity, tag(x, ctx, n))
 
-@test Cassette.untag(result, ctx) === x
-@test Cassette.untagtype(typeof(result), typeof(ctx)) === typeof(x)
-@test Cassette.istagged(result, ctx)
-@test Cassette.istaggedtype(typeof(result), typeof(ctx))
+@test untag(result, ctx) === x
+@test untagtype(typeof(result), typeof(ctx)) === typeof(x)
+@test istagged(result, ctx)
+@test istaggedtype(typeof(result), typeof(ctx))
 
-@test Cassette.metadata(result, ctx) === n
-@test Cassette.metameta(result, ctx) === Cassette.NoMetaMeta()
-@test Cassette.hasmetadata(result, ctx)
-@test !Cassette.hasmetameta(result, ctx)
+@test metadata(result, ctx) === n
+@test metameta(result, ctx) === Cassette.NoMetaMeta()
+@test hasmetadata(result, ctx)
+@test !hasmetameta(result, ctx)
 
 ############################################################################################
 
@@ -216,98 +217,98 @@ end
 @context FooBarCtx
 Cassette.metadatatype(::Type{<:FooBarCtx}, ::Type{T}) where T<:Number = T
 x, n = 1, 2
-ctx = Cassette.withtagfor(FooBarCtx(), foo_bar_identity)
-result = Cassette.overdub(ctx, foo_bar_identity, Cassette.tag(x, ctx, n))
+ctx = withtagfor(FooBarCtx(), foo_bar_identity)
+result = overdub(ctx, foo_bar_identity, tag(x, ctx, n))
 
-@test Cassette.untag(result, ctx) === float(x)
-@test Cassette.untagtype(typeof(result), typeof(ctx)) === Float64
-@test Cassette.istagged(result, ctx)
-@test Cassette.istaggedtype(typeof(result), typeof(ctx))
+@test untag(result, ctx) === float(x)
+@test untagtype(typeof(result), typeof(ctx)) === Float64
+@test istagged(result, ctx)
+@test istaggedtype(typeof(result), typeof(ctx))
 
-@test Cassette.metadata(result, ctx) === float(n)
-@test Cassette.metameta(result, ctx) === Cassette.NoMetaMeta()
-@test Cassette.hasmetadata(result, ctx)
-@test !Cassette.hasmetameta(result, ctx)
+@test metadata(result, ctx) === float(n)
+@test metameta(result, ctx) === Cassette.NoMetaMeta()
+@test hasmetadata(result, ctx)
+@test !hasmetameta(result, ctx)
 
 ############################################################################################
 
 @context TaggedTupleCtx
 Cassette.metadatatype(::Type{<:TaggedTupleCtx}, ::DataType) = Float64
 x = rand()
-ctx = Cassette.withtagfor(TaggedTupleCtx(), 1)
-result = Cassette.overdub(ctx, x -> (x, [x], 1), x)
+ctx = withtagfor(TaggedTupleCtx(), 1)
+result = overdub(ctx, x -> (x, [x], 1), x)
 
-@test Cassette.untag(result, ctx) == (x, [x], 1)
-@test Cassette.untagtype(typeof(result), typeof(ctx)) === typeof((x, [x], 1))
-@test Cassette.istagged(result, ctx)
-@test Cassette.istaggedtype(typeof(result), typeof(ctx))
+@test untag(result, ctx) == (x, [x], 1)
+@test untagtype(typeof(result), typeof(ctx)) === typeof((x, [x], 1))
+@test istagged(result, ctx)
+@test istaggedtype(typeof(result), typeof(ctx))
 
-@test Cassette.metadata(result, ctx) === Cassette.NoMetaData()
-@test isa(Cassette.metameta(result, ctx), Tuple{
+@test metadata(result, ctx) === Cassette.NoMetaData()
+@test isa(metameta(result, ctx), Tuple{
     Cassette.Immutable{Cassette.Meta{Float64,Cassette.NoMetaMeta}},
     Cassette.Immutable{Cassette.Meta{Float64,Array{Cassette.Meta{Float64,Cassette.NoMetaMeta},1}}},
     Cassette.Immutable{Cassette.Meta{Float64,Cassette.NoMetaMeta}}
 })
-@test !Cassette.hasmetadata(result, ctx)
-@test Cassette.hasmetameta(result, ctx)
+@test !hasmetadata(result, ctx)
+@test hasmetameta(result, ctx)
 
 ############################################################################################
 
 @context ApplyCtx
 x = rand()
 applytest(x) = Core._apply(hypot, (x,), (1,x), 1, x, (1,2))
-ctx = Cassette.withtagfor(ApplyCtx(), 1)
-@test Cassette.overdub(ctx, applytest, Cassette.tag(x, ctx)) === applytest(x)
+ctx = withtagfor(ApplyCtx(), 1)
+@test overdub(ctx, applytest, tag(x, ctx)) === applytest(x)
 
 ############################################################################################
 
 @context VATupleCtx
 x = rand(5)
-ctx = Cassette.withtagfor(VATupleCtx(), 1)
-result = Cassette.overdub(ctx, broadcast, sin, x)
+ctx = withtagfor(VATupleCtx(), 1)
+result = overdub(ctx, broadcast, sin, x)
 
-@test Cassette.untag(result, ctx) == sin.(x)
-@test Cassette.untagtype(typeof(result), typeof(ctx)) === typeof(sin.(x))
-@test Cassette.istagged(result, ctx)
-@test Cassette.istaggedtype(typeof(result), typeof(ctx))
+@test untag(result, ctx) == sin.(x)
+@test untagtype(typeof(result), typeof(ctx)) === typeof(sin.(x))
+@test istagged(result, ctx)
+@test istaggedtype(typeof(result), typeof(ctx))
 
-@test Cassette.metadata(result, ctx) === Cassette.NoMetaData()
-@test Cassette.metameta(result, ctx) === Cassette.NoMetaMeta()
-@test !Cassette.hasmetadata(result, ctx)
-@test !Cassette.hasmetameta(result, ctx)
+@test metadata(result, ctx) === Cassette.NoMetaData()
+@test metameta(result, ctx) === Cassette.NoMetaMeta()
+@test !hasmetadata(result, ctx)
+@test !hasmetameta(result, ctx)
 
 ############################################################################################
 
 @context BroadcastCtx
 v, m = rand(5), rand(5)
-ctx = Cassette.withtagfor(BroadcastCtx(), 1)
+ctx = withtagfor(BroadcastCtx(), 1)
 Cassette.metadatatype(::Type{<:BroadcastCtx}, ::Type{T}) where {T<:Number} = T
 
-result = Cassette.overdub(ctx, broadcast, (v, m) -> Cassette.tag(v, ctx, m), v, m)
-@test Cassette.untag(result, ctx) == v
-@test Cassette.untagtype(typeof(result), typeof(ctx)) === typeof(v)
-@test Cassette.istagged(result, ctx)
-@test Cassette.istaggedtype(typeof(result), typeof(ctx))
-@test Cassette.metadata(result, ctx) === Cassette.NoMetaData()
-@test m == map(Cassette.metameta(result, ctx)) do x
+result = overdub(ctx, broadcast, (v, m) -> tag(v, ctx, m), v, m)
+@test untag(result, ctx) == v
+@test untagtype(typeof(result), typeof(ctx)) === typeof(v)
+@test istagged(result, ctx)
+@test istaggedtype(typeof(result), typeof(ctx))
+@test metadata(result, ctx) === Cassette.NoMetaData()
+@test m == map(metameta(result, ctx)) do x
     @test x.meta === Cassette.NoMetaMeta()
     return x.data
 end
-@test !Cassette.hasmetadata(result, ctx)
-@test Cassette.hasmetameta(result, ctx)
+@test !hasmetadata(result, ctx)
+@test hasmetameta(result, ctx)
 
-result = Cassette.@overdub(ctx, ((v, m) -> Cassette.tag(v, ctx, m)).(v, m[1]))
-@test Cassette.untag(result, ctx) == v
-@test Cassette.untagtype(typeof(result), typeof(ctx)) === typeof(v)
-@test Cassette.istagged(result, ctx)
-@test Cassette.istaggedtype(typeof(result), typeof(ctx))
-@test Cassette.metadata(result, ctx) === Cassette.NoMetaData()
-foreach(Cassette.metameta(result, ctx)) do x
+result = @overdub(ctx, ((v, m) -> tag(v, ctx, m)).(v, m[1]))
+@test untag(result, ctx) == v
+@test untagtype(typeof(result), typeof(ctx)) === typeof(v)
+@test istagged(result, ctx)
+@test istaggedtype(typeof(result), typeof(ctx))
+@test metadata(result, ctx) === Cassette.NoMetaData()
+foreach(metameta(result, ctx)) do x
     @test x.meta === Cassette.NoMetaMeta()
     @test x.data === m[1]
 end
-@test !Cassette.hasmetadata(result, ctx)
-@test Cassette.hasmetameta(result, ctx)
+@test !hasmetadata(result, ctx)
+@test hasmetameta(result, ctx)
 
 ############################################################################################
 
@@ -317,51 +318,52 @@ Cassette.metadatatype(::Type{<:BroadcastCtx2{Int}}, ::Type{T}) where {T<:Number}
 Cassette.metadatatype(::Type{<:BroadcastCtx2{Val{N}}}, ::Type{T}) where {N,T<:Number} = NTuple{N,T}
 
 v, m = rand(5), rand(5)
-ctx = Cassette.withtagfor(BroadcastCtx2(metadata=10), 1)
-result = Cassette.overdub(ctx, broadcast, (v, m) -> Cassette.tag(v, ctx, m), v, [m])
-@test Cassette.untag(result, ctx) == v
-@test Cassette.untagtype(typeof(result), typeof(ctx)) === typeof(v)
-@test Cassette.istagged(result, ctx)
-@test Cassette.istaggedtype(typeof(result), typeof(ctx))
-@test Cassette.metadata(result, ctx) === Cassette.NoMetaData()
-@test all(e -> e == m, map(Cassette.metameta(result, ctx)) do x
+ctx = withtagfor(BroadcastCtx2(metadata=10), 1)
+result = overdub(ctx, broadcast, (v, m) -> tag(v, ctx, m), v, [m])
+@test untag(result, ctx) == v
+@test untagtype(typeof(result), typeof(ctx)) === typeof(v)
+@test istagged(result, ctx)
+@test istaggedtype(typeof(result), typeof(ctx))
+@test metadata(result, ctx) === Cassette.NoMetaData()
+@test all(e -> e == m, map(metameta(result, ctx)) do x
     @test x.meta === Cassette.NoMetaMeta()
     return x.data
 end)
-@test !Cassette.hasmetadata(result, ctx)
-@test Cassette.hasmetameta(result, ctx)
+@test !hasmetadata(result, ctx)
+@test hasmetameta(result, ctx)
 
 v, m = rand(5), (1.0,2.0,3.0)
-ctx = Cassette.withtagfor(BroadcastCtx2(metadata=Val(3)), 1)
-result = Cassette.overdub(ctx, broadcast, (v, m) -> Cassette.tag(v, ctx, m), v, [m])
-@test Cassette.untag(result, ctx) == v
-@test Cassette.untagtype(typeof(result), typeof(ctx)) === typeof(v)
-@test Cassette.istagged(result, ctx)
-@test Cassette.istaggedtype(typeof(result), typeof(ctx))
-@test Cassette.metadata(result, ctx) === Cassette.NoMetaData()
-foreach(Cassette.metameta(result, ctx)) do x
+ctx = withtagfor(BroadcastCtx2(metadata=Val(3)), 1)
+result = overdub(ctx, broadcast, (v, m) -> tag(v, ctx, m), v, [m])
+@test untag(result, ctx) == v
+@test untagtype(typeof(result), typeof(ctx)) === typeof(v)
+@test istagged(result, ctx)
+@test istaggedtype(typeof(result), typeof(ctx))
+@test metadata(result, ctx) === Cassette.NoMetaData()
+foreach(metameta(result, ctx)) do x
     @test x.meta === Cassette.NoMetaMeta()
     @test x.data === m
 end
-@test !Cassette.hasmetadata(result, ctx)
-@test Cassette.hasmetameta(result, ctx)
+@test !hasmetadata(result, ctx)
+@test hasmetameta(result, ctx)
 
 ############################################################################################
 
-@context PrimitiveCtx
+@context FallbackCtx
 
 data = Any[]
-Cassette.@prehook (f::Any)(input...) where {__CONTEXT__<:PrimitiveCtx} = push!(data, (f, input...))
 
-ctx = PrimitiveCtx()
-p = Cassette.Primitive(sin, ctx)
+Cassette.prehook(::FallbackCtx, f, input...) = push!(data, (f, input...))
+
+ctx = FallbackCtx()
+p = Cassette.Fallback(sin, ctx)
 x = rand()
 @test sin(x) === overdub(ctx, p, x)
 @test length(data) == 1 && data[1] === (p, x)
 empty!(data)
 
-ctx = PrimitiveCtx()
-p = Cassette.Primitive(sin, ctx)
+ctx = FallbackCtx()
+p = Cassette.Fallback(sin, ctx)
 x = rand()
 @test x + sin(x) === overdub(ctx, x -> x + p(x), x)
 @test length(data) < 10 && in((+, x, sin(x)), data) && in((p, x), data)
@@ -392,30 +394,30 @@ function D(f, x)
     return tangent(result, ctx)
 end
 
-@primitive function Base.sin(x::Tagged{T,<:Real}) where {T,__CONTEXT__<:DiffCtxWithTag{T}}
-    vx, dx = untag(x, __context__), tangent(x, __context__)
-    return tag(sin(vx), __context__, cos(vx) * dx)
+function Cassette.execute(ctx::DiffCtxWithTag{T}, ::typeof(sin), x::Tagged{T,<:Real}) where {T}
+    vx, dx = untag(x, ctx), tangent(x, ctx)
+    return tag(sin(vx), ctx, cos(vx) * dx)
 end
 
-@primitive function Base.cos(x::Tagged{T,<:Real}) where {T,__CONTEXT__<:DiffCtxWithTag{T}}
-    vx, dx = untag(x, __context__), tangent(x, __context__)
-    return tag(cos(vx), __context__, -sin(vx) * dx)
+function Cassette.execute(ctx::DiffCtxWithTag{T}, ::typeof(cos), x::Tagged{T,<:Real}) where {T}
+    vx, dx = untag(x, ctx), tangent(x, ctx)
+    return tag(cos(vx), ctx, -sin(vx) * dx)
 end
 
-@primitive function Base.:*(x::Tagged{T,<:Real}, y::Tagged{T,<:Real}) where {T,__CONTEXT__<:DiffCtxWithTag{T}}
-    vx, dx = untag(x, __context__), tangent(x, __context__)
-    vy, dy = untag(y, __context__), tangent(y, __context__)
-    return tag(vx * vy, __context__, vy * dx + vx * dy)
+function Cassette.execute(ctx::DiffCtxWithTag{T}, ::typeof(*), x::Tagged{T,<:Real}, y::Tagged{T,<:Real}) where {T}
+    vx, dx = untag(x, ctx), tangent(x, ctx)
+    vy, dy = untag(y, ctx), tangent(y, ctx)
+    return tag(vx * vy, ctx, vy * dx + vx * dy)
 end
 
-@primitive function Base.:*(x::Tagged{T,<:Real}, y::Real) where {T,__CONTEXT__<:DiffCtxWithTag{T}}
-    vx, dx = untag(x, __context__), tangent(x, __context__)
-    return tag(vx * y, __context__, y * dx)
+function Cassette.execute(ctx::DiffCtxWithTag{T}, ::typeof(*), x::Tagged{T,<:Real}, y::Real) where {T}
+    vx, dx = untag(x, ctx), tangent(x, ctx)
+    return tag(vx * y, ctx, y * dx)
 end
 
-@primitive function Base.:*(x::Real, y::Tagged{T,<:Real}) where {T,__CONTEXT__<:DiffCtxWithTag{T}}
-    vy, dy = untag(y, __context__), tangent(y, __context__)
-    return tag(x * vy, __context__, x * dy)
+function Cassette.execute(ctx::DiffCtxWithTag{T}, ::typeof(*), x::Real, y::Tagged{T,<:Real}) where {T}
+    vy, dy = untag(y, ctx), tangent(y, ctx)
+    return tag(x * vy, ctx, x * dy)
 end
 
 @test D(sin, 1) === cos(1)

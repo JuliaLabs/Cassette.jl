@@ -3,12 +3,16 @@
 #########################
 
 @inline prehook(::Context, ::Vararg{Any}) = nothing
+
 @inline posthook(::Context, ::Vararg{Any}) = nothing
-@inline isprimitive(::Context, ::Vararg{Any}) = false
-@inline execute(ctx::Context, args...) = call(ctx, args...)
+
+struct RecurseInstead end
+@inline execute(ctx::Context, args...) = RecurseInstead()
+
+@inline fallback(ctx::Context, args...) = call(ctx, args...)
+
 @inline call(::ContextWithTag{Nothing}, f, args...) = f(args...)
 @inline call(context::Context, f, args...) = untag(f, context)(ntuple(i -> untag(args[i], context), Val(nfields(args)))...)
-@inline canrecurse(ctx::Context, f, args...) = !isa(untag(f, ctx), Core.Builtin)
 
 # TODO: This is currently needed to force the compiler to specialize on the type arguments
 # to `Core.apply_type`. In the future, it would be best for Julia's compiler to better handle
@@ -17,41 +21,37 @@
 @inline call(::ContextWithTag{Nothing}, f::typeof(Core.apply_type), ::Type{A}, ::Type{B}) where {A,B} = f(A, B)
 @inline call(::Context, f::typeof(Core.apply_type), ::Type{A}, ::Type{B}) where {A,B} = f(A, B)
 
+@inline canrecurse(ctx::Context, f, args...) = !isa(untag(f, ctx), Core.Builtin)
+
 ###########
 # overdub #
 ###########
 
+# An alternative approach is to define `execute(args...) = recurse(args...)` by default,
+# instead of using the `RecurseInstead` sentinel type. While cleaner, that approach triggers
+# the compiler's recursion limiting heuristic. This sentinel type + control flow approach
+# avoids that recursion, and thus avoids related inference problems.
 @inline function overdub(ctx::Context, args...)
     prehook(ctx, args...)
-    if isprimitive(ctx, args...)
-        output = execute(ctx, args...)
-    else
-        output = recurse(ctx, args...)
-    end
-    _posthook(ctx, output, args...)
+    output = execute(ctx, args...)
+    output = isa(output, RecurseInstead) ? recurse(ctx, args...) : output
+    posthook(ctx, output, args...)
     return output
 end
-
-# switch order to match API; TODO: instead might be
-# better to rework API to respect the order here
-@inline _posthook(ctx, output, f, args...) = posthook(ctx, f, output, args...)
 
 # This is essentially implementing:
 #
 #   overdub(ctx, f, Core._apply(Core.tuple, _args...)...)
 #
-# but the extra indirection of calling `overdub` there causes inference to fall over for some
-# reason. The only possible reason I can think of is that doing so triggers the recursion
-# limiting heuristic in the compiler's abstract interpreter, but that might not be it.
+# but the extra indirection of calling `overdub` there triggers the compiler's recursion
+# limiting heuristic. This implemenation avoids that problem by manually inlining the above
+# expression by a single call level.
 @inline function overdub_apply(ctx, f, _args...)
     args = Core._apply(Core.tuple, _args...)
     prehook(ctx, f, args...)
-    if isprimitive(ctx, f, args...)
-        output = execute(ctx, f, args...)
-    else
-        output = recurse(ctx, f, args...)
-    end
-    _posthook(ctx, output, f, args...)
+    output = execute(ctx, f, args...)
+    output = isa(output, RecurseInstead) ? recurse(ctx, f, args...) : output
+    posthook(ctx, output, f, args...)
     return output
 end
 
@@ -186,26 +186,27 @@ end
 
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
 function recurse_generator(pass_type, self, context_type, args::Tuple)
-    try
-        untagged_args = ((untagtype(args[i], context_type) for i in 1:nfields(args))...,)
-        reflection = reflect(untagged_args)
-        if isa(reflection, Reflection)
-            recurse_pass!(reflection, context_type, pass_type)
-            body = reflection.code_info
-            @safe_debug "returning overdubbed CodeInfo" args body
-        else
-            body = quote
-                $(Expr(:meta, :inline))
-                $Cassette.execute($RECURSE_CTX_SYMBOL, $RECURSE_ARGS_SYMBOL...)
+    if !(nfields(args) > 1 && args[1] <: Core.Builtin)
+        try
+            untagged_args = ((untagtype(args[i], context_type) for i in 1:nfields(args))...,)
+            reflection = reflect(untagged_args)
+            if isa(reflection, Reflection)
+                recurse_pass!(reflection, context_type, pass_type)
+                body = reflection.code_info
+                @safe_debug "returning overdubbed CodeInfo" args body
+                return body
             end
-            @safe_debug "no CodeInfo found; executing as primitive" args
+        catch err
+            errmsg = "ERROR COMPILING $args IN CONTEXT $(context_type): \n" * sprint(showerror, err)
+            return quote
+                error($errmsg)
+            end
         end
-        return body
-    catch err
-        errmsg = "ERROR COMPILING $args IN CONTEXT $(context_type): \n" * sprint(showerror, err)
-        return quote
-            error($errmsg)
-        end
+    end
+    @safe_debug "no CodeInfo found; executing via fallback" args
+    return quote
+        $(Expr(:meta, :inline))
+        $Cassette.fallback($RECURSE_CTX_SYMBOL, $RECURSE_ARGS_SYMBOL...)
     end
 end
 
