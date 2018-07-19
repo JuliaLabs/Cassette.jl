@@ -36,6 +36,25 @@ end
 # better to rework API to respect the order here
 @inline _posthook(ctx, output, f, args...) = posthook(ctx, f, output, args...)
 
+# This is essentially implementing:
+#
+#   overdub(ctx, f, Core._apply(Core.tuple, _args...)...)
+#
+# but the extra indirection of calling `overdub` there causes inference to fall over for some
+# reason. The only possible reason I can think of is that doing so triggers the recursion
+# limiting heuristic in the compiler's abstract interpreter, but that might not be it.
+@inline function overdub_apply(ctx, f, _args...)
+    args = Core._apply(Core.tuple, _args...)
+    prehook(ctx, f, args...)
+    if isprimitive(ctx, f, args...)
+        output = execute(ctx, f, args...)
+    else
+        output = recurse(ctx, f, args...)
+    end
+    _posthook(ctx, output, f, args...)
+    return output
+end
+
 ###########
 # recurse #
 ###########

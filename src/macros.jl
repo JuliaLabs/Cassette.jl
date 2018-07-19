@@ -5,7 +5,6 @@ const CONTEXT_BINDING = Symbol("__context__")
 # @context #
 ############
 
-
 """
     Cassette.@context Ctx
 
@@ -27,9 +26,8 @@ macro context(Ctx)
             return $Cassette.Tag(N, X, $Cassette.tagtype(__CONTEXT__))
         end
 
-        $Cassette.@primitive function Core._apply(f, args...) where {__CONTEXT__<:$Ctx}
-            overdubbed_f = (args...) -> $Cassette.overdub(__context__, f, args...)
-            return Core._apply(overdubbed_f, args...)
+        $Cassette.@primitive function Core._apply(f, args...) where {__CONTEXT__<:$Ctx{<:Any,Nothing}}
+            return $Cassette.overdub_apply(__context__, f, args...)
         end
 
         $Cassette.@primitive function (p::$Cassette.Primitive{F,__CONTEXT__})(args...) where {F,__CONTEXT__<:$Ctx}
@@ -40,9 +38,12 @@ macro context(Ctx)
         # relies upon constant propagation to infer, such as `isdispatchtuple`. Such
         # functions should generally be contextual primitives by default for the sake of
         # performance, and we should add more of them here as we encounter them.
+        # However, in the future, we should improve the compiler to minimize the number of
+        # methods here marked `@isprimitive`.
         $Cassette.@isprimitive Base.isdispatchtuple(::Type) where {__CONTEXT__<:$Ctx}
         $Cassette.@isprimitive Base.eltype(::Type) where {__CONTEXT__<:$Ctx}
         $Cassette.@isprimitive Base.convert(::Type, ::Tuple) where {__CONTEXT__<:$Ctx}
+        $Cassette.@isprimitive Base.getproperty(::Any, ::Symbol) where {__CONTEXT__<:$Ctx{<:Any,Nothing}}
 
         # enforce `T<:Cassette.Tag` to ensure that we only call the below primitive functions
         # if the context has the tagging system enabled
