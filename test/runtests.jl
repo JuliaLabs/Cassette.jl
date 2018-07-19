@@ -454,6 +454,7 @@ dispatchtupletest(::Type{T}) where {T} = Base.isdispatchtuple(Tuple{T}) ? T : An
 @inferred(overdub(InferCtx(), *, rand(Float32, 1, 1), rand(Float32, 1)))
 @inferred(overdub(InferCtx(), rosenbrock, rand(1)))
 @inferred(overdub(InferCtx(), rand, Float32, 1))
+@inferred(overdub(InferCtx(), broadcast, +, rand(1), rand(1)))
 
 ############################################################################################
 #= TODO: The rest of the tests below should be restored for the metadata tagging system
