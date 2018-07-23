@@ -1,6 +1,3 @@
-const CONTEXT_TYPE_BINDING = Symbol("__CONTEXT__")
-const CONTEXT_BINDING = Symbol("__context__")
-
 ############
 # @context #
 ############
@@ -13,114 +10,58 @@ Define a new Cassette context type with the name `Ctx`.
 macro context(Ctx)
     @assert isa(Ctx, Symbol) "context name must be a Symbol"
     CtxName = gensym(string(Ctx, "Name"))
+    TaggedCtx = gensym(string(Ctx, "Tagged"))
+    Typ = :(Core.Typeof)
     return esc(quote
         struct $CtxName <: $Cassette.AbstractContextName end
 
         Base.show(io::IO, ::Type{$CtxName}) = print(io, "nametype(", $(string(Ctx)), ")")
 
         const $Ctx{M,T<:Union{Nothing,$Cassette.Tag},P<:$Cassette.AbstractPass} = $Cassette.Context{$CtxName,M,P,T}
+        const $TaggedCtx = $Ctx{<:Any,<:$Cassette.Tag}
 
         $Ctx(; kwargs...) = $Cassette.Context($CtxName(); kwargs...)
 
-        $Cassette.@primitive function $Cassette.Tag(::Type{N}, ::Type{X}) where {__CONTEXT__<:$Ctx,N,X}
-            return $Cassette.Tag(N, X, $Cassette.tagtype(__CONTEXT__))
-        end
-
-        $Cassette.@primitive function Core._apply(f, args...) where {__CONTEXT__<:$Ctx{<:Any,Nothing}}
-            return $Cassette.overdub_apply(__context__, f, args...)
-        end
-
-        $Cassette.@primitive function (p::$Cassette.Primitive{F,__CONTEXT__})(args...) where {F,__CONTEXT__<:$Ctx}
-            return $Cassette.execute(__context__, p.func, args...)
-        end
+        @inline $Cassette.execute(::C, ::$Typ($Cassette.Tag), ::Type{N}, ::Type{X}) where {C<:$Ctx,N,X} = $Cassette.Tag(N, X, $Cassette.tagtype(C))
+        @inline $Cassette.execute(ctx::$Ctx{<:Any,Nothing}, ::$Typ(Core._apply), f, args...) = $Cassette.overdub_apply(ctx, f, args...)
+        @inline $Cassette.execute(ctx::C, f::$Cassette.Fallback{F,C}, args...) where {F,C<:$Ctx} = Cassette.fallback(ctx, f.func, args...)
 
         # TODO: There are certain non-`Core.Builtin` functions which the compiler often
         # relies upon constant propagation to infer, such as `isdispatchtuple`. Such
         # functions should generally be contextual primitives by default for the sake of
         # performance, and we should add more of them here as we encounter them.
-        # However, in the future, we should improve the compiler to minimize the number of
-        # methods here marked `@isprimitive`.
-        $Cassette.@isprimitive Base.isdispatchtuple(::Type) where {__CONTEXT__<:$Ctx}
-        $Cassette.@isprimitive Base.eltype(::Type) where {__CONTEXT__<:$Ctx}
-        $Cassette.@isprimitive Base.convert(::Type, ::Tuple) where {__CONTEXT__<:$Ctx}
-        $Cassette.@isprimitive Base.getproperty(::Any, ::Symbol) where {__CONTEXT__<:$Ctx{<:Any,Nothing}}
+        @inline $Cassette.execute(ctx::$Ctx, f::$Typ(Base.isdispatchtuple), T::Type) = Cassette.fallback(ctx, f, T)
+        @inline $Cassette.execute(ctx::$Ctx, f::$Typ(Base.eltype), T::Type) = Cassette.fallback(ctx, f, T)
+        @inline $Cassette.execute(ctx::$Ctx, f::$Typ(Base.convert), T::Type, t::Tuple) = Cassette.fallback(ctx, f, T, t)
+        @inline $Cassette.execute(ctx::$Ctx{<:Any,Nothing}, f::$Typ(Base.getproperty), x::Any, s::Symbol) = Cassette.fallback(ctx, f, x, s)
 
-        # enforce `T<:Cassette.Tag` to ensure that we only call the below primitive functions
-        # if the context has the tagging system enabled
+        # the below primitives are only active when the tagging system is enabled (`typeof(ctx) <: TaggedCtx`)
 
-        $Cassette.@isprimitive $Cassette.tag(value, ::__CONTEXT__, metadata) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+        @inline $Cassette.execute(ctx::C, f::$Typ($Cassette.tag), value, ::C, metadata) where {C<:$TaggedCtx} = $Cassette.fallback(ctx, f, value, ctx, metadata)
+        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Array{T,N}), undef::UndefInitializer, args...) where {T,N} = $Cassette.tagged_new_array(ctx, Array{T,N}, undef, args...)
+        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core.Module), args...) = $Cassette.tagged_new_module(ctx, args...)
+        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core.tuple), args...) = $Cassette.tagged_new_tuple(ctx, args...)
+        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core._apply), f, args...) = $Cassette.tagged_apply(ctx, f, args...)
+        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Base.nameof), args...) = $Cassette.tagged_nameof(ctx, m)
+        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core.getfield), args...) = $Cassette.tagged_getfield(ctx, args...)
+        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core.setfield!), args...) = $Cassette.tagged_setfield!(ctx, args...)
+        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core.arrayref), args...) = $Cassette.tagged_arrayref(ctx, args...)
+        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core.arrayset), args...) = $Cassette.tagged_arrayset(ctx, args...)
+        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Base._growbeg!), args...) = $Cassette.tagged_growbeg!(ctx, args...)
+        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Base._growend!), args...) = $Cassette.tagged_growend!(ctx, args...)
+        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Base._growat!), args...) = $Cassette.tagged_growat!(ctx, args...)
+        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Base._deletebeg!), args...) = $Cassette.tagged_deletebeg!(ctx, args...)
+        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Base._deleteend!), args...) = $Cassette.tagged_deleteend!(ctx, args...)
+        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Base._deleteat!), args...) = $Cassette.tagged_deleteat!(ctx, args...)
+        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core.typeassert), args...) = $Cassette.tagged_typeassert(ctx, args...)
 
-        $Cassette.@primitive function Array{T,N}(undef::UndefInitializer, args...) where {T,N,__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_new_array(__context__, Array{T,N}, undef, args...)
-        end
-
-        $Cassette.@primitive function Core.Module(args...) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_new_module(__context__, args...)
-        end
-
-        $Cassette.@primitive function Core.tuple(args...) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_new_tuple(__context__, args...)
-        end
-
-        $Cassette.@primitive function Core._apply(f, args...) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_apply(__context__, f, args...)
-        end
-
-        $Cassette.@primitive function Base.nameof(m) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_nameof(__context__, m)
-        end
-
-        $Cassette.@primitive function Core.getfield(x, name, boundscheck...) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_getfield(__context__, x, name, boundscheck...)
-        end
-
-        $Cassette.@primitive function Core.setfield!(x, name, y, boundscheck...) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_setfield!(__context__, x, name, y, boundscheck...)
-        end
-
-        $Cassette.@primitive function Core.arrayref(boundscheck, x, i) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_arrayref(__context__, boundscheck, x, i)
-        end
-
-        $Cassette.@primitive function Core.arrayset(boundscheck, x, y, i) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_arrayset(__context__, boundscheck, x, y, i)
-        end
-
-        $Cassette.@primitive function Base._growbeg!(x, delta) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_growbeg!(__context__, x, delta)
-        end
-
-        $Cassette.@primitive function Base._growend!(x, delta) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_growend!(__context__, x, delta)
-        end
-
-        $Cassette.@primitive function Base._growat!(x, i, delta) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_growat!(__context__, x, i, delta)
-        end
-
-        $Cassette.@primitive function Base._deletebeg!(x, delta) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_deletebeg!(__context__, x, delta)
-        end
-
-        $Cassette.@primitive function Base._deleteend!(x, delta) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_deleteend!(__context__, x, delta)
-        end
-
-        $Cassette.@primitive function Base._deleteat!(x, i, delta) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_deleteat!(__context__, x, i, delta)
-        end
-
-        $Cassette.@primitive function Core.typeassert(x, typ) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
-            return $Cassette.tagged_typeassert(__context__, x, typ)
-        end
-
-        $Cassette.@primitive function (f::Core.IntrinsicFunction)(args...) where {__CONTEXT__<:$Ctx{<:Any,<:$Cassette.Tag}}
+        @inline function $Cassette.execute(ctx::$TaggedCtx, f::Core.IntrinsicFunction, args...)
             if f === Base.sitofp
-                return $Cassette.tagged_sitofp(__context__, args...)
+                return $Cassette.tagged_sitofp(ctx, args...)
             elseif f === Base.sle_int
-                return $Cassette.tagged_sle_int(__context__, args...)
+                return $Cassette.tagged_sle_int(ctx, args...)
             else # TODO: add more cases
-                return $Cassette.call(__context__, f, args...)
+                return $Cassette.fallback(ctx, f, args...)
             end
         end
     end)
@@ -131,8 +72,10 @@ end
 ############
 
 """
-    Cassette.@overdub(Ctx(...), expression)
-A convenience macro for overdubbing and executing `expression` within the context `Ctx`.
+    Cassette.@overdub(ctx, expression)
+
+A convenience macro for executing `expression` within the context `ctx`. This macro roughly
+expands to `Cassette.recurse(ctx, () -> expression)`.
 """
 macro overdub(ctx, expr)
     return :($Cassette.recurse($(esc(ctx)), () -> $(esc(expr))))
@@ -171,193 +114,4 @@ macro pass(transform)
         Core.eval($Cassette, $Cassette.recurse_definition($name, $line, $file))
         $Pass()
     end)
-end
-
-#####################
-# @prehook/posthook #
-#####################
-
-"""
-    Cassette.@prehook contextual_method_definition
-
-Place in front of a contextual method definition to define a callback that Cassette
-executes before method calls that match the contextual method definition's signature.
-
-For example, the following code uses `@prehook` to increment a counter stored in
-`__context__.metadata` every time a method is called with one or more arguments matching a
-given type:
-
-    using Cassette: @context, @prehook
-
-    @context CountCtx
-
-    mutable struct Count{T}
-        count::Int
-    end
-
-    @prehook function (f::Any)(input::T, ::T...) where {T,__CONTEXT__<:CountCtx{Count{T}}}
-        __context__.metadata.count += 1
-    end
-
-Prehooks are generally useful for inserting side-effects that do not ultimately affect
-the trace's execution path. However, prehooks are allowed to (for example) mutate input
-argument state.
-
-For details regarding the format of `contextual_method_definition`, see the contextual
-dispatch documentation.
-"""
-macro prehook(method)
-    return contextual_definition!(:($Cassette.prehook), method)
-end
-
-"""
-    Cassette.@posthook contextual_method_definition
-
-Place in front of a contextual method definition to define a callback that Cassette executes
-after method calls that match the contextual method definition's signature. Note that the
-contextual method definition's signature differs from those of the matched method calls in
-that the first argument is the method calls' output.
-
-For example, the following code uses `@posthook` to increment a counter stored in
-`__context__.metadata` every time a method call's output type matches the type of its
-input:
-
-    using Cassette: @context, @posthook
-
-    @context CountCtx
-
-    mutable struct Count
-        count::Int
-    end
-
-    @posthook function (f::Any)(output::T, input::T, ::T...) where {T,__CONTEXT__<:CountCtx{Count}}
-        __context__.metadata.count += 1
-    end
-
-Posthooks are generally useful for inserting side-effects that do not ultimately affect
-the trace's execution path. However, posthooks are allowed to (for example) mutate
-input/output argument state.
-
-For details regarding the format of `contextual_method_definition`, see the contextual
-dispatch documentation.
-"""
-macro posthook(method)
-    return contextual_definition!(:($Cassette.posthook), method)
-end
-
-##############
-# @execution #
-##############
-
-"""
-    Cassette.@execution contextual_method_definition
-
-Place in front of a contextual method definition to overload Cassette's primitive execution
-behavior for method calls matching the contextual method definition's signature. Note that
-this execution behavior does not apply to non-primitives, which, by definition, Cassette
-will simply trace through.
-
-For details regarding the format of `contextual_method_definition`, see the contextual
-dispatch documentation.
-"""
-macro execution(method)
-    return contextual_definition!(:($Cassette.execute), method)
-end
-
-##############################
-# @isprimitive/@notprimitive #
-##############################
-
-"""
-    Cassette.@isprimitive contextual_method_signature
-
-Place in front of a contextual method signature to mark matching method calls as contextual
-primitives. Cassette primitives are executed using the contextual method definitions
-provided via `Cassette.@execution`.
-
-For details regarding the format of `contextual_method_signature`, see the contextual
-dispatch documentation.
-"""
-macro isprimitive(signature)
-    body = Expr(:block)
-    push!(body.args, :(return true))
-    return contextual_definition!(:($Cassette.isprimitive), signature, body)
-end
-
-"""
-    Cassette.@notprimitive contextual_method_signature
-
-Place in front of a contextual method signature to cause matching method calls to *not* be
-treated as contextual primitives.
-
-This essentially allows context authors to "undo" prior `@isprimitive` declarations, and is
-thus useful for disabling default contextual primitive definitions. Note that disabling
-default contextual primitive definitions can result in undefined behavior and should be done
-with caution.
-
-For details regarding the format of `contextual_method_signature`, see the contextual
-dispatch documentation.
-"""
-macro notprimitive(signature)
-    body = Expr(:block)
-    push!(body.args, :(return false))
-    return contextual_definition!(:($Cassette.isprimitive), signature, body)
-end
-
-##############
-# @primitive #
-##############
-
-"""
-    Cassette.@primitive contextual_method_definition
-
-A convenience macro for simultaneously applying `Cassette.@execution` and
-`Cassette.@isprimitive` to the provided contextual method definition.
-"""
-macro primitive(method)
-    @assert is_method_definition(method)
-    signature = first(method.args)
-    return esc(quote
-        $Cassette.@execution $method
-        $Cassette.@isprimitive $signature
-    end)
-end
-
-#############
-# utilities #
-#############
-
-function typify_signature(signature)
-    if isa(signature, Expr)
-        f, args = signature.args[1], signature.args[2:end]
-        if signature.head == :where
-            return Expr(:where, typify_signature(f), args...)
-        elseif signature.head == :call
-            if !(isa(f, Expr) && f.head == :(::))
-                # Use Core.Typeof here instead of typeof so that we don't, for example,
-                # overload UnionAll when users attempt to overload type constructors
-                return Expr(:call, :(::Core.Typeof($f)), args...)
-            end
-            return signature
-        end
-    end
-    error("malformed signature: $signature")
-end
-
-function contextual_definition!(f, method)
-    @assert is_method_definition(method)
-    signature, body = method.args
-    return contextual_definition!(f, signature, body)
-end
-
-function contextual_definition!(f, signature::Expr, body::Expr)
-    @assert(signature.head == :where,
-            "method signature missing `where` clause; `$(CONTEXT_TYPE_BINDING) <: ContextType` "*
-            "must be defined in your method definition's `where` clause")
-    signature = typify_signature(signature)
-    signature.args[1] = Expr(:call, f,
-                             :($CONTEXT_BINDING::$CONTEXT_TYPE_BINDING),
-                             signature.args[1].args...)
-    pushfirst!(body.args, Expr(:meta, :inline))
-    return esc(Expr(:function, signature, body))
 end
