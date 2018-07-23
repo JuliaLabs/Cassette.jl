@@ -3,6 +3,8 @@ using Cassette: @context, @pass, @overdub, overdub, hasmetadata, metadata, hasme
                 metameta, untag, tag, withtagfor, untagtype, istagged, istaggedtype,
                 Tagged, recurse, fallback, canrecurse, similarcontext
 
+const Typ = Core.Typeof
+
 ############################################################################################
 
 function rosenbrock(x::Vector{Float64})
@@ -43,7 +45,7 @@ x = rand()
 sin_plus_cos(x) = sin(x) + cos(x)
 @context SinCtx
 @test @overdub(SinCtx(), sin_plus_cos(x)) === sin_plus_cos(x)
-Cassette.execute(::SinCtx, ::typeof(sin), x) = cos(x)
+Cassette.execute(::SinCtx, ::Typ(sin), x) = cos(x)
 @test @overdub(SinCtx(), sin_plus_cos(x)) === (2 * cos(x))
 
 ############################################################################################
@@ -394,28 +396,28 @@ function D(f, x)
     return tangent(result, ctx)
 end
 
-function Cassette.execute(ctx::DiffCtxWithTag{T}, ::typeof(sin), x::Tagged{T,<:Real}) where {T}
+function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(sin), x::Tagged{T,<:Real}) where {T}
     vx, dx = untag(x, ctx), tangent(x, ctx)
     return tag(sin(vx), ctx, cos(vx) * dx)
 end
 
-function Cassette.execute(ctx::DiffCtxWithTag{T}, ::typeof(cos), x::Tagged{T,<:Real}) where {T}
+function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(cos), x::Tagged{T,<:Real}) where {T}
     vx, dx = untag(x, ctx), tangent(x, ctx)
     return tag(cos(vx), ctx, -sin(vx) * dx)
 end
 
-function Cassette.execute(ctx::DiffCtxWithTag{T}, ::typeof(*), x::Tagged{T,<:Real}, y::Tagged{T,<:Real}) where {T}
+function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(*), x::Tagged{T,<:Real}, y::Tagged{T,<:Real}) where {T}
     vx, dx = untag(x, ctx), tangent(x, ctx)
     vy, dy = untag(y, ctx), tangent(y, ctx)
     return tag(vx * vy, ctx, vy * dx + vx * dy)
 end
 
-function Cassette.execute(ctx::DiffCtxWithTag{T}, ::typeof(*), x::Tagged{T,<:Real}, y::Real) where {T}
+function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(*), x::Tagged{T,<:Real}, y::Real) where {T}
     vx, dx = untag(x, ctx), tangent(x, ctx)
     return tag(vx * y, ctx, y * dx)
 end
 
-function Cassette.execute(ctx::DiffCtxWithTag{T}, ::typeof(*), x::Real, y::Tagged{T,<:Real}) where {T}
+function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(*), x::Real, y::Tagged{T,<:Real}) where {T}
     vy, dy = untag(y, ctx), tangent(y, ctx)
     return tag(x * vy, ctx, x * dy)
 end
