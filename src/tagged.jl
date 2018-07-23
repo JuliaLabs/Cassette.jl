@@ -338,9 +338,8 @@ end
     end
 end
 
-# has an extra optimization that can be used when you can assume
-# the given args are provided by the caller of the caller of
-# _tagged_new_tuple_unsafe
+# has an extra optimization that can be used when you can assume that
+# you don't e.g. need to allocate meta objects for non-isbits elements
 @generated function _tagged_new_tuple_unsafe(context::C, args...) where {C<:Context}
     if all(!istaggedtype(arg, C) for arg in args)
         return quote
@@ -572,26 +571,25 @@ function tagged_typeassert(context::ContextWithTag{T}, x::Tagged{T}, typ) where 
     return Tagged(context, untagged_result, x.meta)
 end
 
-#=== tagged_apply ===#
+#=== tagged_apply_args ===#
 
-@generated function tagged_apply(context::ContextWithTag{T}, f, args...) where {T}
-    flattened = Any[]
+@generated function tagged_apply_args(context::ContextWithTag{T}, args...) where {T}
+    flattened = Expr(:tuple)
     for i in 1:nfields(args)
         x = args[i]
         if x <: Tuple
-            push!(flattened, Expr(:..., Expr(:ref, :args, i)))
+            push!(flattened.args, Expr(:..., Expr(:ref, :args, i)))
         elseif istaggedtype(x, context) && untagtype(x, context) <: Tuple
             for j in 1:fieldcount(untagtype(x, context))
-                push!(flattened, :(tagged_getfield(context, args[$i], $j)))
+                push!(flattened.args, :(tagged_getfield(context, args[$i], $j)))
             end
         else
-            push!(flattened, :(args[$i]))
+            push!(flattened.args, :(args[$i]))
         end
     end
-    return quote
-        overdub(context, f, $(flattened...))
-    end
+    return flattened
 end
+
 
 #=== tagged_sitofp ===#
 

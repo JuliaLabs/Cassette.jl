@@ -41,19 +41,24 @@ end
 
 # This is essentially implementing:
 #
-#   overdub(ctx, f, Core._apply(Core.tuple, _args...)...)
+# function overdub(ctx::Context, ::typeof(Core._apply), f, args...)
+#     return overdub(ctx, f, apply_args(ctx, args...)...)
+# end
 #
 # but the extra indirection of calling `overdub` there triggers the compiler's recursion
-# limiting heuristic. This implemenation avoids that problem by manually inlining the above
-# expression by a single call level.
-@inline function overdub_apply(ctx, f, _args...)
-    args = Core._apply(Core.tuple, _args...)
+# limiting heuristic. This implementation avoids that problem by manually inlining the
+# above expression by a single call level.
+@inline function overdub(ctx::Context, ::typeof(Core._apply), f, _args...)
+    args = apply_args(ctx, _args...)
     prehook(ctx, f, args...)
     output = execute(ctx, f, args...)
     output = isa(output, RecurseInstead) ? recurse(ctx, f, args...) : output
     posthook(ctx, output, f, args...)
     return output
 end
+
+@inline apply_args(::ContextWithTag{Nothing}, args...) = Core._apply(Core.tuple, args...)
+@inline apply_args(ctx::Context, args...) = tagged_apply_args(ctx, args...)
 
 ###########
 # recurse #

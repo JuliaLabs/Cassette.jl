@@ -23,7 +23,6 @@ macro context(Ctx)
         $Ctx(; kwargs...) = $Cassette.Context($CtxName(); kwargs...)
 
         @inline $Cassette.execute(::C, ::$Typ($Cassette.Tag), ::Type{N}, ::Type{X}) where {C<:$Ctx,N,X} = $Cassette.Tag(N, X, $Cassette.tagtype(C))
-        @inline $Cassette.execute(ctx::$Ctx{<:Any,Nothing}, ::$Typ(Core._apply), f, args...) = $Cassette.overdub_apply(ctx, f, args...)
         @inline $Cassette.execute(ctx::C, f::$Cassette.Fallback{F,C}, args...) where {F,C<:$Ctx} = Cassette.fallback(ctx, f.func, args...)
 
         # TODO: There are certain non-`Core.Builtin` functions which the compiler often
@@ -41,7 +40,6 @@ macro context(Ctx)
         @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Array{T,N}), undef::UndefInitializer, args...) where {T,N} = $Cassette.tagged_new_array(ctx, Array{T,N}, undef, args...)
         @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core.Module), args...) = $Cassette.tagged_new_module(ctx, args...)
         @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core.tuple), args...) = $Cassette.tagged_new_tuple(ctx, args...)
-        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core._apply), f, args...) = $Cassette.tagged_apply(ctx, f, args...)
         @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Base.nameof), args...) = $Cassette.tagged_nameof(ctx, m)
         @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core.getfield), args...) = $Cassette.tagged_getfield(ctx, args...)
         @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core.setfield!), args...) = $Cassette.tagged_setfield!(ctx, args...)
