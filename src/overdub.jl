@@ -143,11 +143,20 @@ function recurse_pass!(reflection::Reflection,
 
     # For the rest of the statements in `code_info.code`, intercept every applicable call
     # expression and replace it with a corresponding call to `Cassette.overdub`.
+
+    # TODO: This `iskwfunc` is a hack in order to implement a fix for jrevels/Cassette.jl#48.
+    # It assumes that 1) `Core.kwfunc(f)` is going to return a function whose type name
+    # is prefixed by `#kw##` and 2) that the second to last statement in the lowered IR
+    # for `Core.kwfunc(f)` is the call to the "underlying" non-kwargs form of `f`. These
+    # assumptions are obviously quite fragile, so we should eventually get Base to expose
+    # a standard/documented API for this.
+    iskwfunc = startswith(String(signature.parameters[1].name.name), "#kw##")
     for i in 1:length(code_info.code)
         stmnt = code_info.code[i]
         replaceable = Base.Meta.isexpr(stmnt, :foreigncall) ? view(stmnt.args, 2:length(stmnt.args)) : stmnt
+        replacement = iskwfunc && i !== (length(code_info.code)-1) ? :call : :overdub
         replace_match!(is_call, replaceable) do call
-            call.args = Any[GlobalRef(Cassette, :overdub), overdub_ctx_slot, call.args...]
+            call.args = Any[GlobalRef(Cassette, replacement), overdub_ctx_slot, call.args...]
             return call
         end
         push!(overdubbed_code, stmnt)
@@ -156,7 +165,7 @@ function recurse_pass!(reflection::Reflection,
 
     #=== 4. IR transforms for the metadata tagging system ===#
 
-    if has_tagging_enabled(context_type)
+    if has_tagging_enabled(context_type) && !iskwfunc
         # changemap = fill(0, length(code_info.code))
 
         # TODO: Scan the IR for `Module`s in the first argument position for `GlobalRef`s.

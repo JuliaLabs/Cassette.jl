@@ -156,6 +156,13 @@ trtest(x, y, z) = x*y + y*z
     ]
 ]
 
+# jrevels/Cassette.jl#48
+tracekw = Any[]
+trkwtest(x; _y = 1.0, _z = 2.0) = trtest(x, _y, _z)
+@overdub(TraceCtx(metadata = tracekw), trkwtest(x, _y = y, _z = z)) == trtest(x, y, z)
+subtracekw = first(Iterators.filter(t -> t[1] === (Core.kwfunc(trkwtest), (_y = y, _z = z), trkwtest, x), tracekw))[2]
+@test subtracekw[1][2] == trace
+
 ############################################################################################
 
 @context NestedReflectCtx
@@ -461,6 +468,7 @@ dispatchtupletest(::Type{T}) where {T} = Base.isdispatchtuple(Tuple{T}) ? T : An
 @inferred(overdub(InferCtx(), broadcast, +, rand(1), rand(1)))
 
 ############################################################################################
+
 #= TODO: The rest of the tests below should be restored for the metadata tagging system
 
 @context NestedCtx
