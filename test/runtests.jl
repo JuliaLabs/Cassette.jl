@@ -469,6 +469,12 @@ dispatchtupletest(::Type{T}) where {T} = Base.isdispatchtuple(Tuple{T}) ? T : An
 
 ############################################################################################
 
+@context TagConditionalCtx
+ctx = withtagfor(TagConditionalCtx(), 1)
+@test overdub(ctx, x -> x ? 1 : 2, tag(true, ctx)) === 1
+
+############################################################################################
+
 #= TODO: The rest of the tests below should be restored for the metadata tagging system
 
 @context NestedCtx

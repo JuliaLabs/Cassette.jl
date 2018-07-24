@@ -152,22 +152,20 @@ function recurse_pass!(reflection::Reflection,
     # a standard/documented API for this.
     iskwfunc = startswith(String(signature.parameters[1].name.name), "#kw##")
     for i in 1:length(code_info.code)
-        stmnt = code_info.code[i]
-        replaceable = Base.Meta.isexpr(stmnt, :foreigncall) ? view(stmnt.args, 2:length(stmnt.args)) : stmnt
+        stmt = code_info.code[i]
+        replaceable = Base.Meta.isexpr(stmt, :foreigncall) ? view(stmt.args, 2:length(stmt.args)) : stmt
         replacement = iskwfunc && i !== (length(code_info.code)-1) ? :call : :overdub
         replace_match!(is_call, replaceable) do call
             call.args = Any[GlobalRef(Cassette, replacement), overdub_ctx_slot, call.args...]
             return call
         end
-        push!(overdubbed_code, stmnt)
+        push!(overdubbed_code, stmt)
         push!(overdubbed_codelocs, code_info.codelocs[i])
     end
 
     #=== 4. IR transforms for the metadata tagging system ===#
 
     if has_tagging_enabled(context_type) && !iskwfunc
-        # changemap = fill(0, length(code_info.code))
-
         # TODO: Scan the IR for `Module`s in the first argument position for `GlobalRef`s.
         # For every unique such `Module`, make a new `SSAValue` at the top of the method body
         # corresponding to `Cassette.fetch_tagged_module` called with the given context and
@@ -180,11 +178,31 @@ function recurse_pass!(reflection::Reflection,
             return Expr(:call, GlobalRef(Cassette, :tagged_new), overdub_ctx_slot, x.args...)
         end
 
-        # TODO: appropriately untag all `gotoifnot` conditionals
+        # untag all `gotoifnot` conditionals
+        ssachangemap = fill(0, length(overdubbed_code))
+        labelchangemap = fill(0, length(overdubbed_code))
+        worklist = Int[]
+        for i in 1:length(overdubbed_code)
+            stmt = overdubbed_code[i]
+            if Base.Meta.isexpr(stmt, :gotoifnot)
+                push!(worklist, i)
+                ssachangemap[i] = 1
+                if i < length(overdubbed_code)
+                    labelchangemap[i + 1] = 1
+                end
+            end
+        end
+        Core.Compiler.renumber_ir_elements!(overdubbed_code, ssachangemap, labelchangemap)
+        for i in worklist
+            i += ssachangemap[i] - 1
+            stmt = overdubbed_code[i]
+            workstmt = Expr(:call, GlobalRef(Cassette, :untag), stmt.args[1], overdub_ctx_slot)
+            stmt.args[1] = Core.Compiler.SSAValue(i)
+            insert!(overdubbed_code, i, workstmt)
+            insert!(overdubbed_codelocs, i, overdubbed_codelocs[i])
+        end
 
         # TODO: appropriately untag all `ccall` arguments
-
-        # Core.Compiler.renumber_ir_elements!(overdubbed_code, changemap)
     end
 
     #=== 5. Set `code_info`/`reflection` fields accordingly ===#

@@ -82,29 +82,6 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     return Reflection(S, method, static_params, code_info)
 end
 
-#=== IR Repair ===#
-
-# TODO: update this
-function fix_labels_and_gotos!(code::Vector)
-    changes = Dict{Int,Int}()
-    for (i, stmnt) in enumerate(code)
-        if isa(stmnt, LabelNode)
-            code[i] = LabelNode(i)
-            changes[stmnt.label] = i
-        end
-    end
-    for (i, stmnt) in enumerate(code)
-        if isa(stmnt, GotoNode)
-            code[i] = GotoNode(get(changes, stmnt.label, stmnt.label))
-        elseif Base.Meta.isexpr(stmnt, :enter)
-            stmnt.args[1] = get(changes, stmnt.args[1], stmnt.args[1])
-        elseif Base.Meta.isexpr(stmnt, :gotoifnot)
-            stmnt.args[2] = get(changes, stmnt.args[2], stmnt.args[2])
-        end
-    end
-    return code
-end
-
 #################
 # Miscellaneous #
 #################
