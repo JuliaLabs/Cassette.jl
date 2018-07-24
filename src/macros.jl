@@ -23,16 +23,16 @@ macro context(Ctx)
         $Ctx(; kwargs...) = $Cassette.Context($CtxName(); kwargs...)
 
         @inline $Cassette.execute(::C, ::$Typ($Cassette.Tag), ::Type{N}, ::Type{X}) where {C<:$Ctx,N,X} = $Cassette.Tag(N, X, $Cassette.tagtype(C))
-        @inline $Cassette.execute(ctx::C, f::$Cassette.Fallback{F,C}, args...) where {F,C<:$Ctx} = Cassette.fallback(ctx, f.func, args...)
+        @inline $Cassette.execute(ctx::C, f::$Cassette.Fallback{F,C}, args...) where {F,C<:$Ctx} = $Cassette.fallback(ctx, f.func, args...)
 
         # TODO: There are certain non-`Core.Builtin` functions which the compiler often
         # relies upon constant propagation to infer, such as `isdispatchtuple`. Such
         # functions should generally be contextual primitives by default for the sake of
         # performance, and we should add more of them here as we encounter them.
-        @inline $Cassette.execute(ctx::$Ctx, f::$Typ(Base.isdispatchtuple), T::Type) = Cassette.fallback(ctx, f, T)
-        @inline $Cassette.execute(ctx::$Ctx, f::$Typ(Base.eltype), T::Type) = Cassette.fallback(ctx, f, T)
-        @inline $Cassette.execute(ctx::$Ctx, f::$Typ(Base.convert), T::Type, t::Tuple) = Cassette.fallback(ctx, f, T, t)
-        @inline $Cassette.execute(ctx::$Ctx{<:Any,Nothing}, f::$Typ(Base.getproperty), x::Any, s::Symbol) = Cassette.fallback(ctx, f, x, s)
+        @inline $Cassette.execute(ctx::$Ctx, f::$Typ(Base.isdispatchtuple), T::Type) = $Cassette.fallback(ctx, f, T)
+        @inline $Cassette.execute(ctx::$Ctx, f::$Typ(Base.eltype), T::Type) = $Cassette.fallback(ctx, f, T)
+        @inline $Cassette.execute(ctx::$Ctx, f::$Typ(Base.convert), T::Type, t::Tuple) = $Cassette.fallback(ctx, f, T, t)
+        @inline $Cassette.execute(ctx::$Ctx{<:Any,Nothing}, f::$Typ(Base.getproperty), x::Any, s::Symbol) = $Cassette.fallback(ctx, f, x, s)
 
         # the below primitives are only active when the tagging system is enabled (`typeof(ctx) <: TaggedCtx`)
 
