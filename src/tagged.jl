@@ -69,8 +69,9 @@ end
 
 # TODO: For fast methods (~ns), this fetch can cost drastically more than the primal method
 # invocation. We easily have the module at compile time, but we don't have access to the
-# actual context object. This `@pure` is vtjnash-approved. It should allow the compiler to
-# optimize away the fetch once we have support for it, e.g. loop invariant code motion.
+# actual context object (just the type). This `@pure` is vtjnash-approved. It should allow
+# the compiler to optimize away the fetch once we have support for it, e.g. loop invariant
+# code motion.
 Base.@pure @noinline function fetch_tagged_module(context::Context, m::Module)
     bindings = get!(() -> BindingMetaDict(), context.bindings, m)
     return Tagged(context, m, Meta(NoMetaData(), ModuleMeta(NOMETA, bindings)))
