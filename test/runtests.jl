@@ -1,7 +1,7 @@
 using Test, Cassette
 using Cassette: @context, @pass, @overdub, overdub, hasmetadata, metadata, hasmetameta,
                 metameta, untag, tag, withtagfor, untagtype, istagged, istaggedtype,
-                Tagged, recurse, fallback, canrecurse, similarcontext
+                Tagged, fallback, canoverdub, similarcontext
 
 const Typ = Core.Typeof
 
@@ -23,12 +23,12 @@ x = rand(2)
 
 messages = String[]
 Cassette.prehook(::RosCtx, f, args...) = push!(messages, string("calling ", f, args))
-@test @overdub(RosCtx(), rosenbrock(x)) == rosenbrock(x)
+@test overdub(RosCtx(), rosenbrock, x) == rosenbrock(x)
 @test length(messages) > 90
 
 Cassette.prehook(ctx::RosCtx, f, args...) = push!(ctx.metadata, string("calling ", f, args))
 messages2 = String[]
-@test @overdub(RosCtx(metadata=messages2), rosenbrock(x)) == rosenbrock(x)
+@test overdub(RosCtx(metadata=messages2), rosenbrock, x) == rosenbrock(x)
 @test messages == messages2
 
 Cassette.prehook(::RosCtx, f, args...) = nothing
@@ -114,19 +114,19 @@ c = Count{Union{String,Int}}(0)
 
 worldtest = 0
 oldctx = WorldCtx()
-recurse(oldctx, sin, 1)
+overdub(oldctx, sin, 1)
 
 Cassette.prehook(::WorldCtx, args...) = (global worldtest += 1)
-recurse(WorldCtx(), sin, 1)
+overdub(WorldCtx(), sin, 1)
 @test worldtest > 100
 
 tmp = worldtest
-recurse(oldctx, sin, 1)
+overdub(oldctx, sin, 1)
 @test tmp < worldtest
 
 tmp = worldtest
 Cassette.prehook(::WorldCtx, args...) = nothing
-recurse(WorldCtx(), sin, 1)
+overdub(WorldCtx(), sin, 1)
 @test tmp === worldtest
 
 ############################################################################################
@@ -136,9 +136,9 @@ recurse(WorldCtx(), sin, 1)
 function Cassette.execute(ctx::TraceCtx, args...)
     subtrace = Any[]
     push!(ctx.metadata, args => subtrace)
-    if canrecurse(ctx, args...)
+    if canoverdub(ctx, args...)
         newctx = similarcontext(ctx, metadata = subtrace)
-        return recurse(newctx, args...)
+        return overdub(newctx, args...)
     else
         return fallback(ctx, args...)
     end
@@ -161,15 +161,15 @@ tracekw = Any[]
 trkwtest(x; _y = 1.0, _z = 2.0) = trtest(x, _y, _z)
 @overdub(TraceCtx(metadata = tracekw), trkwtest(x, _y = y, _z = z)) == trtest(x, y, z)
 subtracekw = first(Iterators.filter(t -> t[1] === (Core.kwfunc(trkwtest), (_y = y, _z = z), trkwtest, x), tracekw))[2]
-@test subtracekw[1][2] == trace
+@test subtracekw == trace
 
 ############################################################################################
 
 @context NestedReflectCtx
 r_pre = Cassette.reflect((typeof(sin), Int))
-r_post = Cassette.reflect((typeof(recurse), typeof(NestedReflectCtx()), typeof(sin), Int))
+r_post = Cassette.reflect((typeof(overdub), typeof(NestedReflectCtx()), typeof(sin), Int))
 @test isa(r_pre, Cassette.Reflection) && isa(r_post, Cassette.Reflection)
-Cassette.recurse_pass!(r_pre, typeof(NestedReflectCtx()))
+Cassette.overdub_pass!(r_pre, typeof(NestedReflectCtx()))
 @test r_pre.code_info.code == r_post.code_info.code
 
 ############################################################################################
@@ -358,27 +358,6 @@ end
 
 ############################################################################################
 
-@context FallbackCtx
-
-data = Any[]
-
-Cassette.prehook(::FallbackCtx, f, input...) = push!(data, (f, input...))
-
-ctx = FallbackCtx()
-p = Cassette.Fallback(sin, ctx)
-x = rand()
-@test sin(x) === overdub(ctx, p, x)
-@test length(data) == 1 && data[1] === (p, x)
-empty!(data)
-
-ctx = FallbackCtx()
-p = Cassette.Fallback(sin, ctx)
-x = rand()
-@test x + sin(x) === overdub(ctx, x -> x + p(x), x)
-@test length(data) < 10 && in((+, x, sin(x)), data) && in((p, x), data)
-
-############################################################################################
-
 @context MetaTypeCtx
 
 @test Cassette.metatype(typeof(MetaTypeCtx()), DataType) === Cassette.Meta{Cassette.NoMetaData,Cassette.NoMetaMeta}
@@ -430,6 +409,7 @@ function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(*), x::Real, y::Tagged{T
 end
 
 @test D(sin, 1) === cos(1)
+@test D(x -> D(sin, x), 1) === -sin(1)
 @test D(x -> sin(x) * cos(x), 1) === cos(1)^2 - sin(1)^2
 @test D(x -> x * D(y -> x * y, 1), 2) === 4
 @test D(x -> x * D(y -> x * y, 2), 1) === 2
@@ -455,6 +435,8 @@ Y_copy_out = LinearAlgebra.BLAS.gemv!('T', α, A, X, β, Y_copy)
 @context InferCtx
 
 dispatchtupletest(::Type{T}) where {T} = Base.isdispatchtuple(Tuple{T}) ? T : Any
+relu(x) = max(zero(x), x)
+relulayer(W, x, b) = relu.(W*x .+ b)
 
 @inferred(overdub(InferCtx(), typejoin, Float32, Float32, Float32))
 @inferred(overdub(InferCtx(), dispatchtupletest, Float32))
@@ -466,6 +448,31 @@ dispatchtupletest(::Type{T}) where {T} = Base.isdispatchtuple(Tuple{T}) ? T : An
 @inferred(overdub(InferCtx(), rosenbrock, rand(1)))
 @inferred(overdub(InferCtx(), rand, Float32, 1))
 @inferred(overdub(InferCtx(), broadcast, +, rand(1), rand(1)))
+@inferred(overdub(InferCtx(), relulayer, rand(Float64, 1, 1), rand(Float32, 1), rand(Float32, 1)))
+
+############################################################################################
+
+@context TagConditionalCtx
+ctx = withtagfor(TagConditionalCtx(), 1)
+@test overdub(ctx, x -> x ? 1 : 2, tag(true, ctx)) === 1
+
+function condtest(b)
+    i = 1
+    while i > b
+        i -= 1
+    end
+    if b end
+    return i
+end
+
+@test overdub(ctx, condtest, tag(false, ctx)) === 0
+
+############################################################################################
+
+@context KwargCtx
+ctx = withtagfor(KwargCtx(), 1)
+kwargtest(x; y = 1) = x + y
+@test overdub(ctx, _y -> kwargtest(3; y = _y), tag(2, ctx)) === 5
 
 ############################################################################################
 

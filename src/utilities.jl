@@ -1,28 +1,3 @@
-#########################
-# Expression Predicates #
-#########################
-
-is_call(x) = Base.Meta.isexpr(x, :call)
-
-is_new(x) = Base.Meta.isexpr(x, :new)
-
-is_macro(x, name) = Base.Meta.isexpr(x, :macrocall) && x.args[1] == name
-
-function is_method_definition(x)
-    if isa(x, Expr)
-        if x.head == :function
-            return true
-        elseif x.head == :(=) && isa(x.args[1], Expr)
-            lhs = x.args[1]
-            if lhs.head == :where
-                lhs = lhs.args[1]
-            end
-            return lhs.head == :call
-        end
-    end
-    return false
-end
-
 ############################
 # Expression Match/Replace #
 ############################
@@ -82,43 +57,33 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     return Reflection(S, method, static_params, code_info)
 end
 
-#=== IR Repair ===#
-
-# TODO: update this
-function fix_labels_and_gotos!(code::Vector)
-    changes = Dict{Int,Int}()
-    for (i, stmnt) in enumerate(code)
-        if isa(stmnt, LabelNode)
-            code[i] = LabelNode(i)
-            changes[stmnt.label] = i
+function insert_ir_elements!(code, codelocs, addeditems, predicate, itemfunc)
+    ssachangemap = fill(0, length(code))
+    labelchangemap = fill(0, length(code))
+    worklist = Int[]
+    for i in 1:length(code)
+        stmt = code[i]
+        if predicate(stmt, i)
+            push!(worklist, i)
+            ssachangemap[i] = addeditems
+            if i < length(code)
+                labelchangemap[i + 1] = addeditems
+            end
         end
     end
-    for (i, stmnt) in enumerate(code)
-        if isa(stmnt, GotoNode)
-            code[i] = GotoNode(get(changes, stmnt.label, stmnt.label))
-        elseif Base.Meta.isexpr(stmnt, :enter)
-            stmnt.args[1] = get(changes, stmnt.args[1], stmnt.args[1])
-        elseif Base.Meta.isexpr(stmnt, :gotoifnot)
-            stmnt.args[2] = get(changes, stmnt.args[2], stmnt.args[2])
+    Core.Compiler.renumber_ir_elements!(code, ssachangemap, labelchangemap)
+    for i in worklist
+        i += ssachangemap[i] - addeditems # correct the index for accumulated offsets
+        stmt = code[i]
+        items = itemfunc(stmt, i)
+        @assert length(items) == (addeditems + 1)
+        code[i] = items[end]
+        for j in 1:(length(items) - 1) # insert in reverse to maintain the provided ordering
+            insert!(code, i, items[end - j])
+            insert!(codelocs, i, codelocs[i])
         end
     end
-    return code
 end
-
-#################
-# Miscellaneous #
-#################
-
-unquote(x) = x
-unquote(x::QuoteNode) = x.value
-unquote(x::Expr) = x.head == :quote ? first(x.args) : x
-
-function unqualify_name(e::Expr)
-    @assert e.head == :(.)
-    return unqualify_name(last(e.args))
-end
-
-unqualify_name(name::Symbol) = name
 
 #############
 # Debugging #
@@ -142,6 +107,4 @@ for level in [:debug, :info, :warn, :error]
     end
 end
 
-_typed(f, args...; optimize=false) = code_typed(f, map(Core.Typeof, args); optimize=optimize)
-recurse_typed(args...; optimize=false) = _typed(recurse, args...; optimize=optimize)
-overdub_typed(args...; optimize=false) = _typed(overdub, args...; optimize=optimize)
+overdub_typed(args...; optimize=false) = code_typed(overdub, map(Core.Typeof, args); optimize=optimize)

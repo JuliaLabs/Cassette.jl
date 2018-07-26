@@ -23,7 +23,6 @@ macro context(Ctx)
         $Ctx(; kwargs...) = $Cassette.Context($CtxName(); kwargs...)
 
         @inline $Cassette.execute(::C, ::$Typ($Cassette.Tag), ::Type{N}, ::Type{X}) where {C<:$Ctx,N,X} = $Cassette.Tag(N, X, $Cassette.tagtype(C))
-        @inline $Cassette.execute(ctx::C, f::$Cassette.Fallback{F,C}, args...) where {F,C<:$Ctx} = $Cassette.fallback(ctx, f.func, args...)
 
         # TODO: There are certain non-`Core.Builtin` functions which the compiler often
         # relies upon constant propagation to infer, such as `isdispatchtuple`. Such
@@ -73,10 +72,10 @@ end
     Cassette.@overdub(ctx, expression)
 
 A convenience macro for executing `expression` within the context `ctx`. This macro roughly
-expands to `Cassette.recurse(ctx, () -> expression)`.
+expands to `Cassette.overdub(ctx, () -> expression)`.
 """
 macro overdub(ctx, expr)
-    return :($Cassette.recurse($(esc(ctx)), () -> $(esc(expr))))
+    return :($Cassette.overdub($(esc(ctx)), () -> $(esc(expr))))
 end
 
 #########
@@ -109,7 +108,7 @@ macro pass(transform)
     return esc(quote
         struct $Pass <: $Cassette.AbstractPass end
         (::Type{$Pass})(ctxtype, signature, codeinfo) = $transform(ctxtype, signature, codeinfo)
-        Core.eval($Cassette, $Cassette.recurse_definition($name, $line, $file))
+        Core.eval($Cassette, $Cassette.overdub_definition($name, $line, $file))
         $Pass()
     end)
 end
