@@ -6,8 +6,8 @@
 
 @inline posthook(::Context, ::Vararg{Any}) = nothing
 
-struct RecurseInstead end
-@inline execute(ctx::Context, args...) = RecurseInstead()
+struct OverdubInstead end
+@inline execute(ctx::Context, args...) = OverdubInstead()
 
 @inline fallback(ctx::Context, args...) = call(ctx, args...)
 
@@ -21,60 +21,31 @@ struct RecurseInstead end
 @inline call(::ContextWithTag{Nothing}, f::typeof(Core.apply_type), ::Type{A}, ::Type{B}) where {A,B} = f(A, B)
 @inline call(::Context, f::typeof(Core.apply_type), ::Type{A}, ::Type{B}) where {A,B} = f(A, B)
 
-@inline canrecurse(ctx::Context, f, args...) = !isa(untag(f, ctx), Core.Builtin)
+@inline canoverdub(ctx::Context, f, args...) = !isa(untag(f, ctx), Core.Builtin)
 
 ###########
 # overdub #
 ###########
 
-# An alternative approach is to define `execute(args...) = recurse(args...)` by default,
-# instead of using the `RecurseInstead` sentinel type. While cleaner, that approach triggers
-# the compiler's recursion limiting heuristic. This sentinel type + control flow approach
-# avoids that recursion, and thus avoids related inference problems.
-@inline function overdub(ctx::Context, args...)
-    prehook(ctx, args...)
-    output = execute(ctx, args...)
-    output = isa(output, RecurseInstead) ? recurse(ctx, args...) : output
-    posthook(ctx, output, args...)
-    return output
-end
+const OVERDUB_CTX_SYMBOL = gensym("overdub_context")
+const OVERDUB_ARGS_SYMBOL = gensym("overdub_arguments")
+const OVERDUB_TMP_SYMBOL = gensym("overdub_tmp")
 
-# This is essentially implementing:
-#
-# function overdub(ctx::Context, ::typeof(Core._apply), f, args...)
-#     return overdub(ctx, f, apply_args(ctx, args...)...)
-# end
-#
-# but the extra indirection of calling `overdub` there triggers the compiler's recursion
-# limiting heuristic. This implementation avoids that problem by manually inlining the
-# above expression by a single call level.
-@inline function overdub(ctx::Context, ::typeof(Core._apply), f, _args...)
-    args = apply_args(ctx, _args...)
-    prehook(ctx, f, args...)
-    output = execute(ctx, f, args...)
-    output = isa(output, RecurseInstead) ? recurse(ctx, f, args...) : output
-    posthook(ctx, output, f, args...)
-    return output
-end
-
-@inline apply_args(::ContextWithTag{Nothing}, args...) = Core._apply(Core.tuple, args...)
-@inline apply_args(ctx::Context, args...) = tagged_apply_args(ctx, args...)
-
-###########
-# recurse #
-###########
-
-const RECURSE_CTX_SYMBOL = gensym("recurse_context")
-const RECURSE_ARGS_SYMBOL = gensym("recurse_arguments")
-
-# The `recurse` pass has four intertwined tasks:
+# The `overdub` pass has four intertwined tasks:
 #   1. Apply the user-provided pass, if one is given
 #   2. Munge the reflection-generated IR into a valid form for returning from
 #      `recurse_generator` (i.e. add new argument slots, substitute static
 #      parameters, destructure overdub arguments into underlying method slots, etc.)
-#   3. Translate all function calls to `overdub` calls
+#   3. Replace all calls of the form `output = f(args...)` with:
+#      ```
+#      prehook(ctx, f, args...)
+#      tmp = execute(ctx, f, args...)
+#      isa(tmp, OverdubInstead) ? overdub(ctx, f, args...) : tmp
+#      posthook(ctx, f, args...)
+#      output = tmp
+#      ```
 #   4. If tagging is enabled, do the necessary IR transforms for the metadata tagging system
-function recurse_pass!(reflection::Reflection,
+function overdub_pass!(reflection::Reflection,
                        context_type::DataType,
                        pass_type::DataType = NoPass)
     signature = reflection.signature
@@ -82,18 +53,30 @@ function recurse_pass!(reflection::Reflection,
     static_params = reflection.static_params
     code_info = reflection.code_info
 
-    #=== 1. Execute user-provided pass (is a no-op by default) ===#
+    # TODO: This `iskwfunc` is part of a hack that `overdub_pass!` implements in order to fix
+    # jrevels/Cassette.jl#48. These assumptions made by this hack are quite fragile, so we
+    # should eventually get Base to expose a standard/documented API for this. Here, we see
+    # this hack's first assumption: that `Core.kwfunc(f)` is going to return a function whose
+    # type name is prefixed by `#kw##`. More assumptions for this hack will be commented on
+    # as we go.
+    iskwfunc = startswith(String(signature.parameters[1].name.name), "#kw##")
+    istaggingenabled = has_tagging_enabled(context_type)
 
-    code_info = pass_type(context_type, signature, code_info)
+    #=== execute user-provided pass (is a no-op by default) ===#
 
-    #=== 2. Munge the code into a valid form for `recurse_generator` ===#
+    if !iskwfunc
+        code_info = pass_type(context_type, signature, code_info)
+    end
+
+    #=== munge the code into a valid form for `overdub_generator` ===#
 
     # construct new slotnames/slotflags for added slots
-    code_info.slotnames = Any[:recurse, RECURSE_CTX_SYMBOL, RECURSE_ARGS_SYMBOL, code_info.slotnames...]
-    code_info.slotflags = UInt8[0x00, 0x00, 0x00, code_info.slotflags...]
-    n_overdub_slots = 3
+    code_info.slotnames = Any[:overdub, OVERDUB_CTX_SYMBOL, OVERDUB_ARGS_SYMBOL, code_info.slotnames..., OVERDUB_TMP_SYMBOL]
+    code_info.slotflags = UInt8[0x00, 0x00, 0x00, code_info.slotflags..., 0x00]
+    n_prepended_slots = 3
     overdub_ctx_slot = SlotNumber(2)
     overdub_args_slot = SlotNumber(3)
+    overdub_tmp_slot = SlotNumber(length(code_info.slotnames))
 
     # For the sake of convenience, the rest of this pass will translate `code_info`'s fields
     # into these overdubbed equivalents instead of updating `code_info` in-place. Then, at
@@ -105,7 +88,7 @@ function recurse_pass!(reflection::Reflection,
     n_actual_args = fieldcount(signature)
     n_method_args = Int(method.nargs)
     for i in 1:n_method_args
-        slot = i + n_overdub_slots
+        slot = i + n_prepended_slots
         actual_argument = Expr(:call, GlobalRef(Core, :getfield), overdub_args_slot, i)
         push!(overdubbed_code, :($(SlotNumber(slot)) = $actual_argument))
         push!(overdubbed_codelocs, code_info.codelocs[1])
@@ -130,64 +113,111 @@ function recurse_pass!(reflection::Reflection,
             push!(overdubbed_codelocs, code_info.codelocs[1])
             push!(trailing_arguments.args, SSAValue(length(overdubbed_code)))
         end
-        push!(overdubbed_code, Expr(:(=), SlotNumber(n_method_args + n_overdub_slots), trailing_arguments))
+        push!(overdubbed_code, Expr(:(=), SlotNumber(n_method_args + n_prepended_slots), trailing_arguments))
         push!(overdubbed_codelocs, code_info.codelocs[1])
     end
 
-    #=== 3. Translate function calls to `overdub` calls ===#
+    original_arg_slots = [SlotNumber(i + n_prepended_slots) for i in 1:n_method_args]
+
+    #=== finish initialization of `overdubbed_code`/`overdubbed_codelocs` ===#
 
     # substitute static parameters, offset slot numbers by number of added slots, and
     # offset statement indices by the number of additional statements
     Base.Meta.partially_inline!(code_info.code, Any[], method.sig, static_params,
-                                n_overdub_slots, length(overdubbed_code), :propagate)
+                                n_prepended_slots, length(overdubbed_code), :propagate)
 
-    # For the rest of the statements in `code_info.code`, intercept every applicable call
-    # expression and replace it with a corresponding call to `Cassette.overdub`.
+    old_code_start_index = length(overdubbed_code) + 1
 
-    # TODO: This `iskwfunc` is a hack in order to implement a fix for jrevels/Cassette.jl#48.
-    # It assumes that 1) `Core.kwfunc(f)` is going to return a function whose type name
-    # is prefixed by `#kw##` and 2) that the second to last statement in the lowered IR
-    # for `Core.kwfunc(f)` is the call to the "underlying" non-kwargs form of `f`. These
-    # assumptions are obviously quite fragile, so we should eventually get Base to expose
-    # a standard/documented API for this.
-    iskwfunc = startswith(String(signature.parameters[1].name.name), "#kw##")
-    for i in 1:length(code_info.code)
-        stmnt = code_info.code[i]
-        replaceable = Base.Meta.isexpr(stmnt, :foreigncall) ? view(stmnt.args, 2:length(stmnt.args)) : stmnt
-        replacement = iskwfunc && i !== (length(code_info.code)-1) ? :call : :overdub
-        replace_match!(is_call, replaceable) do call
-            call.args = Any[GlobalRef(Cassette, replacement), overdub_ctx_slot, call.args...]
-            return call
-        end
-        push!(overdubbed_code, stmnt)
-        push!(overdubbed_codelocs, code_info.codelocs[i])
+    append!(overdubbed_code, code_info.code)
+    append!(overdubbed_codelocs, code_info.codelocs)
+
+    #=== TODO: perform tagged module transformation if tagging is enabled ===#
+
+    # Scan the IR for `Module`s in the first argument position for `GlobalRef`s.
+    # For every unique such `Module`, make a new `SSAValue` at the top of the method body
+    # corresponding to `Cassette.fetch_tagged_module` called with the given context and
+    # module. Then, replace all `GlobalRef`-loads with the corresponding
+    # `Cassette._tagged_global_ref` invocation. All `GlobalRef`-stores must be preserved
+    # as-is, but need a follow-up statement calling `Cassette._tagged_global_ref_set_meta!`
+    # on the relevant arguments.
+
+    #=== TODO: untag all `ccall` SSAValue arguments if tagging is enabled ===#
+
+    #=== untag `gotoifnot` conditionals if tagging is enabled ===#
+
+    # this sentinel is consumed by in a call-replacement pass below; we use
+    # it so that we don't accidentally overdub the calls we've inserted
+    untag_call_sentinel = :REPLACE_ME_WITH_CASSETTE_UNTAG
+    if istaggingenabled && !iskwfunc
+        insert_ir_elements!(overdubbed_code, overdubbed_codelocs, 1,
+                            (x, i) -> Base.Meta.isexpr(x, :gotoifnot),
+                            (x, i) -> [
+                                Expr(:call, untag_call_sentinel, x.args[1], overdub_ctx_slot),
+                                Expr(:gotoifnot, SSAValue(i), x.args[2])
+                            ])
     end
 
-    #=== 4. IR transforms for the metadata tagging system ===#
+    #=== replace `Expr(:call, ...)` with `Expr(:call, :overdub, ...)` calls ===#
 
-    if has_tagging_enabled(context_type) && !iskwfunc
-        # changemap = fill(0, length(code_info.code))
+    if iskwfunc
+        # Another assumption of this `iskwfunc` hack is that the second to last statement in
+        # the lowered IR for `Core.kwfunc(f)` is the call to the "underlying" non-kwargs form
+        # of `f`. Thus, we `overdub` that call instead of replacing it with `call`.
+        for i in 1:length(overdubbed_code)
+            stmt = overdubbed_code[i]
+            replacewith = i === (length(overdubbed_code) - 1) ? :overdub : :call
+            if Base.Meta.isexpr(stmt, :(=))
+                replacein = stmt.args
+                replaceat = 2
+            else
+                replacein = overdubbed_code
+                replaceat = i
+            end
+            stmt = replacein[replaceat]
+            if Base.Meta.isexpr(stmt, :call)
+                replacein[replaceat] = Expr(:call, GlobalRef(Cassette, replacewith), overdub_ctx_slot, stmt.args...)
+            end
+        end
+    else
+        predicate = (x, i) -> begin
+            i >= old_code_start_index || return false
+            stmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
+            return Base.Meta.isexpr(stmt, :call) && stmt.args[1] !== untag_call_sentinel
+        end
+        itemfunc = (x, i) -> begin
+            callstmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
+            execstmt = Expr(:call, GlobalRef(Cassette, :execute), overdub_ctx_slot, callstmt.args...)
+            overdubstmt = Expr(:call, GlobalRef(Cassette, :overdub), overdub_ctx_slot, callstmt.args...)
+            return [
+                Expr(:call, GlobalRef(Cassette, :prehook), overdub_ctx_slot, callstmt.args...),
+                Expr(:(=), overdub_tmp_slot, execstmt),
+                Expr(:call, GlobalRef(Core, :isa), overdub_tmp_slot, GlobalRef(Cassette, :OverdubInstead)),
+                Expr(:gotoifnot, SSAValue(i + 2), i + 6),
+                Expr(:(=), overdub_tmp_slot, overdubstmt),
+                Expr(:call, GlobalRef(Cassette, :posthook), overdub_ctx_slot, overdub_tmp_slot, callstmt.args...),
+                Base.Meta.isexpr(x, :(=)) ? Expr(:(=), x.args[1], overdub_tmp_slot) : overdub_tmp_slot
+            ]
+        end
+        insert_ir_elements!(overdubbed_code, overdubbed_codelocs, 6, predicate, itemfunc)
+    end
 
-        # TODO: Scan the IR for `Module`s in the first argument position for `GlobalRef`s.
-        # For every unique such `Module`, make a new `SSAValue` at the top of the method body
-        # corresponding to `Cassette.fetch_tagged_module` called with the given context and
-        # module. Then, replace all `GlobalRef`-loads with the corresponding
-        # `Cassette._tagged_global_ref` invocation. All `GlobalRef`-stores must be preserved
-        # as-is, but need a follow-up statement calling
-        # `Cassette._tagged_global_ref_set_meta!` on the relevant arguments.
+    #=== replace `untag_call_sentinel` with `GlobalRef(Cassette, :untag)` ===#
 
-        replace_match!(is_new, overdubbed_code) do x
+    if istaggingenabled && !iskwfunc
+        replace_match!(x ->  Base.Meta.isexpr(x, :call) && x.args[1] == untag_call_sentinel, overdubbed_code) do x
+            return Expr(:call, GlobalRef(Cassette, :untag), x.args[2:end]...)
+        end
+    end
+
+    #=== replace `Expr(:new, ...)` with `Expr(:call, :tagged_new)` if tagging is enabled ===#
+
+    if istaggingenabled && !iskwfunc
+        replace_match!(x -> Base.Meta.isexpr(x, :new), overdubbed_code) do x
             return Expr(:call, GlobalRef(Cassette, :tagged_new), overdub_ctx_slot, x.args...)
         end
-
-        # TODO: appropriately untag all `gotoifnot` conditionals
-
-        # TODO: appropriately untag all `ccall` arguments
-
-        # Core.Compiler.renumber_ir_elements!(overdubbed_code, changemap)
     end
 
-    #=== 5. Set `code_info`/`reflection` fields accordingly ===#
+    #=== set `code_info`/`reflection` fields accordingly ===#
 
     code_info.code = overdubbed_code
     code_info.codelocs = overdubbed_codelocs
@@ -199,13 +229,13 @@ function recurse_pass!(reflection::Reflection,
 end
 
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
-function recurse_generator(pass_type, self, context_type, args::Tuple)
-    if !(nfields(args) > 1 && args[1] <: Core.Builtin)
+function overdub_generator(pass_type, self, context_type, args::Tuple)
+    if !(nfields(args) > 0 && args[1] <: Core.Builtin)
         try
             untagged_args = ((untagtype(args[i], context_type) for i in 1:nfields(args))...,)
             reflection = reflect(untagged_args)
             if isa(reflection, Reflection)
-                recurse_pass!(reflection, context_type, pass_type)
+                overdub_pass!(reflection, context_type, pass_type)
                 body = reflection.code_info
                 @safe_debug "returning overdubbed CodeInfo" args body
                 return body
@@ -220,25 +250,36 @@ function recurse_generator(pass_type, self, context_type, args::Tuple)
     @safe_debug "no CodeInfo found; executing via fallback" args
     return quote
         $(Expr(:meta, :inline))
-        $Cassette.fallback($RECURSE_CTX_SYMBOL, $RECURSE_ARGS_SYMBOL...)
+        $Cassette.fallback($OVERDUB_CTX_SYMBOL, $OVERDUB_ARGS_SYMBOL...)
     end
 end
 
-function recurse_definition(pass, line, file)
+@inline apply_args(::ContextWithTag{Nothing}, args...) = Core._apply(Core.tuple, args...)
+@inline apply_args(ctx::Context, args...) = tagged_apply_args(ctx, args...)
+
+function overdub_definition(pass, line, file)
     return quote
-        function recurse($RECURSE_CTX_SYMBOL::ContextWithPass{pass}, $RECURSE_ARGS_SYMBOL...) where {pass<:$pass}
+        function overdub($OVERDUB_CTX_SYMBOL::ContextWithPass{pass}, $OVERDUB_ARGS_SYMBOL...) where {pass<:$pass}
             $(Expr(:meta,
                    :generated,
                    Expr(:new,
                         Core.GeneratedFunctionStub,
-                        :recurse_generator,
-                        Any[:recurse, RECURSE_CTX_SYMBOL, RECURSE_ARGS_SYMBOL],
+                        :overdub_generator,
+                        Any[:overdub, OVERDUB_CTX_SYMBOL, OVERDUB_ARGS_SYMBOL],
                         Any[:pass],
                         line,
                         QuoteNode(Symbol(file)),
                         true)))
         end
+        @inline function overdub(ctx::ContextWithPass{pass}, ::typeof(Core._apply), f, _args...) where {pass<:$pass}
+            args = apply_args(ctx, _args...)
+            prehook(ctx, f, args...)
+            output = execute(ctx, f, args...)
+            output = isa(output, OverdubInstead) ? overdub(ctx, f, args...) : output
+            posthook(ctx, output, f, args...)
+            return output
+        end
     end
 end
 
-@eval $(recurse_definition(:NoPass, @__LINE__, @__FILE__))
+@eval $(overdub_definition(:NoPass, @__LINE__, @__FILE__))

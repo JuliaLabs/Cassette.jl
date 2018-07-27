@@ -87,14 +87,3 @@ function withtagfor(context::Context, f)
 end
 
 nametype(::Type{<:Context{N}}) where {N} = N
-
-##############
-# `Fallback` #
-##############
-
-struct Fallback{F,C<:Context}
-    func::F
-    context::C
-end
-
-(f::Fallback)(args...) = error("Cassette.Fallback($(p.func), $(p.context)) can only be executed in a context with the same type as $(p.context)")
