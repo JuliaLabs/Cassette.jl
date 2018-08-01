@@ -35,9 +35,9 @@ struct NoMetaMeta end
 struct Meta{D,M#=<:Union{Tuple,NamedTuple,Array,ModuleMeta}=#}
     data::Union{D,NoMetaData}
     meta::Union{M,NoMetaMeta}
+    Meta(data::D, meta::M) where {D,M} = Meta{D,M}(data, meta)
+    Meta{D,M}(data, meta) where {D,M} = new{D,M}(data, meta)
 end
-
-Meta(data::D, meta::M) where {D,M} = Meta{D,M}(data, meta)
 
 const NOMETA = Meta(NoMetaData(), NoMetaMeta())
 
@@ -67,41 +67,56 @@ struct ModuleMeta{D,M}
     bindings::BindingMetaDict
 end
 
+Base.convert(::Type{M}, meta::M) where {M<:ModuleMeta} = meta
+
+function Base.convert(::Type{ModuleMeta{D,M}}, meta::ModuleMeta) where {D,M}
+    return ModuleMeta(convert(Meta{D,M}, meta.name), meta.bindings)
+end
+
 # TODO: For fast methods (~ns), this fetch can cost drastically more than the primal method
 # invocation. We easily have the module at compile time, but we don't have access to the
 # actual context object (just the type). This `@pure` is vtjnash-approved. It should allow
 # the compiler to optimize away the fetch once we have support for it, e.g. loop invariant
 # code motion.
 Base.@pure @noinline function fetch_tagged_module(context::Context, m::Module)
-    bindings = get!(() -> BindingMetaDict(), context.bindings, m)
-    return Tagged(context, m, Meta(NoMetaData(), ModuleMeta(NOMETA, bindings)))
+    return Tagged(context, m, Meta(NoMetaData(), fetch_modulemeta(context, m)))
 end
 
-Base.@pure @noinline function _fetch_binding_meta!(context::Context,
-                                                   m::Module,
-                                                   bindings::BindingMetaDict,
-                                                   name::Symbol)
+Base.@pure @noinline function fetch_modulemeta(context::Context, m::Module)
+    if haskey(context.bindingscache, m)
+        bindings = context.bindingscache[m]
+    else
+        bindings = Cassette.BindingMetaDict()
+        context.bindingscache[m] = bindings
+    end
+    return ModuleMeta(NOMETA, bindings::BindingMetaDict)
+end
+
+Base.@pure @noinline function _fetch_bindingmeta!(context::Context,
+                                                  m::Module,
+                                                  bindings::BindingMetaDict,
+                                                  name::Symbol)
     return get!(bindings, name) do
+        bindingmeta = BindingMeta()
+        # If `!(isdefined(m, name))`, there must be a context-observable assigment to
+        # the primal binding before we can access it again. This is okay because a) it's
+        # obvious that the primal program can't access bindings without defining them,
+        # and b) we already don't allow non-context-observable assignments that could
+        # invalidate the context's metadata.
         if isdefined(m, name)
-            return BindingMeta(initmeta(context, getfield(m, name)))
-        else
-            # If this case occurs, it means there must be a context-observable assigment to
-            # the primal binding before we can access it again. This is okay because a) it's
-            # obvious that the primal program can't access bindings without defining them,
-            # and b) we already don't allow non-context-observable assignments that could
-            # invalidate the context's metadata.
-            return BindingMeta()
+            bindingmeta.data = initmeta(context, getfield(m, name), NoMetaData())
         end
+        return bindingmeta
     end
 end
 
-function fetch_binding_meta!(context::Context,
+function fetch_bindingmeta!(context::Context,
                              m::Module,
                              bindings::BindingMetaDict,
                              name::Symbol,
                              primal)
     M = metatype(typeof(context), typeof(primal))
-    return convert(M, _fetch_binding_meta!(context, m, bindings, name).data)::M
+    return convert(M, _fetch_bindingmeta!(context, m, bindings, name).data)::M
 end
 
 ############################
@@ -135,6 +150,25 @@ function metatype(::Type{C}, ::Type{T}) where {C<:Context,T}
     return Meta
 end
 
+function _fieldtypes_for_metatype(T::Type)
+    ftypes = Any[]
+    for i in 1:fieldcount(T)
+        # TODO improve recursion detection; this only spots 1-degree cycles right now
+        ftype = fieldtype(T, i)
+        ftype = ftype === T ? Any : ftype
+        push!(ftypes, ftype)
+    end
+    return ftypes
+end
+
+doesnotneedmetatype(::Type{T}) where {T} = isbitstype(T)
+doesnotneedmetatype(::Type{Symbol}) = true
+doesnotneedmetatype(::Type{<:Type}) = true
+
+doesnotneedmeta(x) = isbits(x)
+doesnotneedmeta(::Symbol) = true
+doesnotneedmeta(::Type) = true
+
 #=== metadatatype ===#
 
 metadatatype(::Type{<:Context}, ::DataType) = NoMetaData
@@ -148,7 +182,7 @@ metadatatype(::Type{<:Context}, ::DataType) = NoMetaData
         body = :(error("cannot call metametatype on non-concrete type ", $T))
     else
         F = T.mutable ? :Mutable : :Immutable
-        ftypes = [:($F{metatype(C, $(fieldtype(T, i)))}) for i in 1:fieldcount(T)]
+        ftypes = [:($F{metatype(C, $S)}) for S in _fieldtypes_for_metatype(T)]
         tuplemetatype = :(Tuple{$(ftypes...)})
         if T <: Tuple
             body = tuplemetatype
@@ -173,11 +207,11 @@ end
 #=== initmetameta ===#
 
 function _metametaexpr(::Type{C}, ::Type{V}, metaexprs::Vector) where {C,V}
-    if V <: Type || fieldcount(V) == 0 || (all(x == :NOMETA for x in metaexprs) && isbitstype(V))
+    if V <: Type || fieldcount(V) == 0 || (all(x == :NOMETA for x in metaexprs) && doesnotneedmetatype(V))
         return :(NoMetaMeta())
     else
         F = V.mutable ? :Mutable : :Immutable
-        metatypes = [:(metatype(C, $(fieldtype(V, i)))) for i in 1:fieldcount(V)]
+        metatypes = [:(metatype(C, $S)) for S in _fieldtypes_for_metatype(V)]
         metaconverts = [:(convert($(metatypes[i]), $(metaexprs[i]))) for i in 1:fieldcount(V)]
         metametafields = [:($F{$(metatypes[i])}($(metaconverts[i]))) for i in 1:fieldcount(V)]
         if !(V <: Tuple)
@@ -190,7 +224,7 @@ function _metametaexpr(::Type{C}, ::Type{V}, metaexprs::Vector) where {C,V}
     end
 end
 
-initmetameta(context::Context, value::Module) = fetch_tagged_module(context, value).meta
+initmetameta(context::Context, value::Module) = fetch_modulemeta(context, value)
 
 function initmetameta(context::C, value::Array{V}) where {C<:Context,V}
     M = metatype(C, V)
@@ -275,6 +309,33 @@ hasmetadata(x, tag::Union{Tag,Nothing}) = !isa(metadata(x, tag), NoMetaData)
 hasmetameta(x, context::Context) = hasmetameta(x, context.tag)
 hasmetameta(x, tag::Union{Tag,Nothing}) = !isa(metameta(x, tag), NoMetaMeta)
 
+#########################
+# Core._apply iteration #
+#########################
+
+struct TaggedApplyIterable{C<:Context,T<:Tagged}
+    context::C
+    tagged::T
+end
+
+destructstate(ctx::ContextWithTag{T}, state::Tagged{T,<:Tuple}) where {T} = (tagged_getfield(ctx, state, 1), tagged_getfield(ctx, state, 2))
+destructstate(ctx, state) = untag(state, ctx)
+
+Base.iterate(iter::TaggedApplyIterable) = destructstate(iter.context, overdub(iter.context, iterate, iter.tagged))
+Base.iterate(iter::TaggedApplyIterable, state) = destructstate(iter.context, overdub(iter.context, iterate, iter.tagged, state))
+
+@generated function tagged_apply_args(context::ContextWithTag{T}, args...) where {T}
+    newargs = Any[]
+    for i in 1:nfields(args)
+        x = args[i]
+        newarg = istaggedtype(x, context) ? :(TaggedApplyIterable(context, args[$i])) : :(args[$i])
+        push!(newargs, newarg)
+    end
+    return quote
+        Core._apply(tuple, $(newargs...))
+    end
+end
+
 ################
 # `tagged_new` #
 ################
@@ -297,7 +358,7 @@ hasmetameta(x, tag::Union{Tag,Nothing}) = !isa(metameta(x, tag), NoMetaMeta)
             break
         end
     end
-    if (all(x == :NOMETA for x in argmetaexprs) && isbitstype(T)) || onlytypeargs
+    if (all(x == :NOMETA for x in argmetaexprs) && doesnotneedmetatype(T)) || onlytypeargs
         return newexpr
     else
         metametaexpr = _metametaexpr(C, T, argmetaexprs)
@@ -339,8 +400,7 @@ end
     end
 end
 
-# has an extra optimization that can be used when you can assume that
-# you don't e.g. need to allocate meta objects for non-isbits elements
+# like `tagged_new_tuple`, but will not necessarily tag non-`doesnotneedmeta` elements of `args`
 @generated function _tagged_new_tuple_unsafe(context::C, args...) where {C<:Context}
     if all(!istaggedtype(arg, C) for arg in args)
         return quote
@@ -369,42 +429,46 @@ end
 
 #=== tagged_globalref ===#
 
-function tagged_globalref(context::ContextWithTag{T},
-                          m::Tagged{T},
-                          name,
-                          primal) where {T}
-    if hasmetameta(m, context)
+@inline function tagged_globalref(context::ContextWithTag{T},
+                                  m::Tagged{T},
+                                  name,
+                                  primal) where {T}
+    if hasmetameta(m, context) && !istagged(primal, context)
         return _tagged_globalref(context, m, name, primal)
     else
         return primal
     end
 end
 
-function _tagged_globalref(context::ContextWithTag{T},
-                           m::Tagged{T},
-                           name,
-                           primal) where {T}
+# assume that `context` === `primal` TODO is this assumption valid?
+@inline function tagged_globalref(context::ContextWithTag{T},
+                                  m::Tagged{T},
+                                  name,
+                                  primal::ContextWithTag{T}) where {T}
+    return primal
+end
+
+@inline function _tagged_globalref(context::ContextWithTag{T},
+                                   m::Tagged{T},
+                                   name,
+                                   primal) where {T}
     untagged_name = untag(name, context)
-    if isconst(m.value, untagged_name) && isbits(primal)
+    if isconst(m.value, untagged_name) && doesnotneedmeta(primal)
         # It's very important that this fast path exists and is taken with no runtime
         # overhead; this is the path that will be taken by, for example, access of simple
         # named function bindings.
         return primal
     else
-        meta = fetch_binding_meta!(context, m.value, m.meta.meta.bindings, untagged_name, primal)
+        meta = fetch_bindingmeta!(context, m.value, m.meta.meta.bindings, untagged_name, primal)
         return Tagged(context, primal, meta)
     end
 end
 
-#=== tagged_global_set! ===#
+#=== tagged_globalref_set_meta! ===#
 
-# TODO: try to inline these operations into the IR so that the primal binding and meta
-# binding mutations occur directly next to one another
-function tagged_global_set!(context::ContextWithTag{T}, m::Tagged{T}, name::Symbol, primal) where {T}
-    binding = fetch_binding!(context, m.value, m.meta.meta.bindings, name)
-    meta = istagged(primal, context) ? primal.meta : NOMETA
-    # this line is where the primal binding assignment should happen order-wise
-    binding.meta = meta
+@inline function tagged_globalref_set_meta!(context::ContextWithTag{T}, m::Tagged{T}, name::Symbol, primal) where {T}
+    bindingmeta = _fetch_bindingmeta!(context, m.value, m.meta.meta.bindings, name)
+    bindingmeta.data = istagged(primal, context) ? primal.meta : NOMETA
     return nothing
 end
 
@@ -412,15 +476,13 @@ end
 
 tagged_getfield(context::ContextWithTag{T}, x, name, boundscheck...) where {T} = getfield(x, untag(name, context), boundscheck...)
 
-function tagged_getfield(context::ContextWithTag{T}, x::Tagged{T,Module}, name) where {T}
-    untagged_name = untag(name, context)
-    return tagged_global_ref(context, x, untagged_name, getfield(x.value, untagged_name))
-end
-
 function tagged_getfield(context::ContextWithTag{T}, x::Tagged{T}, name, boundscheck...) where {T}
     untagged_name = untag(name, context)
     y_value = getfield(untag(x, context), untagged_name, boundscheck...)
-    if hasmetameta(x, context)
+    x_value = untag(x, context)
+    if isa(x_value, Module)
+        return tagged_globalref(context, x, untagged_name, getfield(x_value, untagged_name))
+    elseif hasmetameta(x, context)
         y_meta = load(getfield(x.meta.meta, untagged_name, boundscheck...))
     else
         y_meta = NOMETA
@@ -571,26 +633,6 @@ function tagged_typeassert(context::ContextWithTag{T}, x::Tagged{T}, typ) where 
     untagged_result = Core.typeassert(untag(x, context), untag(typ, context))
     return Tagged(context, untagged_result, x.meta)
 end
-
-#=== tagged_apply_args ===#
-
-@generated function tagged_apply_args(context::ContextWithTag{T}, args...) where {T}
-    flattened = Expr(:tuple)
-    for i in 1:nfields(args)
-        x = args[i]
-        if x <: Tuple
-            push!(flattened.args, Expr(:..., Expr(:ref, :args, i)))
-        elseif istaggedtype(x, context) && untagtype(x, context) <: Tuple
-            for j in 1:fieldcount(untagtype(x, context))
-                push!(flattened.args, :(tagged_getfield(context, args[$i], $j)))
-            end
-        else
-            push!(flattened.args, :(args[$i]))
-        end
-    end
-    return flattened
-end
-
 
 #=== tagged_sitofp ===#
 

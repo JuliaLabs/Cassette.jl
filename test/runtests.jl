@@ -476,76 +476,122 @@ kwargtest(x; y = 1) = x + y
 
 ############################################################################################
 
-#= TODO: The rest of the tests below should be restored for the metadata tagging system
+@context RecurTagCtx
 
-@context NestedCtx
-
-function nested_test(n, x)
-    if n < 1
-        return sin(x)
-    else
-        return @overdub(NestedCtx(), nested_test(n - 1, x + x))
-    end
+mutable struct RecurType
+    r::RecurType
+    RecurType() = new()
 end
 
-x = rand()
-tags = Cassette.Tag[]
-tag_id = objectid(typeof(nested_test))
+ctx = withtagfor(RecurTagCtx(), 1)
+x = tag(RecurType(), ctx)
 
-@prehook function (::Any)(args...) where {__CONTEXT__<:NestedCtx}
-    !(in(__context__.tag, tags)) && push!(tags, __context__.tag)
-end
-
-@test @overdub(NestedCtx(), nested_test(2, x)) === sin(x + x + x + x)
-
-tagtypename = typeof(Cassette.generate_tag(NestedCtx(), 1).tag).name
-prevtagtype = Nothing
-for tag in tags
-    tagtype = typeof(tag)
-    @test tagtype.parameters[1] === prevtagtype
-    @test tagtype.name === tagtypename
-    global prevtagtype = tagtype
-end
+@overdub(ctx, x.r = RecurType())
+@test istagged(x, ctx)
+@test !hasmetadata(x, ctx)
+@test hasmetameta(x, ctx)
+@test isa(metameta(x, ctx), NamedTuple{(:r,),Tuple{Cassette.Mutable{Cassette.Meta}}})
+@test isdefined(untag(x, ctx), :r)
+@test !(isdefined(untag(x, ctx).r, :r))
 
 ############################################################################################
-# TODO: The below is a highly pathological function for metadata propagation; we should turn
-# it into an actual test
 
-const const_binding = Float64[]
+@context CrazyPropCtx
 
-global global_binding = 1.0
+module CrazyPropModule
+    const CONST_BINDING = Float64[]
 
-struct Foo
-    vector::Vector{Float64}
-end
+    global GLOBAL_BINDING = 0.0
 
-mutable struct FooContainer
-    foo::Foo
-end
-
-mutable struct MulFunc
-    x::Float64
-end
-
-(m::MulFunc)(x) = m.x * x
-
-const mulfunc = MulFunc(1.0)
-
-function f(x::Vector{Float64}, y::Vector{Float64})
-    @assert length(x) === length(y)
-    x = FooContainer(Foo(x))
-    for i in 1:length(y)
-        v = x.foo.vector[i]
-        push!(const_binding, v)
-        global global_binding *= mulfunc(v)
-        mulfunc.x = v
-        x.foo = Foo(y)
-        y = x.foo.vector
+    struct Foo
+        vector::Vector{Float64}
     end
-    z = prod(const_binding) * global_binding
-    empty!(const_binding)
-    global global_binding = 1.0
-    return z
+
+    mutable struct FooContainer
+        foo::Foo
+    end
+
+    mutable struct PlusFunc
+        x::Float64
+    end
+
+    (f::PlusFunc)(x) = f.x + x
+
+    const PLUSFUNC = PlusFunc(0.0)
+
+    # implements a very convoluted `sum(x) * sum(y)`
+    function crazy_sum_mul(x::Vector{Float64}, y::Vector{Float64})
+        @assert length(x) === length(y)
+        fooc = FooContainer(Foo(x))
+        tmp = y
+        # this loop sets:
+        # `const_binding == x`
+        # `global_binding == prod(y)`
+        for i in 1:length(y)
+            if iseven(i) # `fooc.foo.vector === y && tmp === x`
+                v = fooc.foo.vector[i]
+                push!(CONST_BINDING, tmp[i])
+                global GLOBAL_BINDING = PLUSFUNC(v)
+                PLUSFUNC.x = GLOBAL_BINDING
+                fooc.foo = Foo(x)
+                tmp = y
+            else # `fooc.foo.vector === x && tmp === y`
+                v = fooc.foo.vector[i]
+                push!(CONST_BINDING, v)
+                global GLOBAL_BINDING = PLUSFUNC(tmp[i])
+                PLUSFUNC.x = GLOBAL_BINDING
+                fooc.foo = Foo(y)
+                tmp = x
+            end
+        end
+
+        # accumulate result
+        z = sum(CONST_BINDING) * GLOBAL_BINDING
+
+        # reset global state
+        empty!(CONST_BINDING)
+        PLUSFUNC.x = 0.0
+        global GLOBAL_BINDING = 0.0
+        return z
+    end
 end
 
-=#
+x, y = rand(100), rand(100)
+primal_result = CrazyPropModule.crazy_sum_mul(x, y)
+@test isapprox(primal_result, sum(x) * sum(y))
+
+Cassette.metadatatype(::Type{<:CrazyPropCtx}, ::Type{T}) where T<:Number = T
+function Cassette.execute(ctx::CrazyPropCtx, ::typeof(*), x, y)
+    z = untag(x, ctx) * untag(y, ctx)
+    if hasmetadata(x, ctx) && hasmetadata(y, ctx)
+        return tag(z, ctx, metadata(x, ctx) * metadata(y, ctx))
+    elseif hasmetadata(x, ctx)
+        return tag(z, ctx, metadata(x, ctx))
+    elseif hasmetadata(y, ctx)
+        return tag(z, ctx, metadata(y, ctx))
+    else
+        return z
+    end
+end
+function Cassette.execute(ctx::CrazyPropCtx, ::typeof(+), x, y)
+    z = untag(x, ctx) + untag(y, ctx)
+    if hasmetadata(x, ctx) && hasmetadata(y, ctx)
+        return tag(z, ctx, metadata(x, ctx) + metadata(y, ctx))
+    elseif hasmetadata(x, ctx)
+        return tag(z, ctx, metadata(x, ctx))
+    elseif hasmetadata(y, ctx)
+        return tag(z, ctx, metadata(y, ctx))
+    else
+        return z
+    end
+end
+ctx = withtagfor(CrazyPropCtx(), CrazyPropModule.crazy_sum_mul)
+xm, ym = rand(100), rand(100)
+tx = overdub(ctx, broadcast, (v, m) -> tag(v, ctx, m), x, xm)
+ty = overdub(ctx, broadcast, (v, m) -> tag(v, ctx, m), y, ym)
+tagged_result = overdub(ctx, CrazyPropModule.crazy_sum_mul, tx, ty)
+
+@test isapprox(untag(tagged_result, ctx), primal_result)
+@test isapprox(metadata(tagged_result, ctx), CrazyPropModule.crazy_sum_mul(xm, ym))
+
+############################################################################################

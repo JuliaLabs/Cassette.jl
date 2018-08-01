@@ -35,7 +35,7 @@ mutable struct BindingMeta
 end
 
 const BindingMetaDict = Dict{Symbol,BindingMeta}
-const BindingMetaCache = IdDict{Module,BindingMetaDict}
+const BindingMetaDictCache = IdDict{Module,BindingMetaDict}
 
 #############
 # `Context` #
@@ -45,17 +45,17 @@ struct Context{N<:AbstractContextName,
                M<:Any,
                P<:AbstractPass,
                T<:Union{Nothing,Tag},
-               B<:Union{Nothing,BindingMetaCache}}
+               B<:Union{Nothing,BindingMetaDictCache}}
     name::N
     metadata::M
     pass::P
     tag::T
-    bindings::B
+    bindingscache::B
     function Context(name::N, metadata::M, pass::P, ::Nothing, ::Nothing) where {N,M,P}
         return new{N,M,P,Nothing,Nothing}(name, metadata, pass, nothing, nothing)
     end
-    function Context(name::N, metadata::M, pass::P, tag::Tag{N}, bindings::BindingMetaCache) where {N,M,P}
-        return new{N,M,P,typeof(tag),BindingMetaCache}(name, metadata, pass, tag, bindings)
+    function Context(name::N, metadata::M, pass::P, tag::Tag{N}, bindingscache::BindingMetaDictCache) where {N,M,P}
+        return new{N,M,P,typeof(tag),BindingMetaDictCache}(name, metadata, pass, tag, bindingscache)
     end
 end
 
@@ -67,8 +67,8 @@ function similarcontext(context::Context;
                         metadata = context.metadata,
                         pass = context.pass,
                         tag = context.tag,
-                        bindings = context.bindings)
-    return Context(context.name, metadata, pass, tag, bindings)
+                        bindingscache = context.bindingscache)
+    return Context(context.name, metadata, pass, tag, bindingscache)
 end
 
 const ContextWithTag{T} = Context{<:AbstractContextName,<:Any,<:AbstractPass,T}
@@ -83,7 +83,7 @@ tagtype(::Type{<:ContextWithTag{T}}) where {T} = T
 function withtagfor(context::Context, f)
     return similarcontext(context;
                           tag = Tag(typeof(context.name), typeof(f)),
-                          bindings = BindingMetaCache())
+                          bindingscache = BindingMetaDictCache())
 end
 
 nametype(::Type{<:Context{N}}) where {N} = N

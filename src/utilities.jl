@@ -57,14 +57,16 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     return Reflection(S, method, static_params, code_info)
 end
 
-function insert_ir_elements!(code, codelocs, addeditems, predicate, itemfunc)
+function insert_ir_elements!(code, codelocs, itemcount, getitems)
     ssachangemap = fill(0, length(code))
     labelchangemap = fill(0, length(code))
-    worklist = Int[]
+    worklist = Tuple{Int,Int}[]
     for i in 1:length(code)
         stmt = code[i]
-        if predicate(stmt, i)
-            push!(worklist, i)
+        nitems = itemcount(stmt, i)
+        if nitems !== nothing
+            addeditems = nitems - 1
+            push!(worklist, (i, addeditems))
             ssachangemap[i] = addeditems
             if i < length(code)
                 labelchangemap[i + 1] = addeditems
@@ -72,10 +74,10 @@ function insert_ir_elements!(code, codelocs, addeditems, predicate, itemfunc)
         end
     end
     Core.Compiler.renumber_ir_elements!(code, ssachangemap, labelchangemap)
-    for i in worklist
+    for (i, addeditems) in worklist
         i += ssachangemap[i] - addeditems # correct the index for accumulated offsets
         stmt = code[i]
-        items = itemfunc(stmt, i)
+        items = getitems(stmt, i)
         @assert length(items) == (addeditems + 1)
         code[i] = items[end]
         for j in 1:(length(items) - 1) # insert in reverse to maintain the provided ordering
@@ -88,23 +90,5 @@ end
 #############
 # Debugging #
 #############
-
-# define safe loggers for use in generated functions (where task switches are not allowed)
-for level in [:debug, :info, :warn, :error]
-    @eval begin
-        macro $(Symbol("safe_$level"))(ex...)
-            macrocall = :(@placeholder $(ex...))
-            # NOTE: `@placeholder` in order to avoid hard-coding @__LINE__ etc
-            macrocall.args[1] = Symbol($"@$level")
-            quote
-                old_logger = global_logger()
-                global_logger(Logging.ConsoleLogger(Core.stderr, old_logger.min_level))
-                ret = $(esc(macrocall))
-                global_logger(old_logger)
-                ret
-            end
-        end
-    end
-end
 
 overdub_typed(args...; optimize=false) = code_typed(overdub, map(Core.Typeof, args); optimize=optimize)

@@ -117,8 +117,6 @@ function overdub_pass!(reflection::Reflection,
         push!(overdubbed_codelocs, code_info.codelocs[1])
     end
 
-    original_arg_slots = [SlotNumber(i + n_prepended_slots) for i in 1:n_method_args]
-
     #=== finish initialization of `overdubbed_code`/`overdubbed_codelocs` ===#
 
     # substitute static parameters, offset slot numbers by number of added slots, and
@@ -126,35 +124,159 @@ function overdub_pass!(reflection::Reflection,
     Base.Meta.partially_inline!(code_info.code, Any[], method.sig, static_params,
                                 n_prepended_slots, length(overdubbed_code), :propagate)
 
-    old_code_start_index = length(overdubbed_code) + 1
+    original_code_start_index = length(overdubbed_code) + 1
 
     append!(overdubbed_code, code_info.code)
     append!(overdubbed_codelocs, code_info.codelocs)
 
-    #=== TODO: perform tagged module transformation if tagging is enabled ===#
+    #=== perform tagged module transformation if tagging is enabled ===#
 
-    # Scan the IR for `Module`s in the first argument position for `GlobalRef`s.
-    # For every unique such `Module`, make a new `SSAValue` at the top of the method body
-    # corresponding to `Cassette.fetch_tagged_module` called with the given context and
-    # module. Then, replace all `GlobalRef`-loads with the corresponding
-    # `Cassette._tagged_global_ref` invocation. All `GlobalRef`-stores must be preserved
-    # as-is, but need a follow-up statement calling `Cassette._tagged_global_ref_set_meta!`
-    # on the relevant arguments.
+    if istaggingenabled && !iskwfunc
+        # find `GlobalRef`s in IR and set up tagged module replacements
+        modules = Any[]
+        original_code_region = view(overdubbed_code, original_code_start_index:length(overdubbed_code))
+        replace_match!(x -> isa(x, GlobalRef), original_code_region) do x
+            m = GlobalRef(parentmodule(x.mod), nameof(x.mod))
+            i = findfirst(isequal(m), modules)
+            if isa(i, Nothing)
+                push!(modules, m)
+                i = length(modules)
+            end
+            return Expr(:replaceglobalref, original_code_start_index + i - 1, x)
+        end
+        for i in 1:length(modules)
+            modules[i] = Expr(:call, Expr(:ignore, GlobalRef(Cassette, :fetch_tagged_module)), overdub_ctx_slot, modules[i])
+        end
 
-    #=== TODO: untag all `ccall` SSAValue arguments if tagging is enabled ===#
+        # insert `fetch_tagged_module`s at the `original_code_start_index`
+        insert_ir_elements!(overdubbed_code, overdubbed_codelocs,
+                            (x, i) -> i == original_code_start_index ? length(modules) + 1 : nothing,
+                            (x, i) -> [modules..., x])
+
+        # append `tagged_globalref_set_meta!` to `GlobalRef() = ...` statements
+        insert_ir_elements!(overdubbed_code, overdubbed_codelocs,
+                            (x, i) -> begin
+                                if (i > original_code_start_index &&
+                                    Base.Meta.isexpr(x, :(=)) &&
+                                    Base.Meta.isexpr(x.args[1], :replaceglobalref))
+                                    return 3
+                                end
+                                return nothing
+                            end,
+                            (x, i) -> begin
+                                lhs, rhs = x.args
+                                tagmodssa = SSAValue(lhs.args[1])
+                                globalref = lhs.args[2]
+                                name = QuoteNode(globalref.name)
+                                return [
+                                    rhs,
+                                    Expr(:(=), globalref, Expr(:call, Expr(:ignore, GlobalRef(Cassette, :untag)), SSAValue(i), overdub_ctx_slot)),
+                                    Expr(:call, Expr(:ignore, GlobalRef(Cassette, :tagged_globalref_set_meta!)), overdub_ctx_slot, tagmodssa, name, SSAValue(i))
+                                ]
+                            end)
+
+        # replace `GlobalRef`-loads with `Cassette.tagged_globalref`
+        original_code_start_index += length(modules)
+        insert_ir_elements!(overdubbed_code, overdubbed_codelocs,
+                            (x, i) -> begin
+                                i >= original_code_start_index || return nothing
+                                stmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
+                                Base.Meta.isexpr(stmt, :replaceglobalref) && return 1
+                                if isa(stmt, Expr) # Base.Meta.isexpr(stmt, :call) || Base.Meta.isexpr(stmt, :new) || Base.Meta.isexpr(stmt, :return)
+                                    count = 0
+                                    for arg in stmt.args
+                                        if Base.Meta.isexpr(arg, :replaceglobalref)
+                                            count += 1
+                                        end
+                                    end
+                                    count > 0 && return count + 1
+                                end
+                                return nothing
+                            end,
+                            (x, i) -> begin
+                                items = Any[]
+                                stmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
+                                if Base.Meta.isexpr(stmt, :replaceglobalref)
+                                    tagmodssa = SSAValue(stmt.args[1])
+                                    globalref = stmt.args[2]
+                                    name = QuoteNode(globalref.name)
+                                    result = Expr(:call, Expr(:ignore, GlobalRef(Cassette, :tagged_globalref)), overdub_ctx_slot, tagmodssa, name, globalref)
+                                elseif isa(stmt, Expr) # Base.Meta.isexpr(stmt, :call) || Base.Meta.isexpr(stmt, :new) || Base.Meta.isexpr(stmt, :return)
+                                    result = Expr(stmt.head)
+                                    for arg in stmt.args
+                                        if Base.Meta.isexpr(arg, :replaceglobalref)
+                                            tagmodssa = SSAValue(arg.args[1])
+                                            globalref = arg.args[2]
+                                            name = QuoteNode(globalref.name)
+                                            push!(result.args, SSAValue(i + length(items)))
+                                            push!(items, Expr(:call, Expr(:ignore, GlobalRef(Cassette, :tagged_globalref)), overdub_ctx_slot, tagmodssa, name, globalref))
+                                        else
+                                            push!(result.args, arg)
+                                        end
+                                    end
+                                end
+                                if Base.Meta.isexpr(x, :(=))
+                                    result = Expr(:(=), x.args[1], result)
+                                end
+                                push!(items, result)
+                                return items
+                            end)
+    end
+
+    #=== untag all `foreigncall` SSAValue/SlotNumber arguments if tagging is enabled ===#
+
+    if istaggingenabled && !iskwfunc
+        insert_ir_elements!(overdubbed_code, overdubbed_codelocs,
+                            (x, i) -> begin
+                                stmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
+                                if Base.Meta.isexpr(stmt, :foreigncall)
+                                    count = 0
+                                    for arg in stmt.args
+                                        if isa(arg, SSAValue) || isa(arg, SlotNumber)
+                                            count += 1
+                                        end
+                                    end
+                                    count > 0 && return count + 1
+                                end
+                                return nothing
+                            end,
+                            (x, i) -> begin
+                                items = Any[]
+                                stmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
+                                result = Expr(:foreigncall)
+                                for arg in stmt.args
+                                    if isa(arg, SSAValue) || isa(arg, SlotNumber)
+                                        push!(result.args, SSAValue(i + length(items)))
+                                        push!(items, Expr(:call, Expr(:ignore, GlobalRef(Cassette, :untag)), arg, overdub_ctx_slot))
+                                    else
+                                        push!(result.args, arg)
+                                    end
+                                end
+                                if Base.Meta.isexpr(x, :(=))
+                                    result = Expr(:(=), x.args[1], result)
+                                end
+                                push!(items, result)
+                                return items
+                            end)
+    end
 
     #=== untag `gotoifnot` conditionals if tagging is enabled ===#
 
-    # this sentinel is consumed by in a call-replacement pass below; we use
-    # it so that we don't accidentally overdub the calls we've inserted
-    untag_call_sentinel = :REPLACE_ME_WITH_CASSETTE_UNTAG
     if istaggingenabled && !iskwfunc
-        insert_ir_elements!(overdubbed_code, overdubbed_codelocs, 1,
-                            (x, i) -> Base.Meta.isexpr(x, :gotoifnot),
+        insert_ir_elements!(overdubbed_code, overdubbed_codelocs,
+                            (x, i) -> Base.Meta.isexpr(x, :gotoifnot) ? 2 : nothing,
                             (x, i) -> [
-                                Expr(:call, untag_call_sentinel, x.args[1], overdub_ctx_slot),
+                                Expr(:call, Expr(:ignore, GlobalRef(Cassette, :untag)), x.args[1], overdub_ctx_slot),
                                 Expr(:gotoifnot, SSAValue(i), x.args[2])
                             ])
+    end
+
+    #=== replace `Expr(:new, ...)` with `Expr(:call, :tagged_new)` if tagging is enabled ===#
+
+    if istaggingenabled && !iskwfunc
+        replace_match!(x -> Base.Meta.isexpr(x, :new), overdubbed_code) do x
+            return Expr(:call, Expr(:ignore, GlobalRef(Cassette, :tagged_new)), overdub_ctx_slot, x.args...)
+        end
     end
 
     #=== replace `Expr(:call, ...)` with `Expr(:call, :overdub, ...)` calls ===#
@@ -179,12 +301,15 @@ function overdub_pass!(reflection::Reflection,
             end
         end
     else
-        predicate = (x, i) -> begin
-            i >= old_code_start_index || return false
+        itemcount = (x, i) -> begin
+            i >= original_code_start_index || return nothing
             stmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
-            return Base.Meta.isexpr(stmt, :call) && stmt.args[1] !== untag_call_sentinel
+            if Base.Meta.isexpr(stmt, :call) && !(Base.Meta.isexpr(stmt.args[1], :ignore))
+                return 7
+            end
+            return nothing
         end
-        itemfunc = (x, i) -> begin
+        getitems = (x, i) -> begin
             callstmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
             execstmt = Expr(:call, GlobalRef(Cassette, :execute), overdub_ctx_slot, callstmt.args...)
             overdubstmt = Expr(:call, GlobalRef(Cassette, :overdub), overdub_ctx_slot, callstmt.args...)
@@ -198,24 +323,12 @@ function overdub_pass!(reflection::Reflection,
                 Base.Meta.isexpr(x, :(=)) ? Expr(:(=), x.args[1], overdub_tmp_slot) : overdub_tmp_slot
             ]
         end
-        insert_ir_elements!(overdubbed_code, overdubbed_codelocs, 6, predicate, itemfunc)
+        insert_ir_elements!(overdubbed_code, overdubbed_codelocs, itemcount, getitems)
     end
 
-    #=== replace `untag_call_sentinel` with `GlobalRef(Cassette, :untag)` ===#
+    #=== unwrap all `Expr(:ignore)`s ===#
 
-    if istaggingenabled && !iskwfunc
-        replace_match!(x ->  Base.Meta.isexpr(x, :call) && x.args[1] == untag_call_sentinel, overdubbed_code) do x
-            return Expr(:call, GlobalRef(Cassette, :untag), x.args[2:end]...)
-        end
-    end
-
-    #=== replace `Expr(:new, ...)` with `Expr(:call, :tagged_new)` if tagging is enabled ===#
-
-    if istaggingenabled && !iskwfunc
-        replace_match!(x -> Base.Meta.isexpr(x, :new), overdubbed_code) do x
-            return Expr(:call, GlobalRef(Cassette, :tagged_new), overdub_ctx_slot, x.args...)
-        end
-    end
+    replace_match!(x -> x.args[1], x -> Base.Meta.isexpr(x, :ignore), overdubbed_code)
 
     #=== set `code_info`/`reflection` fields accordingly ===#
 
@@ -228,6 +341,8 @@ function overdub_pass!(reflection::Reflection,
     return reflection
 end
 
+
+
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
 function overdub_generator(pass_type, self, context_type, args::Tuple)
     if !(nfields(args) > 0 && args[1] <: Core.Builtin)
@@ -237,7 +352,6 @@ function overdub_generator(pass_type, self, context_type, args::Tuple)
             if isa(reflection, Reflection)
                 overdub_pass!(reflection, context_type, pass_type)
                 body = reflection.code_info
-                @safe_debug "returning overdubbed CodeInfo" args body
                 return body
             end
         catch err
@@ -247,7 +361,6 @@ function overdub_generator(pass_type, self, context_type, args::Tuple)
             end
         end
     end
-    @safe_debug "no CodeInfo found; executing via fallback" args
     return quote
         $(Expr(:meta, :inline))
         $Cassette.fallback($OVERDUB_CTX_SYMBOL, $OVERDUB_ARGS_SYMBOL...)
