@@ -3,16 +3,6 @@
 <img width="700px" src="https://cdn.rawgit.com/jrevels/Cassette.jl/master/docs/cassette-logo.svg"/>
 </p>
 
-## DISCLAIMERS
-
-- Cassette targets Julia package developers, not end-users. Downstream developers are expected to have a solid understanding of Julia's type system, metaprogramming facilities, and dispatch mechanism.
-
-- Cassette is still in development. At any given time, the implementation might be ugly, buggy, incomplete, slow, and/or untested. Cassette relies on new reflection features and compiler performance improvements that will hopefully land in Julia 1.x. Until an initial version of Cassette is released, I can't guarantee that Cassette's `master` branch won't rely on some weird custom version of Julia.
-
-- Cassette is currently poorly documented. I hope for this to change in the following months.
-
-- Cassette was last updated against Julia commit: f1b23284bb881023d3581053640f025f071a7f9c
-
 ## Overview
 
 Cassette is a Julia package that provides a mechanism for dynamically injecting code transformation passes into Julia’s just-in-time (JIT) compilation cycle, enabling post hoc analysis and modification of "Cassette-unaware" Julia programs without requiring manual source annotation or refactoring of the target code.
