@@ -145,7 +145,7 @@ function overdub_pass!(reflection::Reflection,
             return Expr(:replaceglobalref, original_code_start_index + i - 1, x)
         end
         for i in 1:length(modules)
-            modules[i] = Expr(:call, Expr(:ignore, GlobalRef(Cassette, :fetch_tagged_module)), overdub_ctx_slot, modules[i])
+            modules[i] = Expr(:call, Expr(:nooverdub, GlobalRef(Cassette, :fetch_tagged_module)), overdub_ctx_slot, modules[i])
         end
 
         # insert `fetch_tagged_module`s at the `original_code_start_index`
@@ -170,8 +170,8 @@ function overdub_pass!(reflection::Reflection,
                                 name = QuoteNode(globalref.name)
                                 return [
                                     rhs,
-                                    Expr(:(=), globalref, Expr(:call, Expr(:ignore, GlobalRef(Cassette, :untag)), SSAValue(i), overdub_ctx_slot)),
-                                    Expr(:call, Expr(:ignore, GlobalRef(Cassette, :tagged_globalref_set_meta!)), overdub_ctx_slot, tagmodssa, name, SSAValue(i))
+                                    Expr(:(=), globalref, Expr(:call, Expr(:nooverdub, GlobalRef(Cassette, :untag)), SSAValue(i), overdub_ctx_slot)),
+                                    Expr(:call, Expr(:nooverdub, GlobalRef(Cassette, :tagged_globalref_set_meta!)), overdub_ctx_slot, tagmodssa, name, SSAValue(i))
                                 ]
                             end)
 
@@ -200,7 +200,7 @@ function overdub_pass!(reflection::Reflection,
                                     tagmodssa = SSAValue(stmt.args[1])
                                     globalref = stmt.args[2]
                                     name = QuoteNode(globalref.name)
-                                    result = Expr(:call, Expr(:ignore, GlobalRef(Cassette, :tagged_globalref)), overdub_ctx_slot, tagmodssa, name, globalref)
+                                    result = Expr(:call, Expr(:nooverdub, GlobalRef(Cassette, :tagged_globalref)), overdub_ctx_slot, tagmodssa, name, globalref)
                                 elseif isa(stmt, Expr) # Base.Meta.isexpr(stmt, :call) || Base.Meta.isexpr(stmt, :new) || Base.Meta.isexpr(stmt, :return)
                                     result = Expr(stmt.head)
                                     for arg in stmt.args
@@ -209,7 +209,7 @@ function overdub_pass!(reflection::Reflection,
                                             globalref = arg.args[2]
                                             name = QuoteNode(globalref.name)
                                             push!(result.args, SSAValue(i + length(items)))
-                                            push!(items, Expr(:call, Expr(:ignore, GlobalRef(Cassette, :tagged_globalref)), overdub_ctx_slot, tagmodssa, name, globalref))
+                                            push!(items, Expr(:call, Expr(:nooverdub, GlobalRef(Cassette, :tagged_globalref)), overdub_ctx_slot, tagmodssa, name, globalref))
                                         else
                                             push!(result.args, arg)
                                         end
@@ -247,7 +247,7 @@ function overdub_pass!(reflection::Reflection,
                                 for arg in stmt.args
                                     if isa(arg, SSAValue) || isa(arg, SlotNumber)
                                         push!(result.args, SSAValue(i + length(items)))
-                                        push!(items, Expr(:call, Expr(:ignore, GlobalRef(Cassette, :untag)), arg, overdub_ctx_slot))
+                                        push!(items, Expr(:call, Expr(:nooverdub, GlobalRef(Cassette, :untag)), arg, overdub_ctx_slot))
                                     else
                                         push!(result.args, arg)
                                     end
@@ -266,7 +266,7 @@ function overdub_pass!(reflection::Reflection,
         insert_ir_elements!(overdubbed_code, overdubbed_codelocs,
                             (x, i) -> Base.Meta.isexpr(x, :gotoifnot) ? 2 : nothing,
                             (x, i) -> [
-                                Expr(:call, Expr(:ignore, GlobalRef(Cassette, :untag)), x.args[1], overdub_ctx_slot),
+                                Expr(:call, Expr(:nooverdub, GlobalRef(Cassette, :untag)), x.args[1], overdub_ctx_slot),
                                 Expr(:gotoifnot, SSAValue(i), x.args[2])
                             ])
     end
@@ -275,7 +275,7 @@ function overdub_pass!(reflection::Reflection,
 
     if istaggingenabled && !iskwfunc
         replace_match!(x -> Base.Meta.isexpr(x, :new), overdubbed_code) do x
-            return Expr(:call, Expr(:ignore, GlobalRef(Cassette, :tagged_new)), overdub_ctx_slot, x.args...)
+            return Expr(:call, Expr(:nooverdub, GlobalRef(Cassette, :tagged_new)), overdub_ctx_slot, x.args...)
         end
     end
 
@@ -304,7 +304,7 @@ function overdub_pass!(reflection::Reflection,
         itemcount = (x, i) -> begin
             i >= original_code_start_index || return nothing
             stmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
-            if Base.Meta.isexpr(stmt, :call) && !(Base.Meta.isexpr(stmt.args[1], :ignore))
+            if Base.Meta.isexpr(stmt, :call) && !(Base.Meta.isexpr(stmt.args[1], :nooverdub))
                 return 7
             end
             return nothing
@@ -326,9 +326,13 @@ function overdub_pass!(reflection::Reflection,
         insert_ir_elements!(overdubbed_code, overdubbed_codelocs, itemcount, getitems)
     end
 
-    #=== unwrap all `Expr(:ignore)`s ===#
+    #=== unwrap all `Expr(:nooverdub)`s ===#
 
-    replace_match!(x -> x.args[1], x -> Base.Meta.isexpr(x, :ignore), overdubbed_code)
+    replace_match!(x -> x.args[1], x -> Base.Meta.isexpr(x, :nooverdub), overdubbed_code)
+
+    #=== replace all `Expr(:contextslot)`s ===#
+
+    replace_match!(x -> overdub_ctx_slot, x -> Base.Meta.isexpr(x, :contextslot), overdubbed_code)
 
     #=== set `code_info`/`reflection` fields accordingly ===#
 
