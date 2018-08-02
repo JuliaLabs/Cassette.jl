@@ -593,5 +593,3 @@ tagged_result = overdub(ctx, CrazyPropModule.crazy_sum_mul, tx, ty)
 
 @test isapprox(untag(tagged_result, ctx), primal_result)
 @test isapprox(metadata(tagged_result, ctx), CrazyPropModule.crazy_sum_mul(xm, ym))
-
-############################################################################################
