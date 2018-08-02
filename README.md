@@ -1,6 +1,6 @@
 
 <p align="center">
-<img width="700px" src="https://cdn.rawgit.com/jrevels/Cassette.jl/master/docs/cassette-logo.svg"/>
+<img width="350px" src="https://raw.githubusercontent.com/jrevels/Cassette.jl/master/docs/cassette-logo.png"/>
 </p>
 
 ## Overview
