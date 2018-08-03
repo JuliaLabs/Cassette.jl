@@ -171,6 +171,65 @@ doesnotneedmeta(::Type) = true
 
 #=== metadatatype ===#
 
+"""
+```
+metadatatype(::Type{<:Context}, ::Type{T})
+```
+
+Overload this Cassette method w.r.t. a given context to define the type of metadata that
+can be tagged to values of type `T` within that context.
+
+By default, this method is set such that associating metadata with any tagged value is
+disallowed.
+
+Cassette uses `metadatatype` to statically compute a context-specific metadata type hiearchy
+for all tagged values within overdubbed programs. To gain a mental model for this mechanism,
+consider a simple struct definition as follows:
+
+```
+struct Foo
+    x::Int
+    y::Complex{Int}
+end
+```
+
+Now, Cassette can use `metadatatype` to determine type constraints for metadata structures
+associated with tagged values of type `Foo`. In psuedo-Julia-code, these metadata structures
+might look something like the following for `Foo`:
+
+```
+struct IntMeta
+    data::metadatatype(Ctx, Int)
+    meta::Cassette.NoMetaMeta
+end
+
+struct ComplexIntMeta
+    data::metadatatype(Ctx, Complex{Int})
+    meta::NamedTuple{(:re,:im),Tuple{IntMeta,IntMeta}}
+end
+
+struct FooMeta
+    data::metadatatype(Ctx, Foo)
+    meta::NamedTuple{(:x,:y),Tuple{IntMeta,ComplexIntMeta}
+end
+```
+
+# Examples
+
+```
+julia> Cassette.@context Ctx;
+
+# any value of type `Number` can now be tagged with metadata of type `Number`
+julia> Cassette.metadatatype(::Type{<:Ctx}, ::Type{<:Number}) = Number
+
+# any value of type `T<:Number` can now be tagged with metadata of type `T`
+julia> Cassette.metadatatype(::Type{<:Ctx}, ::Type{T}) where {T<:Number} = T
+
+# any value of type `T<:Number` can now be tagged with metadata of type `promote_type(T, M)`
+# where `M` is the type of the trace-local metadata associated with the context
+julia> Cassette.metadatatype(::Type{<:Ctx{M}}, ::Type{T}) where {M<:Number,T<:Number} = promote_type(T, M)
+```
+"""
 metadatatype(::Type{<:Context}, ::DataType) = NoMetaData
 
 #=== metametatype ===#
@@ -275,10 +334,44 @@ _underlying_type(::Type{<:Tagged{<:Tag,U}}) where {U} = U
 
 #=== `Tagged` API ===#
 
+"""
+```
+tag(value, context::Context, metadata = Cassette.NoMetaData())
+```
+
+Return `value` tagged w.r.t. `context`, optionally associating `metadata` with the returned
+`Tagged` instance.
+
+Any provided `metadata` must obey the type constraints determined by Cassette's
+[`metadatatype`](@ref) method.
+
+Note that `hastagging(typeof(context))` must be `true` for a value to be tagged w.r.t. to
+`context`.
+
+See also: [`untag`](@ref), [`enabletagging`](@ref), [`hastagging`](@ref)
+"""
 function tag(value, context::Context, metadata = NoMetaData())
     return Tagged(context, value, initmeta(context, value, metadata))
 end
 
+function tag(value, context::ContextWithTag{Nothing}, metadata = NoMetaData())
+    error("cannot `tag` a value w.r.t. a `context` if `!hastagging(typeof(context))`")
+end
+
+"""
+```
+untag(x, context::Context)
+```
+
+Return `x` untagged w.r.t. `context` if `istagged(x, context)`, otherwise return
+`x` directly.
+
+In other words, `untag(tag(x, context), context) === x` is always `true`
+
+If `!istagged(x, context)`, then `untag(x, context) === x` is `true`.
+
+See also: [`tag`](@ref), [`istagged`](@ref)
+"""
 untag(x, context::Context) = untag(x, context.tag)
 untag(x::Tagged{T}, tag::T) where {T<:Tag} = x.value
 untag(x, ::Union{Tag,Nothing}) = x

@@ -2,13 +2,159 @@
 # contextual operations #
 #########################
 
+struct OverdubInstead end
+
+"""
+```
+prehook(context::Context, f, args...)
+```
+
+Overload this Cassette method w.r.t. a given context in order to define a new contextual
+prehook for that context.
+
+To understand when/how this method is called, see the documentation for [`overdub`](@ref).
+
+Invoking `prehook` is a no-op by default (it immediately returns `nothing`).
+
+See also: [`overdub`](@ref), [`posthook`](@ref), [`execute`](@ref), [`fallback`](@ref)
+
+# Examples
+
+Simple trace logging:
+
+```
+julia> Cassette.@context PrintCtx;
+
+julia> Cassette.prehook(::PrintCtx, f, args...) = println(f, args)
+
+julia> Cassette.overdub(PrintCtx(), /, 1, 2)
+float(1,)
+AbstractFloat(1,)
+Float64(1,)
+sitofp(Float64, 1)
+float(2,)
+AbstractFloat(2,)
+Float64(2,)
+sitofp(Float64, 2)
+/(1.0, 2.0)
+div_float(1.0, 2.0)
+0.5
+```
+
+Counting the number of method invocations with one or more arguments of a given type:
+
+```
+julia> mutable struct Count{T}
+           count::Int
+       end
+
+julia> Cassette.@context CountCtx;
+
+julia> Cassette.prehook(ctx::CountCtx{Count{T}}, f, arg::T, args::T...) where {T} = (ctx.metadata.count += 1)
+
+# count the number of calls of the form `f(::Float64, ::Float64...)`
+julia> ctx = CountCtx(metadata = Count{Float64}(0));
+
+julia> Cassette.overdub(ctx, /, 1, 2)
+0.5
+
+julia> ctx.metadata.count
+2
+```
+"""
 @inline prehook(::Context, ::Vararg{Any}) = nothing
 
+"""
+```
+posthook(context::Context, output, f, args...)
+```
+
+Overload this Cassette method w.r.t. a given context in order to define a new contextual
+posthook for that context.
+
+To understand when/how this method is called, see the documentation for [`overdub`](@ref).
+
+Invoking `posthook` is a no-op by default (it immediately returns `nothing`).
+
+See also: [`overdub`](@ref), [`prehook`](@ref), [`execute`](@ref), [`fallback`](@ref)
+
+# Examples
+
+Simple trace logging:
+
+```
+julia> Cassette.@context PrintCtx;
+
+julia> Cassette.posthook(::PrintCtx, output, f, args...) = println(output, " = ", f, args)
+
+julia> Cassette.overdub(PrintCtx(), /, 1, 2)
+1.0 = sitofp(Float64, 1)
+1.0 = Float64(1,)
+1.0 = AbstractFloat(1,)
+1.0 = float(1,)
+2.0 = sitofp(Float64, 2)
+2.0 = Float64(2,)
+2.0 = AbstractFloat(2,)
+2.0 = float(2,)
+0.5 = div_float(1.0, 2.0)
+0.5 = /(1.0, 2.0)
+0.5
+```
+
+Accumulate the sum of all numeric scalar outputs encountered in the trace:
+
+```
+julia> mutable struct Accum
+           x::Number
+       end
+
+julia> Cassette.@context AccumCtx;
+
+julia> Cassette.posthook(ctx::AccumCtx{Accum}, out::Number, f, args...) = (ctx.metadata.x += out)
+
+julia> ctx = AccumCtx(metadata = Accum(0));
+
+julia> Cassette.overdub(ctx, /, 1, 2)
+0.5
+
+julia> ctx.metadata.x
+13.0
+```
+"""
 @inline posthook(::Context, ::Vararg{Any}) = nothing
 
-struct OverdubInstead end
+"""
+```
+execute(context::Context, f, args...)
+```
+
+Overload this Cassette method w.r.t. a given context in order to define a new contextual
+execution primitive for that context.
+
+To understand when/how this method is called, see the documentation for [`overdub`](@ref).
+
+Invoking `execute` immediately returns `Cassette.OverdubInstead()` by default.
+
+See also: [`overdub`](@ref), [`prehook`](@ref), [`posthook`](@ref), [`fallback`](@ref)
+"""
 @inline execute(ctx::Context, args...) = OverdubInstead()
 
+"""
+```
+fallback(context::Context, f, args...)
+```
+
+Overload this Cassette method w.r.t. a given context in order to define a new contextual
+execution fallback for that context.
+
+To understand when/how this method is called, see the documentation for [`overdub`](@ref) and
+[`canoverdub`](@ref).
+
+By default, invoking `fallback(context, f, args...)` will simply call `f(args...)` (with all
+arguments automatically untagged, if `hastagging(typeof(context))`).
+
+See also:  [`canoverdub`](@ref), [`overdub`](@ref), [`execute`](@ref), [`prehook`](@ref), [`posthook`](@ref)
+"""
 @inline fallback(ctx::Context, args...) = call(ctx, args...)
 
 @inline call(::ContextWithTag{Nothing}, f, args...) = f(args...)
@@ -21,6 +167,23 @@ struct OverdubInstead end
 @inline call(::ContextWithTag{Nothing}, f::typeof(Core.apply_type), ::Type{A}, ::Type{B}) where {A,B} = f(A, B)
 @inline call(::Context, f::typeof(Core.apply_type), ::Type{A}, ::Type{B}) where {A,B} = f(A, B)
 
+"""
+```
+canoverdub(context::Context, f, args...)
+```
+
+Return `true` if `f(args...)` has a lowered IR representation that Cassette can overdub,
+return `false` otherwise.
+
+Alternatively, but equivalently:
+
+Return `false` if `overdub(context, f, args...)` directly translates to
+`fallback(context, f, args...)`, return `true` otherwise.
+
+Note that unlike `execute`, `fallback`, etc., this function is not intended to be overloaded.
+
+See also:  [`overdub`](@ref), [`fallback`](@ref), [`execute`](@ref)
+"""
 @inline canoverdub(ctx::Context, f, args...) = !isa(untag(f, ctx), Core.Builtin)
 
 ###########
@@ -60,7 +223,7 @@ function overdub_pass!(reflection::Reflection,
     # type name is prefixed by `#kw##`. More assumptions for this hack will be commented on
     # as we go.
     iskwfunc = startswith(String(signature.parameters[1].name.name), "#kw##")
-    istaggingenabled = has_tagging_enabled(context_type)
+    istaggingenabled = hastagging(context_type)
 
     #=== execute user-provided pass (is a no-op by default) ===#
 
@@ -107,7 +270,7 @@ function overdub_pass!(reflection::Reflection,
             pop!(overdubbed_code)
             pop!(overdubbed_codelocs)
         end
-        if has_tagging_enabled(context_type)
+        if hastagging(context_type)
             trailing_arguments = Expr(:call, GlobalRef(Cassette, :_tagged_new_tuple_unsafe), overdub_ctx_slot)
         else
             trailing_arguments = Expr(:call, GlobalRef(Core, :tuple))
@@ -153,12 +316,12 @@ function overdub_pass!(reflection::Reflection,
         end
 
         # insert `fetch_tagged_module`s at the `original_code_start_index`
-        insert_ir_elements!(overdubbed_code, overdubbed_codelocs,
+        insert_statements!(overdubbed_code, overdubbed_codelocs,
                             (x, i) -> i == original_code_start_index ? length(modules) + 1 : nothing,
                             (x, i) -> [modules..., x])
 
         # append `tagged_globalref_set_meta!` to `GlobalRef() = ...` statements
-        insert_ir_elements!(overdubbed_code, overdubbed_codelocs,
+        insert_statements!(overdubbed_code, overdubbed_codelocs,
                             (x, i) -> begin
                                 if (i > original_code_start_index &&
                                     Base.Meta.isexpr(x, :(=)) &&
@@ -181,7 +344,7 @@ function overdub_pass!(reflection::Reflection,
 
         # replace `GlobalRef`-loads with `Cassette.tagged_globalref`
         original_code_start_index += length(modules)
-        insert_ir_elements!(overdubbed_code, overdubbed_codelocs,
+        insert_statements!(overdubbed_code, overdubbed_codelocs,
                             (x, i) -> begin
                                 i >= original_code_start_index || return nothing
                                 stmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
@@ -230,7 +393,7 @@ function overdub_pass!(reflection::Reflection,
     #=== untag all `foreigncall` SSAValue/SlotNumber arguments if tagging is enabled ===#
 
     if istaggingenabled && !iskwfunc
-        insert_ir_elements!(overdubbed_code, overdubbed_codelocs,
+        insert_statements!(overdubbed_code, overdubbed_codelocs,
                             (x, i) -> begin
                                 stmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
                                 if Base.Meta.isexpr(stmt, :foreigncall)
@@ -267,7 +430,7 @@ function overdub_pass!(reflection::Reflection,
     #=== untag `gotoifnot` conditionals if tagging is enabled ===#
 
     if istaggingenabled && !iskwfunc
-        insert_ir_elements!(overdubbed_code, overdubbed_codelocs,
+        insert_statements!(overdubbed_code, overdubbed_codelocs,
                             (x, i) -> Base.Meta.isexpr(x, :gotoifnot) ? 2 : nothing,
                             (x, i) -> [
                                 Expr(:call, Expr(:nooverdub, GlobalRef(Cassette, :untag)), x.args[1], overdub_ctx_slot),
@@ -305,7 +468,7 @@ function overdub_pass!(reflection::Reflection,
             end
         end
     else
-        itemcount = (x, i) -> begin
+        stmtcount = (x, i) -> begin
             i >= original_code_start_index || return nothing
             stmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
             if Base.Meta.isexpr(stmt, :call) && !(Base.Meta.isexpr(stmt.args[1], :nooverdub))
@@ -313,7 +476,7 @@ function overdub_pass!(reflection::Reflection,
             end
             return nothing
         end
-        getitems = (x, i) -> begin
+        newstmts = (x, i) -> begin
             callstmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
             execstmt = Expr(:call, GlobalRef(Cassette, :execute), overdub_ctx_slot, callstmt.args...)
             overdubstmt = Expr(:call, GlobalRef(Cassette, :overdub), overdub_ctx_slot, callstmt.args...)
@@ -327,7 +490,7 @@ function overdub_pass!(reflection::Reflection,
                 Base.Meta.isexpr(x, :(=)) ? Expr(:(=), x.args[1], overdub_tmp_slot) : overdub_tmp_slot
             ]
         end
-        insert_ir_elements!(overdubbed_code, overdubbed_codelocs, itemcount, getitems)
+        insert_statements!(overdubbed_code, overdubbed_codelocs, stmtcount, newstmts)
     end
 
     #=== unwrap all `Expr(:nooverdub)`s ===#
@@ -348,8 +511,6 @@ function overdub_pass!(reflection::Reflection,
 
     return reflection
 end
-
-
 
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
 function overdub_generator(pass_type, self, context_type, args::Tuple)
@@ -404,3 +565,43 @@ function overdub_definition(pass, line, file)
 end
 
 @eval $(overdub_definition(:NoPass, @__LINE__, @__FILE__))
+
+@doc(
+"""
+```
+overdub(context::Context, f, args...)
+```
+
+Execute `f(args...)` overdubbed with respect to `context`.
+
+More specifically, execute `f(args...)`, but with every internal method invocation `g(x...)`
+replaced by statements similar to the following:
+
+```
+begin
+    prehook(context, g, x...)
+    tmp = execute(context, g, x...)
+    tmp = isa(tmp, Cassette.OverdubInstead) ? overdub(context, g, args...) : tmp
+    posthook(context, tmp, g, x...)
+    tmp
+end
+```
+
+If Cassette cannot retrieve lowered IR for the method body of `f(args...)` (as determined by
+`canoverdub(context, f, args...)`), then `overdub(context, f, args...)` will directly
+translate to a call to `fallback(context, f, args...)`.
+
+Additionally, for every method body encountered in execute trace, apply the compiler pass
+associated with `context` if one exists. Note that this user-provided pass is performed on
+the method IR before method invocations are transformed into the form specified above. See
+the [`@pass`](@ref) macro for further details.
+
+If `Cassette.hastagging(typeof(context))`, then a number of additional passes are run in
+order to accomodate tagged value propagation:
+
+- `Expr(:new)` is replaced with a call to `Cassette.tagged_new`
+- conditional values passed to `Expr(:gotoifnot)` are untagged
+- arguments to `Expr(:foreigncall)` are untagged
+- load/stores to external module bindings are intercepted by the tagging system
+""",
+overdub)

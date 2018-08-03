@@ -3,9 +3,24 @@
 ############
 
 """
-    Cassette.@context Ctx
+```
+Cassette.@context Ctx
+```
 
-Define a new Cassette context type with the name `Ctx`.
+Define a new Cassette context type with the name `Ctx`. In reality, `Ctx` is simply a type
+alias for `Cassette.Context{Cassette.nametype(Ctx)}`.
+
+Note that `Cassette.execute` is automatically overloaded w.r.t. `Ctx` to define several
+primitives by default. A full list of these default primitives can be obtained by running:
+
+```
+methods(Cassette.execute, (Ctx, Vararg{Any}))
+```
+
+Note also that many of the default primitives' signatures only match when contextual tagging
+is enabled.
+
+See also: [`Context`](@ref)
 """
 macro context(Ctx)
     @assert isa(Ctx, Symbol) "context name must be a Symbol"
@@ -21,6 +36,8 @@ macro context(Ctx)
         const $TaggedCtx = $Ctx{<:Any,<:$Cassette.Tag}
 
         $Ctx(; kwargs...) = $Cassette.Context($CtxName(); kwargs...)
+
+        @doc (@doc $Cassette.Context) $Ctx
 
         @inline $Cassette.execute(::C, ::$Typ($Cassette.Tag), ::Type{N}, ::Type{X}) where {C<:$Ctx,N,X} = $Cassette.Tag(N, X, $Cassette.tagtype(C))
 
@@ -61,6 +78,8 @@ macro context(Ctx)
                 return $Cassette.fallback(ctx, f, args...)
             end
         end
+
+        $Ctx
     end)
 end
 
@@ -69,10 +88,14 @@ end
 ############
 
 """
-    Cassette.@overdub(ctx, expression)
+```
+Cassette.@overdub(ctx, expression)
+```
 
 A convenience macro for executing `expression` within the context `ctx`. This macro roughly
 expands to `Cassette.overdub(ctx, () -> expression)`.
+
+See also: [`overdub`](@ref)
 """
 macro overdub(ctx, expr)
     return :($Cassette.overdub($(esc(ctx)), () -> $(esc(expr))))
@@ -83,22 +106,46 @@ end
 #########
 
 """
-    Cassette.@pass transform
+```
+Cassette.@pass transform
+```
 
-Return a Cassette pass that applies `transform` to all overdubbed method bodies. `transform`
-must be callable with the following signature:
+Return a Cassette pass that can be provided to the `Context` constructor's `pass` keyword
+argument in order to apply `transform` to the lowered IR representations of all methods
+invoked during contextual execution.
 
-    transform(ctxtype::Type{<:AbstractContext} signature::Type{Tuple{...}}, method_body::CodeInfo)::CodeInfo
+`transform` must be a Julia object that is callable with the following signature:
 
-Note that this macro expands to an `eval` call and thus should only be called at top-level.
-Furthermore, to avoid world-age issues, `transform` should not be overloaded after it has
-been registered with `@pass`.
+```
+transform(::Type{<:Context}, signature::Type{Tuple{...}}, method_body::CodeInfo)::CodeInfo
+```
+
+Note that the `@pass` macro expands to an `eval` call and thus should only be called at
+top-level. Furthermore, to avoid world-age issues, `transform` should not be overloaded after
+it has been registered with `@pass`.
 
 Note also that `transform` should be "relatively pure." More specifically, Julia's compiler
 has license to apply `transform` multiple times, even if only compiling a single method
 invocation once. Thus, it is required that `transform` always return a generically equivalent
 `CodeInfo` for a given context, method body, and signature ("generically equivalent" meaning
 `==`, not necessarily `===`).
+
+Two special `Expr` heads are available to Cassette pass authors that are not normally valid
+in Julia IR. `Expr`s with these heads can be used to interact with the downstream built-in
+Cassette passes that consume them.
+
+- `:nooverdub`: Wrap an `Expr` with this head value around the first argument in an
+`Expr(:call)` to tell downstream built-in Cassette passes not to overdub that call. For
+example, `Expr(:call, Expr(:nooverdub, GlobalRef(MyModule, :myfunc)), args...)`.
+
+- `contextslot`: Cassette will replace any `Expr(:contextslot)` with the actual `SlotNumber`
+corresponding to the context object associated with the execution trace. For example, one
+could construct an IR element that accesses the context's `metadata` field by emitting:
+`Expr(:call, Expr(:nooverdub, GlobalRef(Core, :getfield)), Expr(:contextslot), QuoteNode(:metadata))`
+
+Cassette provides a few IR-munging utility functions of interest to pass authors: [`insert_statements!`](@ref), [`replace_match!`](@ref)
+
+See also: [`Context`](@ref), [`overdub`](@ref)
 """
 macro pass(transform)
     Pass = gensym("PassType")
