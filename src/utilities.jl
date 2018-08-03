@@ -2,6 +2,21 @@
 # Expression Match/Replace #
 ############################
 
+"""
+```
+replace_match!(replace, ismatch, x)
+```
+
+Return `x` with all subelements `y` replaced with `replace(y)` if `ismatch(y)`. If
+`!ismatch(y)`, but `y` is of type `Expr`, `Array`, or `SubArray`, then replace `y`
+in `x` with `replace_match!(replace, ismatch, y)`.
+
+Generally, `x` should be of type `Expr`, `Array`, or `SubArray`.
+
+Note that this function modifies `x` (and potentially its subelements) in-place.
+
+See also: [`insert_statements!`](@ref)
+"""
 function replace_match!(replace, ismatch, x)
     if ismatch(x)
         return replace(x)
@@ -57,31 +72,75 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     return Reflection(S, method, static_params, code_info)
 end
 
-function insert_ir_elements!(code, codelocs, itemcount, getitems)
+"""
+```
+insert_statements!(code::Vector, codelocs::Vector, stmtcount, newstmts)
+```
+
+For every statement `stmt` at position `i` in `code` for which `stmtcount(stmt, i)` returns
+an `Int`, remove `stmt`, and in its place, insert the statements returned by
+`newstmts(stmt, i)`. If `stmtcount(stmt, i)` returns `nothing`, leave `stmt` alone.
+
+For every insertion, all downstream `SSAValue`s, label indices, etc. are incremented
+appropriately according to number of inserted statements.
+
+Proper usage of this function dictates that following properties hold true:
+
+- `code` is expected to be a valid value for the `code` field of a `CodeInfo` object.
+- `codelocs` is expected to be a valid value for the `codelocs` field of a `CodeInfo` object.
+- `newstmts(stmt, i)` should return a `Vector` of valid IR statements.
+- `stmtcount` and `newstmts` must obey `stmtcount(stmt, i) == length(newstmts(stmt, i))` if
+`isa(stmtcount(stmt, i), Int)`.
+
+To gain a mental model for this function's behavior, consider the following scenario. Let's
+say our `code` object contains several statements:
+
+```
+code = Any[oldstmt1, oldstmt2, oldstmt3, oldstmt4, oldstmt5, oldstmt6]
+codelocs = Int[1, 2, 3, 4, 5, 6]
+```
+
+Let's also say that for our `stmtcount` returns `2` for `stmtcount(oldstmt2, 2)`, returns `3`
+for `stmtcount(oldstmt5, 5)`, and returns `nothing` for all other inputs. From this setup, we
+can think of `code`/`codelocs` being modified in the following manner:
+
+```
+newstmts2 = newstmts(oldstmt2, 2)
+newstmts5 = newstmts(oldstmt5, 5)
+code = Any[oldstmt1,
+           newstmts2[1], newstmts2[2],
+           oldstmt3, oldstmt4,
+           newstmts5[1], newstmts5[2], newstmts5[3],
+           oldstmt6]
+codelocs = Int[1, 2, 2, 3, 4, 5, 5, 5, 6]
+```
+
+See also: [`replace_match!`](@ref)
+"""
+function insert_statements!(code, codelocs, stmtcount, newstmts)
     ssachangemap = fill(0, length(code))
     labelchangemap = fill(0, length(code))
     worklist = Tuple{Int,Int}[]
     for i in 1:length(code)
         stmt = code[i]
-        nitems = itemcount(stmt, i)
-        if nitems !== nothing
-            addeditems = nitems - 1
-            push!(worklist, (i, addeditems))
-            ssachangemap[i] = addeditems
+        nstmts = stmtcount(stmt, i)
+        if nstmts !== nothing
+            addedstmts = nstmts - 1
+            push!(worklist, (i, addedstmts))
+            ssachangemap[i] = addedstmts
             if i < length(code)
-                labelchangemap[i + 1] = addeditems
+                labelchangemap[i + 1] = addedstmts
             end
         end
     end
     Core.Compiler.renumber_ir_elements!(code, ssachangemap, labelchangemap)
-    for (i, addeditems) in worklist
-        i += ssachangemap[i] - addeditems # correct the index for accumulated offsets
-        stmt = code[i]
-        items = getitems(stmt, i)
-        @assert length(items) == (addeditems + 1)
-        code[i] = items[end]
-        for j in 1:(length(items) - 1) # insert in reverse to maintain the provided ordering
-            insert!(code, i, items[end - j])
+    for (i, addedstmts) in worklist
+        i += ssachangemap[i] - addedstmts # correct the index for accumulated offsets
+        stmts = newstmts(code[i], i)
+        @assert length(stmts) == (addedstmts + 1)
+        code[i] = stmts[end]
+        for j in 1:(length(stmts) - 1) # insert in reverse to maintain the provided ordering
+            insert!(code, i, stmts[end - j])
             insert!(codelocs, i, codelocs[i])
         end
     end

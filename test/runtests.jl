@@ -1,6 +1,6 @@
 using Test, Cassette
 using Cassette: @context, @pass, @overdub, overdub, hasmetadata, metadata, hasmetameta,
-                metameta, untag, tag, withtagfor, untagtype, istagged, istaggedtype,
+                metameta, untag, tag, enabletagging, untagtype, istagged, istaggedtype,
                 Tagged, fallback, canoverdub, similarcontext
 
 const Typ = Core.Typeof
@@ -185,7 +185,7 @@ baz_identity(x::Int) = Baz(x, float(x), "$x").x
 @context BazCtx
 Cassette.metadatatype(::Type{<:BazCtx}, ::Type{<:Number}) = Float64
 x, n = rand(Int), rand()
-ctx = withtagfor(BazCtx(), baz_identity)
+ctx = enabletagging(BazCtx(), baz_identity)
 result = overdub(ctx, baz_identity, tag(x, ctx, n))
 
 @test untag(result, ctx) === x
@@ -226,7 +226,7 @@ end
 @context FooBarCtx
 Cassette.metadatatype(::Type{<:FooBarCtx}, ::Type{T}) where T<:Number = T
 x, n = 1, 2
-ctx = withtagfor(FooBarCtx(), foo_bar_identity)
+ctx = enabletagging(FooBarCtx(), foo_bar_identity)
 result = overdub(ctx, foo_bar_identity, tag(x, ctx, n))
 
 @test untag(result, ctx) === float(x)
@@ -244,7 +244,7 @@ result = overdub(ctx, foo_bar_identity, tag(x, ctx, n))
 @context TaggedTupleCtx
 Cassette.metadatatype(::Type{<:TaggedTupleCtx}, ::DataType) = Float64
 x = rand()
-ctx = withtagfor(TaggedTupleCtx(), 1)
+ctx = enabletagging(TaggedTupleCtx(), 1)
 result = overdub(ctx, x -> (x, [x], 1), x)
 
 @test untag(result, ctx) == (x, [x], 1)
@@ -266,14 +266,14 @@ result = overdub(ctx, x -> (x, [x], 1), x)
 @context ApplyCtx
 x = rand()
 applytest(x) = Core._apply(hypot, (x,), (1,x), 1, x, (1,2))
-ctx = withtagfor(ApplyCtx(), 1)
+ctx = enabletagging(ApplyCtx(), 1)
 @test overdub(ctx, applytest, tag(x, ctx)) === applytest(x)
 
 ############################################################################################
 
 @context VATupleCtx
 x = rand(5)
-ctx = withtagfor(VATupleCtx(), 1)
+ctx = enabletagging(VATupleCtx(), 1)
 result = overdub(ctx, broadcast, sin, x)
 
 @test untag(result, ctx) == sin.(x)
@@ -290,7 +290,7 @@ result = overdub(ctx, broadcast, sin, x)
 
 @context BroadcastCtx
 v, m = rand(5), rand(5)
-ctx = withtagfor(BroadcastCtx(), 1)
+ctx = enabletagging(BroadcastCtx(), 1)
 Cassette.metadatatype(::Type{<:BroadcastCtx}, ::Type{T}) where {T<:Number} = T
 
 result = overdub(ctx, broadcast, (v, m) -> tag(v, ctx, m), v, m)
@@ -327,7 +327,7 @@ Cassette.metadatatype(::Type{<:BroadcastCtx2{Int}}, ::Type{T}) where {T<:Number}
 Cassette.metadatatype(::Type{<:BroadcastCtx2{Val{N}}}, ::Type{T}) where {N,T<:Number} = NTuple{N,T}
 
 v, m = rand(5), rand(5)
-ctx = withtagfor(BroadcastCtx2(metadata=10), 1)
+ctx = enabletagging(BroadcastCtx2(metadata=10), 1)
 result = overdub(ctx, broadcast, (v, m) -> tag(v, ctx, m), v, [m])
 @test untag(result, ctx) == v
 @test untagtype(typeof(result), typeof(ctx)) === typeof(v)
@@ -342,7 +342,7 @@ end)
 @test hasmetameta(result, ctx)
 
 v, m = rand(5), (1.0,2.0,3.0)
-ctx = withtagfor(BroadcastCtx2(metadata=Val(3)), 1)
+ctx = enabletagging(BroadcastCtx2(metadata=Val(3)), 1)
 result = overdub(ctx, broadcast, (v, m) -> tag(v, ctx, m), v, [m])
 @test untag(result, ctx) == v
 @test untagtype(typeof(result), typeof(ctx)) === typeof(v)
@@ -362,7 +362,7 @@ end
 
 @test Cassette.metatype(typeof(MetaTypeCtx()), DataType) === Cassette.Meta{Cassette.NoMetaData,Cassette.NoMetaMeta}
 
-ctx = withtagfor(MetaTypeCtx(), 1)
+ctx = enabletagging(MetaTypeCtx(), 1)
 
 @test overdub(ctx, T -> (T,T), Float64) === (Float64, Float64)
 
@@ -377,7 +377,7 @@ Cassette.metadatatype(::Type{<:DiffCtx}, ::Type{T}) where {T<:Real} = T
 tangent(x, context) = hasmetadata(x, context) ? metadata(x, context) : zero(untag(x, context))
 
 function D(f, x)
-    ctx = withtagfor(DiffCtx(), f)
+    ctx = enabletagging(DiffCtx(), f)
     result = overdub(ctx, f, tag(x, ctx, oftype(x, 1.0)))
     return tangent(result, ctx)
 end
@@ -453,7 +453,7 @@ relulayer(W, x, b) = relu.(W*x .+ b)
 ############################################################################################
 
 @context TagConditionalCtx
-ctx = withtagfor(TagConditionalCtx(), 1)
+ctx = enabletagging(TagConditionalCtx(), 1)
 @test overdub(ctx, x -> x ? 1 : 2, tag(true, ctx)) === 1
 
 function condtest(b)
@@ -470,7 +470,7 @@ end
 ############################################################################################
 
 @context KwargCtx
-ctx = withtagfor(KwargCtx(), 1)
+ctx = enabletagging(KwargCtx(), 1)
 kwargtest(x; y = 1) = x + y
 @test overdub(ctx, _y -> kwargtest(3; y = _y), tag(2, ctx)) === 5
 
@@ -483,7 +483,7 @@ mutable struct RecurType
     RecurType() = new()
 end
 
-ctx = withtagfor(RecurTagCtx(), 1)
+ctx = enabletagging(RecurTagCtx(), 1)
 x = tag(RecurType(), ctx)
 
 @overdub(ctx, x.r = RecurType())
@@ -585,7 +585,7 @@ function Cassette.execute(ctx::CrazyPropCtx, ::typeof(+), x, y)
         return z
     end
 end
-ctx = withtagfor(CrazyPropCtx(), CrazyPropModule.crazy_sum_mul)
+ctx = enabletagging(CrazyPropCtx(), CrazyPropModule.crazy_sum_mul)
 xm, ym = rand(100), rand(100)
 tx = overdub(ctx, broadcast, (v, m) -> tag(v, ctx, m), x, xm)
 ty = overdub(ctx, broadcast, (v, m) -> tag(v, ctx, m), y, ym)
