@@ -355,7 +355,7 @@ untag(x, context::Context)
 Return `x` untagged w.r.t. `context` if `istagged(x, context)`, otherwise return
 `x` directly.
 
-In other words, `untag(tag(x, context), context) === x` is always `true`
+In other words, `untag(tag(x, context), context) === x` is always `true`.
 
 If `!istagged(x, context)`, then `untag(x, context) === x` is `true`.
 
@@ -365,10 +365,35 @@ untag(x, context::Context) = untag(x, context.tag)
 untag(x::Tagged{T}, tag::T) where {T<:Tag} = x.value
 untag(x, ::Union{Tag,Nothing}) = x
 
+"""
+```
+untagtype(::Type{T}, ::Type{C<:Context})
+```
+
+Return `typeof(untag(::T, ::C))`.
+
+In other words, `untagtype(typeof(tag(x, context)), typeof(context)) === typeof(x)` is always
+`true`.
+
+If `!istaggedtype(T, C)`, then `untagtype(T, C) === T` is `true`.
+"""
 untagtype(X::Type, ::Type{C}) where {C<:Context} = untagtype(X, tagtype(C))
 untagtype(::Type{<:Tagged{T,V}}, ::Type{T}) where {T<:Tag,V} = V
 untagtype(X::Type, ::Type{<:Union{Tag,Nothing}}) = X
 
+"""
+```
+metadata(x, context::Context)
+```
+
+Return the `metadata` attached to `x` if `hasmetadata(x, context)`, otherwise return
+`Cassette.NoMetaData()`.
+
+In other words, `metadata(tag(x, context, m)), context) === m` is always `true`.
+
+If `!hasmetadata(x, context)`, then `metadata(x, context) === Cassette.NoMetaData()` is
+`true`.
+"""
 metadata(x, context::Context) = metadata(x, context.tag)
 metadata(x::Tagged{T}, tag::T) where {T<:Tag} = x.meta.data
 metadata(::Any, ::Union{Tag,Nothing}) = NoMetaData()
@@ -377,14 +402,48 @@ metameta(x, context::Context) = metameta(x, context.tag)
 metameta(x::Tagged{T}, tag::T) where {T<:Tag} = x.meta.meta
 metameta(::Any, ::Union{Tag,Nothing}) = NoMetaMeta()
 
+"""
+```
+istagged(x, context::Context)
+```
+
+Return `true` if `x` is tagged w.r.t. `context`, return `false` otherwise.
+
+In other words, `istagged(tag(x, context), context)` is always `true`.
+
+See also: [`tag`](@ref), [`istaggedtype`](@ref)
+"""
 istagged(x, context::Context) = istagged(x, context.tag)
 istagged(x::Tagged{T}, tag::T) where {T<:Tag} = true
 istagged(::Any, ::Union{Tag,Nothing}) = false
 
+"""
+```
+istaggedtype(::Type{T}, ::Type{C<:Context})
+```
+
+Return `typeof(istagged(::T, ::C))`.
+
+In other words, `istaggedtype(typeof(tag(x, context)), typeof(context))` is always `true`.
+
+See also: [`tag`](@ref), [`istagged`](@ref)
+"""
 istaggedtype(X::Type, ::Type{C}) where {C<:Context} = istaggedtype(X, tagtype(C))
 istaggedtype(::Type{<:Tagged{T}}, ::Type{T}) where {T<:Tag} = true
 istaggedtype(::DataType, ::Type{<:Union{Tag,Nothing}}) = false
 
+"""
+```
+hasmetadata(x, context::Context)
+```
+
+Return `true` if `!isa(metadata(x, context), Cassette.NoMetaData)`, return `false` otherwise.
+
+In other words, `hasmetadata(tag(x, context, m), context)` is always `true` and
+`hasmetadata(tag(x, context), context)` is always `false`.
+
+See also: [`metadata`](@ref)
+"""
 hasmetadata(x, context::Context) = hasmetadata(x, context.tag)
 hasmetadata(x, tag::Union{Tag,Nothing}) = !isa(metadata(x, tag), NoMetaData)
 
