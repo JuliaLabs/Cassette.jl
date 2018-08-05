@@ -648,7 +648,6 @@ function tagged_getfield(context::ContextWithTag{T}, x::Tagged{T}, name) where {
     return Tagged(context, y_value, y_meta)
 end
 
-
 #=== tagged_setfield! ===#
 
 tagged_setfield!(context::ContextWithTag{T}, x, name, y, boundscheck) where {T} = setfield!(x, untag(name, context), y, untag(boundscheck, context))
