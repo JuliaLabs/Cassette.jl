@@ -310,27 +310,16 @@ end
 # `Tagged` #
 ############
 
-#=
-Here, `U` is the innermost, "underlying" type of the value being wrapped. This parameter is
-precomputed so that Cassette can directly dispatch on it in signatures generated for
-contextual primitives.
-=#
-struct Tagged{T<:Tag,U,V,D,M}
+struct Tagged{T<:Tag,V,D,M}
     tag::T
     value::V
     meta::Meta{D,M}
     function Tagged(context::C, value::V, meta::Meta) where {T<:Tag,V,C<:ContextWithTag{T}}
-        U = _underlying_type(V)
         D = metadatatype(C, V)
         M = metametatype(C, V)
-        return new{T,U,V,D,M}(context.tag, value, convert(Meta{D,M}, meta))
+        return new{T,V,D,M}(context.tag, value, convert(Meta{D,M}, meta))
     end
 end
-
-#=== `Tagged` internals ===#
-
-_underlying_type(V::Type) = V
-_underlying_type(::Type{<:Tagged{<:Tag,U}}) where {U} = U
 
 #=== `Tagged` API ===#
 
@@ -377,7 +366,7 @@ untag(x::Tagged{T}, tag::T) where {T<:Tag} = x.value
 untag(x, ::Union{Tag,Nothing}) = x
 
 untagtype(X::Type, ::Type{C}) where {C<:Context} = untagtype(X, tagtype(C))
-untagtype(::Type{<:Tagged{T,U,V}}, ::Type{T}) where {T<:Tag,U,V} = V
+untagtype(::Type{<:Tagged{T,V}}, ::Type{T}) where {T<:Tag,V} = V
 untagtype(X::Type, ::Type{<:Union{Tag,Nothing}}) = X
 
 metadata(x, context::Context) = metadata(x, context.tag)
