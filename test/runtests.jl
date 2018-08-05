@@ -392,55 +392,6 @@ ctx = enabletagging(MetaTypeCtx(), 1)
 
 ############################################################################################
 
-@context DiffCtx
-
-const DiffCtxWithTag{T} = DiffCtx{Nothing,T}
-
-Cassette.metadatatype(::Type{<:DiffCtx}, ::Type{T}) where {T<:Real} = T
-
-tangent(x, context) = hasmetadata(x, context) ? metadata(x, context) : zero(untag(x, context))
-
-function D(f, x)
-    ctx = enabletagging(DiffCtx(), f)
-    result = overdub(ctx, f, tag(x, ctx, oftype(x, 1.0)))
-    return tangent(result, ctx)
-end
-
-function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(sin), x::Tagged{T,<:Real}) where {T}
-    vx, dx = untag(x, ctx), tangent(x, ctx)
-    return tag(sin(vx), ctx, cos(vx) * dx)
-end
-
-function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(cos), x::Tagged{T,<:Real}) where {T}
-    vx, dx = untag(x, ctx), tangent(x, ctx)
-    return tag(cos(vx), ctx, -sin(vx) * dx)
-end
-
-function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(*), x::Tagged{T,<:Real}, y::Tagged{T,<:Real}) where {T}
-    vx, dx = untag(x, ctx), tangent(x, ctx)
-    vy, dy = untag(y, ctx), tangent(y, ctx)
-    return tag(vx * vy, ctx, vy * dx + vx * dy)
-end
-
-function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(*), x::Tagged{T,<:Real}, y::Real) where {T}
-    vx, dx = untag(x, ctx), tangent(x, ctx)
-    return tag(vx * y, ctx, y * dx)
-end
-
-function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(*), x::Real, y::Tagged{T,<:Real}) where {T}
-    vy, dy = untag(y, ctx), tangent(y, ctx)
-    return tag(x * vy, ctx, x * dy)
-end
-
-@test D(sin, 1) === cos(1)
-@test D(x -> D(sin, x), 1) === -sin(1)
-@test D(x -> sin(x) * cos(x), 1) === cos(1)^2 - sin(1)^2
-@test D(x -> x * D(y -> x * y, 1), 2) === 4
-@test D(x -> x * D(y -> x * y, 2), 1) === 2
-@test D(x -> x * foo_bar_identity(x), 1) === 2.0
-
-############################################################################################
-
 # issue #51
 @context GemvCtx
 using LinearAlgebra
@@ -548,6 +499,7 @@ module CrazyPropModule
         @assert length(x) === length(y)
         fooc = FooContainer(Foo(x))
         tmp = y
+
         # this loop sets:
         # `const_binding == x`
         # `global_binding == prod(y)`
@@ -617,3 +569,75 @@ tagged_result = overdub(ctx, CrazyPropModule.crazy_sum_mul, tx, ty)
 
 @test isapprox(untag(tagged_result, ctx), primal_result)
 @test isapprox(metadata(tagged_result, ctx), CrazyPropModule.crazy_sum_mul(xm, ym))
+
+############################################################################################
+
+@context DiffCtx
+
+const DiffCtxWithTag{T} = DiffCtx{Nothing,T}
+
+Cassette.metadatatype(::Type{<:DiffCtx}, ::Type{T}) where {T<:Real} = T
+
+tangent(x, context) = hasmetadata(x, context) ? metadata(x, context) : zero(untag(x, context))
+
+function D(f, x)
+    ctx = enabletagging(DiffCtx(), f)
+    result = overdub(ctx, f, tag(x, ctx, oftype(x, 1.0)))
+    return tangent(result, ctx)
+end
+
+function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(sin), x::Tagged{T,<:Real}) where {T}
+    vx, dx = untag(x, ctx), tangent(x, ctx)
+    return tag(sin(vx), ctx, cos(vx) * dx)
+end
+
+function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(cos), x::Tagged{T,<:Real}) where {T}
+    vx, dx = untag(x, ctx), tangent(x, ctx)
+    return tag(cos(vx), ctx, -sin(vx) * dx)
+end
+
+function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(*), x::Tagged{T,<:Real}, y::Tagged{T,<:Real}) where {T}
+    vx, dx = untag(x, ctx), tangent(x, ctx)
+    vy, dy = untag(y, ctx), tangent(y, ctx)
+    return tag(vx * vy, ctx, vy * dx + vx * dy)
+end
+
+function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(*), x::Tagged{T,<:Real}, y::Real) where {T}
+    vx, dx = untag(x, ctx), tangent(x, ctx)
+    return tag(vx * y, ctx, y * dx)
+end
+
+function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(*), x::Real, y::Tagged{T,<:Real}) where {T}
+    vy, dy = untag(y, ctx), tangent(y, ctx)
+    return tag(x * vy, ctx, x * dy)
+end
+
+function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(+), x::Tagged{T,<:Real}, y::Tagged{T,<:Real}) where {T}
+    vx, dx = untag(x, ctx), tangent(x, ctx)
+    vy, dy = untag(y, ctx), tangent(y, ctx)
+    return tag(vx + vy, ctx, dx + dy)
+end
+
+function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(+), x::Tagged{T,<:Real}, y::Real) where {T}
+    vx, dx = untag(x, ctx), tangent(x, ctx)
+    return tag(vx + y, ctx, dx)
+end
+
+function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(+), x::Real, y::Tagged{T,<:Real}) where {T}
+    vy, dy = untag(y, ctx), tangent(y, ctx)
+    return tag(x + vy, ctx, dy)
+end
+
+Cassette.execute(ctx::DiffCtx, ::typeof(println), args...) = println(args...)
+
+@test D(sin, 1) === cos(1)
+@test D(x -> D(sin, x), 1) === -sin(1)
+@test D(x -> sin(x) * cos(x), 1) === cos(1)^2 - sin(1)^2
+@test D(x -> x * D(y -> x * y, 1), 2) === 4
+@test D(x -> x * D(y -> x * y, 2), 1) === 2
+@test D(x -> x * foo_bar_identity(x), 1) === 2.0
+
+x = rand()
+@test D(x -> (x + 2) * (3 + x), x) === 2x + 5
+@test D(x -> CrazyPropModule.crazy_sum_mul([x], [x]), x) === (x + x)
+@test D(x -> CrazyPropModule.crazy_sum_mul([x, 2], [3, x]), x) === 2x + 5
