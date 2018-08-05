@@ -126,22 +126,21 @@ it has been registered with `@pass`.
 
 Note also that `transform` should be "relatively pure." More specifically, Julia's compiler
 has license to apply `transform` multiple times, even if only compiling a single method
-invocation once. Thus, it is required that `transform` always return a generically equivalent
-`CodeInfo` for a given context, method body, and signature ("generically equivalent" meaning
-`==`, not necessarily `===`).
+invocation once. Thus, it is required that `transform` always return a generally "equivalent"
+`CodeInfo` for a given context, method body, and signature.
 
 Two special `Expr` heads are available to Cassette pass authors that are not normally valid
 in Julia IR. `Expr`s with these heads can be used to interact with the downstream built-in
 Cassette passes that consume them.
 
 - `:nooverdub`: Wrap an `Expr` with this head value around the first argument in an
-`Expr(:call)` to tell downstream built-in Cassette passes not to overdub that call. For
-example, `Expr(:call, Expr(:nooverdub, GlobalRef(MyModule, :myfunc)), args...)`.
+    `Expr(:call)` to tell downstream built-in Cassette passes not to overdub that call. For
+    example, `Expr(:call, Expr(:nooverdub, GlobalRef(MyModule, :myfunc)), args...)`.
 
-- `contextslot`: Cassette will replace any `Expr(:contextslot)` with the actual `SlotNumber`
-corresponding to the context object associated with the execution trace. For example, one
-could construct an IR element that accesses the context's `metadata` field by emitting:
-`Expr(:call, Expr(:nooverdub, GlobalRef(Core, :getfield)), Expr(:contextslot), QuoteNode(:metadata))`
+- `:contextslot`: Cassette will replace any `Expr(:contextslot)` with the actual `SlotNumber`
+    corresponding to the context object associated with the execution trace. For example, one
+    could construct an IR element that accesses the context's `metadata` field by emitting:
+    `Expr(:call, Expr(:nooverdub, GlobalRef(Core, :getfield)), Expr(:contextslot), QuoteNode(:metadata))`
 
 Cassette provides a few IR-munging utility functions of interest to pass authors: [`insert_statements!`](@ref), [`replace_match!`](@ref)
 

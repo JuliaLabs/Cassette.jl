@@ -77,19 +77,19 @@ To enable contextual tagging for a given context instance, see the `enabletaggin
 # Fields
 
 - `name::N<:Cassette.AbstractContextName`: a parameter used to disambiguate different
-contexts for overloading purposes (e.g. distinguishes `MyCtx` from other `Context` type
-aliases).
+    contexts for overloading purposes (e.g. distinguishes `MyCtx` from other `Context` type
+    aliases).
 
 - `metadata::M<:Any`: trace-local metadata as provided to the context constructor
 
 - `pass::P<:Cassette.AbstractPass`: the Cassette pass that will be applied to all method
-bodies encountered during contextual execution (see the `@pass` macro for details).
+    bodies encountered during contextual execution (see the `@pass` macro for details).
 
 - `tag::T<:Union{Nothing,Tag}`: the tag object that is attached to values when they are
-tagged w.r.t. the context instance
+    tagged w.r.t. the context instance
 
 - `bindingscache::B<:Union{Nothing,BindingMetaDictCache}}`: storage for metadata associated
-with tagged module bindings
+    with tagged module bindings
 """
 struct Context{N<:AbstractContextName,
                M<:Any,
@@ -184,7 +184,7 @@ julia> Cassette.hastagging(typeof(ctx))
 true
 ```
 
-See also: [`enabledtagging`](@ref)
+See also: [`enabletagging`](@ref)
 """
 hastagging(::Type{<:ContextWithTag{<:Tag}}) = true
 hastagging(::Type{<:ContextWithTag{Nothing}}) = false
