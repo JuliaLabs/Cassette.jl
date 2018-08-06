@@ -74,7 +74,7 @@ posthook for that context.
 
 To understand when/how this method is called, see the documentation for [`overdub`](@ref).
 
-Invoking `posthook` is a no-op by default (it immediately returns `nothing`).
+Invoking `posthook` immediately returns `output` by default.
 
 See also: [`overdub`](@ref), [`prehook`](@ref), [`execute`](@ref), [`fallback`](@ref)
 
@@ -85,7 +85,7 @@ Simple trace logging:
 ```
 julia> Cassette.@context PrintCtx;
 
-julia> Cassette.posthook(::PrintCtx, output, f, args...) = println(output, " = ", f, args)
+julia> Cassette.posthook(::PrintCtx, out, f, args...) = (println(out, " = ", f, args); out)
 
 julia> Cassette.overdub(PrintCtx(), /, 1, 2)
 1.0 = sitofp(Float64, 1)
@@ -110,7 +110,7 @@ julia> mutable struct Accum
 
 julia> Cassette.@context AccumCtx;
 
-julia> Cassette.posthook(ctx::AccumCtx{Accum}, out::Number, f, args...) = (ctx.metadata.x += out)
+julia> Cassette.posthook(ctx::AccumCtx{Accum}, out::Number, f, args...) = (ctx.metadata.x += out; out)
 
 julia> ctx = AccumCtx(metadata = Accum(0));
 
@@ -121,7 +121,7 @@ julia> ctx.metadata.x
 13.0
 ```
 """
-@inline posthook(::Context, ::Vararg{Any}) = nothing
+@inline posthook(::Context, output, ::Vararg{Any}) = output
 
 """
 ```
@@ -476,13 +476,14 @@ function overdub_pass!(reflection::Reflection,
             callstmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
             execstmt = Expr(:call, GlobalRef(Cassette, :execute), overdub_ctx_slot, callstmt.args...)
             overdubstmt = Expr(:call, GlobalRef(Cassette, :overdub), overdub_ctx_slot, callstmt.args...)
+            posthookstmt = Expr(:call, GlobalRef(Cassette, :posthook), overdub_ctx_slot, overdub_tmp_slot, callstmt.args...)
             return [
                 Expr(:call, GlobalRef(Cassette, :prehook), overdub_ctx_slot, callstmt.args...),
                 Expr(:(=), overdub_tmp_slot, execstmt),
                 Expr(:call, GlobalRef(Core, :isa), overdub_tmp_slot, GlobalRef(Cassette, :OverdubInstead)),
                 Expr(:gotoifnot, SSAValue(i + 2), i + 6),
                 Expr(:(=), overdub_tmp_slot, overdubstmt),
-                Expr(:call, GlobalRef(Cassette, :posthook), overdub_ctx_slot, overdub_tmp_slot, callstmt.args...),
+                Expr(:(=), overdub_tmp_slot, posthookstmt),
                 Base.Meta.isexpr(x, :(=)) ? Expr(:(=), x.args[1], overdub_tmp_slot) : overdub_tmp_slot
             ]
         end
@@ -554,7 +555,7 @@ function overdub_definition(pass, line, file)
             prehook(ctx, f, args...)
             output = execute(ctx, f, args...)
             output = isa(output, OverdubInstead) ? overdub(ctx, f, args...) : output
-            posthook(ctx, output, f, args...)
+            output = posthook(ctx, output, f, args...)
             return output
         end
     end
@@ -577,8 +578,8 @@ replaced by statements similar to the following:
 begin
     prehook(context, g, x...)
     tmp = execute(context, g, x...)
-    tmp = isa(tmp, Cassette.OverdubInstead) ? overdub(context, g, args...) : tmp
-    posthook(context, tmp, g, x...)
+    tmp = isa(tmp, Cassette.OverdubInstead) ? overdub(context, g, x...) : tmp
+    tmp = posthook(context, tmp, g, x...)
     tmp
 end
 ```
