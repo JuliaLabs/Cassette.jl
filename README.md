@@ -3,14 +3,17 @@
 <img width="350px" src="https://raw.githubusercontent.com/jrevels/Cassette.jl/master/docs/img/cassette-logo.png"/>
 </p>
 
+[![Build Status](https://travis-ci.org/jrevels/Cassette.jl.svg?branch=master)](https://travis-ci.org/jrevels/Cassette.jl)
+[![Coverage Status](https://coveralls.io/repos/github/jrevels/Cassette.jl/badge.svg)](https://coveralls.io/github/jrevels/Cassette.jl)
+
 ## Overview
 
-Cassette is a Julia package that provides a mechanism for dynamically injecting code transformation passes into Julia’s just-in-time (JIT) compilation cycle, enabling post hoc analysis and modification of "Cassette-unaware" Julia programs without requiring manual source annotation or refactoring of the target code.
+Cassette lets you easily extend the Julia language by directly injecting the Julia compiler with new, context-specific behaviors.
 
-Cassette's API is built upon the notion of user-definable execution contexts, which are represented as normal Julia types. Using Cassette, any normal Julia function can be invoked within an execution context via a process called "overdubbing". Cassette provides users with multiple ways to define the execution of code overdubbed with their context type. For example, Cassette's lowest level interface allows users to apply Julia functions of the form `mypass(::Type{MyContext}, signature::Type{Tuple{...}}, method_body::CodeInfo)::CodeInfo` to every method body encountered during overdubbed execution at compile-time. Cassette also provides a higher-level, dispatch-based interface that allows users to safely and quickly overload existing Julia methods with context-specific behaviors without ever needing to handle Julia’s IR directly.
+More technically, Cassette is a Julia package that provides a mechanism for dynamically injecting code transformation passes into Julia’s just-in-time (JIT) compilation cycle, enabling post hoc analysis and modification of "Cassette-unaware" Julia programs without requiring manual source annotation or refactoring of the target code.
 
-On top of contextual pass injection and contextual dispatch, Cassette implements a system for "tagging" target program values with contextual metadata (e.g. a numerical value's derivative) and automatically propagating this metadata through the target program's structural/dispatch type constraints.
+Cassette's API is built upon the notion of user-definable execution contexts, which are represented as normal Julia types. Using Cassette, any normal Julia function can be invoked within an execution context via a process called "overdubbing". Cassette provides users with multiple ways to define the execution of code overdubbed with their context type. For example, Cassette's lowest level interface allows users to apply Julia functions of the form `mypass(::Type{MyContext}, signature::Type{Tuple{...}}, method_body::CodeInfo)::CodeInfo` to every method body encountered during overdubbed execution at compile-time. Cassette also provides a higher-level "contextual dispatch" interface that allows users to safely and quickly overload existing Julia methods with context-specific behaviors without ever needing to handle Julia’s IR directly.
+
+On top of contextual pass injection and contextual dispatch, Cassette implements a system for "tagging" values with respect to a context, optionally attaching metadata to these tagged values (e.g. the value's derivative). Cassette can then automatically propagate these tagged values throughout target programs, even in the presence of structural and/or dispatch type constraints.
 
 Downstream applications for Cassette include dynamic code analysis (e.g. profiling, rr-style debugging, etc.), JIT compilation to new hardware/software backends, automatic differentiation, interval constraint programming, automatic parallelization/rescheduling, automatic memoization, lightweight multistage programming, graph extraction, and more.
-
-If you'd like to know more, please see [this Youtube video of a recent talk at MIT](https://www.youtube.com/watch?v=lyX-isPDS2M) that dives into the details of Cassette's design and implementation.
