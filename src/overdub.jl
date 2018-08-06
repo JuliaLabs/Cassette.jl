@@ -555,8 +555,7 @@ function overdub_definition(pass, line, file)
             prehook(ctx, f, args...)
             output = execute(ctx, f, args...)
             output = isa(output, OverdubInstead) ? overdub(ctx, f, args...) : output
-            output = posthook(ctx, output, f, args...)
-            return output
+            return posthook(ctx, output, f, args...)
         end
     end
 end
