@@ -1,7 +1,7 @@
 # Disclaimers (Don't Say I Didn't Warn You)
 
-Cassette can be a powerful tool for extending the Julia language, but it can also function as
-a loaded foot-gun. Here are some things one should know before using Cassette:
+Cassette can be a powerful tool for extending the Julia language, but it functions equally
+well as a loaded foot-gun. Here are some things one should know before using Cassette:
 
 - **Cassette, its API, and its documentation targets Julia package developers and/or those
     interested in doing compiler research using Julia.** Cassette users are expected to have
@@ -15,9 +15,9 @@ a loaded foot-gun. Here are some things one should know before using Cassette:
 
 - For now, **Cassette technically only supports a single specific version of Julia at a
     time**; differing by even a patch version could (theoretically) break Cassette entirely.
-    This is because of Cassette's close interaction with Julia internals that traditionally
-    have license to change between patch versions. In the future, the planned resolution for
-    the issue is for Julia itself to perform reverse-dependency testing against Cassette's
+    This is because Cassette interacts closely with Julia internals that traditionally have
+    license to change between patch versions. In the future, the planned solution for this
+    issue is for Julia itself to perform reverse-dependency testing against Cassette's
     tests, such that breaking changes to Julia compiler are discovered and fixed immediately.
 
 - **The performance of Cassette's implementation of the contextual tagging system heavily

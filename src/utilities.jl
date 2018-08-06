@@ -90,7 +90,7 @@ Proper usage of this function dictates that following properties hold true:
 - `codelocs` is expected to be a valid value for the `codelocs` field of a `CodeInfo` object.
 - `newstmts(stmt, i)` should return a `Vector` of valid IR statements.
 - `stmtcount` and `newstmts` must obey `stmtcount(stmt, i) == length(newstmts(stmt, i))` if
-`isa(stmtcount(stmt, i), Int)`.
+    `isa(stmtcount(stmt, i), Int)`.
 
 To gain a mental model for this function's behavior, consider the following scenario. Let's
 say our `code` object contains several statements:
