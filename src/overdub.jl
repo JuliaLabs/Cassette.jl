@@ -581,7 +581,7 @@ replaced by statements similar to the following:
 begin
     prehook(context, g, x...)
     tmp = execute(context, g, x...)
-    tmp = isa(tmp, Cassette.OverdubInstead) ? overdub(context, g, args...) : tmp
+    tmp = isa(tmp, Cassette.OverdubInstead) ? overdub(context, g, x...) : tmp
     posthook(context, tmp, g, x...)
     tmp
 end
