@@ -111,15 +111,16 @@ end
 ```
 
 As you can see, `overdub` is a `@generated` function, and thus returns its own method body
-computed from the run-time types of its inputs. To compute this method body, however,
+computed from the run-time types of its inputs. To actually compute this method body,
 `overdub` is doing something quite special.
 
 First, via `Cassette.reflect`, `overdub` asks Julia's compiler to provide it with a bunch of
-information about the original method call as specified by `args`, including the method's
-lowered IR. The result of this query is `reflection`, which is a `Cassette.Reflection` object
-if the compiler found lowered IR for `args` and `nothing` otherwise (e.g. if `args` specifies
-a built-in call like `getfield` whose implementation is not, itself, Julia code). Then, for
-the former case, we execute a pass over the lowered IR (`Cassette.overdub_pass!`) to perform
-the previously presented transformation, and then return the resulting `CodeInfo` object
-directly from our generator. Otherwise, if no lowered IR is available, we simply call the
-context's [`fallback`](@ref) method (which, by default, simply calls the provided function).
+information about the original method call as specified by `args`. The result of this query
+is `reflection`, which is a `Cassette.Reflection` object if the compiler found lowered IR for
+`args` and `nothing` otherwise (e.g. if `args` specifies a built-in call like `getfield`
+whose implementation is not, itself, Julia code). For the former case, we execute a pass over
+the `reflection` and the lowered IR stored within (`Cassette.overdub_pass!`) to perform the
+previously presented transformation, returning the new lowered IR as a `CodeInfo` object.
+Otherwise, if `reflection` is not a `Reflection` object, then no lowered IR is available, so
+we simply call the context's [`fallback`](@ref) method (which, by default, simply calls the
+provided function).
