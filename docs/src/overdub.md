@@ -33,10 +33,10 @@ get a sense of what that means, let's look at the lowered IR for the original ca
 ```julia
 julia> @code_lowered 1/2
 CodeInfo(
-59 1 ─ %1 = (Base.float)(x)                                                                                       │
-   │   %2 = (Base.float)(y)                                                                                       │
-   │   %3 = %1 / %2                                                                                               │
-   └──      return %3                                                                                             │
+59 1 ─ %1 = (Base.float)(x)
+   │   %2 = (Base.float)(y)
+   │   %3 = %1 / %2
+   └──      return %3
 )
 ```
 
@@ -91,8 +91,35 @@ end
 
 It is here that we experience our first bit of overdubbing magic: for every method call
 in the overdubbed trace, we obtain a bunch of extra overloading points that we didn't
-have before!
+have before! In the [following section on contextual dispatch](contextualdispatch.md), we'll
+explore how [`prehook`](@ref), [`posthook`](@ref), [`execute`](@ref), and more can all be
+overloaded to add new contextual behaviors to overdubbed programs.
 
-In the [following section on contextual dispatch](contextualdispatch.md), we'll explore how
-[`prehook`](@ref), [`posthook`](@ref), [`execute`](@ref), and more can all be overloaded to
-add new contextual behaviors to overdubbed programs.
+In the meantime, we should clarify how `overdub` is achieving this feat. Let's start by
+examining a "psuedo-implementation" of `overdub`:
+
+```julia
+@generated function overdub(context::C, args...) where C<:Context
+    reflection = Cassette.reflect(args)
+    if isa(reflection, Cassette.Reflection)
+        Cassette.overdub_pass!(reflection, C)
+        return reflection.code_info
+    else
+        return :(Cassette.fallback(context, args...))
+    end
+end
+```
+
+As you can see, `overdub` is a `@generated` function, and thus returns its own method body
+computed from the run-time types of its inputs. To compute this method body, however,
+`overdub` is doing something quite special.
+
+First, via `Cassette.reflect`, `overdub` asks Julia's compiler to provide it with a bunch of
+information about the original method call as specified by `args`, including the method's
+lowered IR. The result of this query is `reflection`, which is a `Cassette.Reflection` object
+if the compiler found lowered IR for `args` and `nothing` otherwise (e.g. if `args` specifies
+a built-in call like `getfield` whose implementation is not, itself, Julia code). Then, for
+the former case, we execute a pass over the lowered IR (`Cassette.overdub_pass!`) to perform
+the previously presented transformation, and then return the resulting `CodeInfo` object
+directly from our generator. Otherwise, if no lowered IR is available, we simply call the
+context's [`fallback`](@ref) method (which, by default, simply calls the provided function).
