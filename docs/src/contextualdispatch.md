@@ -20,7 +20,7 @@ end
 
 This transformation yields several extra points of overloadability in the form of various
 Cassette methods, such as [`prehook`](@ref), [`posthook`](@ref), and [`execute`](@ref).
-Together, these methods form Cassette's "contextual dispatch" interface, so-called because it
+Together, these methods form Cassette's "contextual dispatch" interface, so called because it
 allows an extra context parameter to participate in what would normally be a simple dispatch
 to the underlying method call.
 
