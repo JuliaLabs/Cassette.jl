@@ -317,7 +317,7 @@ function overdub_pass!(reflection::Reflection,
                 Expr(:call, GlobalRef(Cassette, :prehook), overdub_ctx_slot, callstmt.args...),
                 Expr(:(=), overdub_tmp_slot, execstmt),
                 Expr(:call, GlobalRef(Core, :isa), overdub_tmp_slot, GlobalRef(Cassette, :OverdubInstead)),
-                Expr(:gotoifnot, SSAValue(i + 2), i + 6),
+                Expr(:gotoifnot, SSAValue(i + 2), i + 5),
                 Expr(:(=), overdub_tmp_slot, overdubstmt),
                 Expr(:call, GlobalRef(Cassette, :posthook), overdub_ctx_slot, overdub_tmp_slot, callstmt.args...),
                 Base.Meta.isexpr(x, :(=)) ? Expr(:(=), x.args[1], overdub_tmp_slot) : overdub_tmp_slot

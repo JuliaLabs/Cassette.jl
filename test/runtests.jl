@@ -41,6 +41,30 @@ end
 
 ############################################################################################
 
+@context HookCtx
+Cassette.prehook(ctx::HookCtx, f, args...) = push!(ctx.metadata[1], (f, args))
+Cassette.posthook(ctx::HookCtx, out, f, args...) = push!(ctx.metadata[2], (f, args))
+
+ctx = HookCtx(metadata=(Any[], Any[]))
+@overdub(ctx, 1 + 1 * 1)
+# assumes the prehook trace is `[(*, ...), (mul_int, ...), (+, ...), (add_int, ...)]`
+@test ctx.metadata[1][1] == ctx.metadata[2][2]
+@test ctx.metadata[1][2] == ctx.metadata[2][1]
+@test ctx.metadata[1][3] == ctx.metadata[2][4]
+@test ctx.metadata[1][4] == ctx.metadata[2][3]
+
+Cassette.execute(::HookCtx, ::typeof(+), args...) = +(args...)
+empty!(ctx.metadata[1])
+empty!(ctx.metadata[2])
+
+@overdub(ctx, 1 + 1 * 1)
+# assumes the prehook trace is `[(*, ...), (mul_int, ...), (+, ...)]`
+@test ctx.metadata[1][1] == ctx.metadata[2][2]
+@test ctx.metadata[1][2] == ctx.metadata[2][1]
+@test ctx.metadata[1][3] == ctx.metadata[2][3]
+
+############################################################################################
+
 x = rand()
 sin_plus_cos(x) = sin(x) + cos(x)
 @context SinCtx
