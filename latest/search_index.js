@@ -77,7 +77,15 @@ var documenterSearchIndex = {"docs": [
     "page": "Contextual Dispatch",
     "title": "Contextual Dispatch",
     "category": "page",
-    "text": "Documentation Coming Soon!"
+    "text": ""
+},
+
+{
+    "location": "contextualdispatch.html#Contextual-Dispatch-1",
+    "page": "Contextual Dispatch",
+    "title": "Contextual Dispatch",
+    "category": "section",
+    "text": "CurrentModule = CassetteIn the previous section, we saw how, within a given execution trace, Cassette\'s overdub mechanism transforms every method invocation of the form f(args...) into statements similar to the following:begin\n    Cassette.prehook(context, f, args...)\n    tmp = Cassette.execute(context, f, args...)\n    tmp = isa(tmp, Cassette.OverdubInstead) ? overdub(context, f, args...) : tmp\n    Cassette.posthook(context, tmp, f, args...)\n    tmp\nendThis transformation yields several extra points of overloadability in the form of various Cassette methods, such as prehook, posthook, and execute. Together, these methods form Cassette\'s \"contextual dispatch\" interface, so-called because it allows an extra context parameter to participate in what would normally be a simple dispatch to the underlying method call.In this section, we\'ll go over these functions in a bit more detail.Coming Soon!"
 },
 
 {
