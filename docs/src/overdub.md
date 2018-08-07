@@ -45,31 +45,31 @@ And now let's look at lowered IR for the call to `overdub(Ctx(), /, 1, 2)`
 ```julia
 julia> @code_lowered Cassette.overdub(Ctx(), /, 1, 2)
 CodeInfo(
-59 1 ─       #self# = (Core.getfield)(##overdub_arguments#369, 1)                                                 │
-   │         x = (Core.getfield)(##overdub_arguments#369, 2)                                                      │
-   │         y = (Core.getfield)(##overdub_arguments#369, 3)                                                      │
-   │         (Cassette.prehook)(##overdub_context#368, Base.float, x)                                             │
-   │         ##overdub_tmp#370 = (Cassette.execute)(##overdub_context#368, Base.float, x)                         │
-   │   %6  = ##overdub_tmp#370 isa Cassette.OverdubInstead                                                        │
-   └──       goto #3 if not %6                                                                                    │
-   2 ─       ##overdub_tmp#370 = (Cassette.overdub)(##overdub_context#368, Base.float, x)                         │
-   └──       ##overdub_tmp#370 = (Cassette.posthook)(##overdub_context#368, ##overdub_tmp#370, Base.float, x)     │
-   3 ─ %10 = ##overdub_tmp#370                                                                                    │
-   │         (Cassette.prehook)(##overdub_context#368, Base.float, y)                                             │
-   │         ##overdub_tmp#370 = (Cassette.execute)(##overdub_context#368, Base.float, y)                         │
-   │   %13 = ##overdub_tmp#370 isa Cassette.OverdubInstead                                                        │
-   └──       goto #5 if not %13                                                                                   │
-   4 ─       ##overdub_tmp#370 = (Cassette.overdub)(##overdub_context#368, Base.float, y)                         │
-   └──       ##overdub_tmp#370 = (Cassette.posthook)(##overdub_context#368, ##overdub_tmp#370, Base.float, y)     │
-   5 ─ %17 = ##overdub_tmp#370                                                                                    │
-   │         (Cassette.prehook)(##overdub_context#368, Base.:/, %10, %17)                                         │
-   │         ##overdub_tmp#370 = (Cassette.execute)(##overdub_context#368, Base.:/, %10, %17)                     │
-   │   %20 = ##overdub_tmp#370 isa Cassette.OverdubInstead                                                        │
-   └──       goto #7 if not %20                                                                                   │
-   6 ─       ##overdub_tmp#370 = (Cassette.overdub)(##overdub_context#368, Base.:/, %10, %17)                     │
-   └──       ##overdub_tmp#370 = (Cassette.posthook)(##overdub_context#368, ##overdub_tmp#370, Base.:/, %10, %17) │
-   7 ─ %24 = ##overdub_tmp#370                                                                                    │
-   └──       return %24                                                                                           │
+59 1 ─       #self# = (Core.getfield)(##overdub_arguments#369, 1)
+   │         x = (Core.getfield)(##overdub_arguments#369, 2)
+   │         y = (Core.getfield)(##overdub_arguments#369, 3)
+   │         (Cassette.prehook)(##overdub_context#368, Base.float, x)
+   │         ##overdub_tmp#370 = (Cassette.execute)(##overdub_context#368, Base.float, x)
+   │   %6  = ##overdub_tmp#370 isa Cassette.OverdubInstead
+   └──       goto #3 if not %6
+   2 ─       ##overdub_tmp#370 = (Cassette.overdub)(##overdub_context#368, Base.float, x)
+   3 ─       (Cassette.posthook)(##overdub_context#368, ##overdub_tmp#370, Base.float, x)
+   │   %10 = ##overdub_tmp#370
+   │         (Cassette.prehook)(##overdub_context#368, Base.float, y)
+   │         ##overdub_tmp#370 = (Cassette.execute)(##overdub_context#368, Base.float, y)
+   │   %13 = ##overdub_tmp#370 isa Cassette.OverdubInstead
+   └──       goto #5 if not %13
+   4 ─       ##overdub_tmp#370 = (Cassette.overdub)(##overdub_context#368, Base.float, y)
+   5 ─       (Cassette.posthook)(##overdub_context#368, ##overdub_tmp#370, Base.float, y)
+   │   %17 = ##overdub_tmp#370
+   │         (Cassette.prehook)(##overdub_context#368, Base.:/, %10, %17)
+   │         ##overdub_tmp#370 = (Cassette.execute)(##overdub_context#368, Base.:/, %10, %17)
+   │   %20 = ##overdub_tmp#370 isa Cassette.OverdubInstead
+   └──       goto #7 if not %20
+   6 ─       ##overdub_tmp#370 = (Cassette.overdub)(##overdub_context#368, Base.:/, %10, %17)
+   7 ─       (Cassette.posthook)(##overdub_context#368, ##overdub_tmp#370, Base.:/, %10, %17)
+   │   %24 = ##overdub_tmp#370
+   └──       return %24
 )
 ```
 
@@ -84,7 +84,7 @@ begin
     Cassette.prehook(context, f, args...)
     tmp = Cassette.execute(context, f, args...)
     tmp = isa(tmp, Cassette.OverdubInstead) ? overdub(context, f, args...) : tmp
-    tmp = Cassette.posthook(context, tmp, f, args...)
+    Cassette.posthook(context, tmp, f, args...)
     tmp
 end
 ```
