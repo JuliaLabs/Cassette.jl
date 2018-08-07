@@ -13,12 +13,13 @@ well as a loaded foot-gun. Here are some things one should know before using Cas
     multiple Cassette contexts. Please file issues on the Cassette and/or Julia issue
     tracker where appropriate.
 
-- For now, **Cassette technically only supports a single specific version of Julia at a
-    time**; differing by even a patch version could (theoretically) break Cassette entirely.
-    This is because Cassette interacts closely with Julia internals that traditionally have
-    license to change between patch versions. In the future, the planned solution for this
-    issue is for Julia itself to perform reverse-dependency testing against Cassette's
-    tests, such that breaking changes to Julia compiler are discovered and fixed immediately.
+- For now, **each individual version of Cassette can technically only support a single
+    specific version of Julia at a time**; differing by even a patch version could
+    (theoretically) break Cassette entirely. This is because Cassette interacts closely with
+    Julia internals that traditionally have license to change between patch versions. In the
+    future, the planned solution for this issue is for Julia itself to perform
+    reverse-dependency testing against Cassette's tests, such that breaking changes to Julia
+    compiler are discovered and fixed immediately.
 
 - **The performance of Cassette's implementation of the contextual tagging system heavily
     depends on compiler improvements planned for the Julia `1.x` release cycle.** In theory,
