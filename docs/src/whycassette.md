@@ -12,7 +12,7 @@ Here are some specific limitations that might be overcome by using Cassette:
 
 - Not all relevant Julia language mechanisms are fully exposed/interceptable via method overloading (e.g. control flow, literals, bindings). Additionally, many different compiler passes require access to a wider scope of information than is locally available at individual method callsites (e.g. graph-based transformations).
 
-- Ambiguity resolution when composing multiple dispatch rules can be difficult. Brute-force solutions end up generating an excessive number of methods, and are often either load-order dependent or incomplete. Julia's promotion mechanism resolves this problem when the involved types are efficiently convertible to one another, but this is not often the case (e.g. subtypes of `AbstractArray`).
+- It is often difficult to fully resolve the kinds of ambiguities that naturally result from the composition of several multiple-dispatch-based tools. Brute-force solutions end up generating an excessive number of methods and are often either code-load-order dependent or incomplete (or even both). Julia's promotion mechanism resolves this problem when the involved types are efficiently convertible to one another, but this is not often the case in practice (e.g. subtypes of `AbstractArray`).
 
 # No, why the *name* "Cassette"?
 
