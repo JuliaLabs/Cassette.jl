@@ -8,7 +8,7 @@ Here are some specific limitations that might be overcome by using Cassette:
 
 - Overloading-based approaches to nonstandard execution are ultimately thwarted by dispatch and/or structural type constraints in non-generic target programs.
 
-- Proper usage of overloading-based nonstandard execution execution tools require proper genericity criteria, i.e. answering "what weird subset of Julia do I really support?". These criteria are often difficult to correctly define and test against for both experienced developers and end-users.
+- Proper usage of overloading-based nonstandard execution tools require proper genericity criteria, i.e. answering "what weird subset of Julia do I really support?". These criteria are often difficult to correctly define and test against for both experienced developers and end-users.
 
 - Not all relevant Julia language mechanisms are fully exposed/interceptable via method overloading (e.g. control flow, literals, bindings). Additionally, many different compiler passes require access to a wider scope of information than is locally available at individual method callsites (e.g. graph-based transformations).
 
