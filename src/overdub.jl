@@ -70,6 +70,10 @@ function overdub_pass!(reflection::Reflection,
 
     #=== munge the code into a valid form for `overdub_generator` ===#
 
+    # NOTE: The slotflags set by this pass are set according to what makes sense based on the
+    # compiler's actual `@code_lowered` output in practice, since this real-world output does
+    # not seem to match Julia's developer documentation.
+
     # construct new slotnames/slotflags for added slots
     code_info.slotnames = Any[:overdub, OVERDUB_CTX_SYMBOL, OVERDUB_ARGS_SYMBOL, code_info.slotnames..., OVERDUB_TMP_SYMBOL]
     code_info.slotflags = UInt8[0x00, 0x00, 0x00, code_info.slotflags..., 0x00]
@@ -92,7 +96,7 @@ function overdub_pass!(reflection::Reflection,
         actual_argument = Expr(:call, GlobalRef(Core, :getfield), overdub_args_slot, i)
         push!(overdubbed_code, :($(SlotNumber(slot)) = $actual_argument))
         push!(overdubbed_codelocs, code_info.codelocs[1])
-        code_info.slotflags[slot] = 0x18 # this slot is now an "SSA slot"
+        code_info.slotflags[slot] |= 0x02 # ensure this slotflag has the "assigned" bit set
     end
 
     # If `method` is a varargs method, we have to restructure the original method call's
