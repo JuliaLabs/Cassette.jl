@@ -91,6 +91,8 @@ end
 
 It is here that we experience our first bit of overdubbing magic: for every method call
 in the overdubbed trace, we obtain a bunch of extra overloading points that we didn't
-have before! [`prehook`](@ref), [`posthook`](@ref), [`execute`](@ref), and more can
-all be overloaded to add new contextual behaviors to overdubbed programs (see these
-methods' API documentation for more details).
+have before!
+
+In the [following section on contextual dispatch](contextualdispatch.md), we'll explore how
+[`prehook`](@ref), [`posthook`](@ref), [`execute`](@ref), and more can all be overloaded to
+add new contextual behaviors to overdubbed programs.
