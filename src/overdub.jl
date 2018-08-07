@@ -520,8 +520,7 @@ function overdub_generator(pass_type, self, context_type, args::Tuple)
             reflection = reflect(untagged_args)
             if isa(reflection, Reflection)
                 overdub_pass!(reflection, context_type, pass_type)
-                body = reflection.code_info
-                return body
+                return reflection.code_info
             end
         catch err
             errmsg = "ERROR COMPILING $args IN CONTEXT $(context_type): \n" * sprint(showerror, err)
