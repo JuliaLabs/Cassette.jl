@@ -4,7 +4,7 @@ Due to its multiple dispatch, method overloading and metaprogramming capabilitie
 
 Over time, however, these amazing Julia tools have run up against the boundaries of purely overloading-based approaches to nonstandard execution. Cassette is an attempt to push these boundaries by giving Julia package developers the ability to fundamentally extend the language for their own purposes.
 
-Here are some specific problems that a developer might overcome or sidestep by using Cassette:
+Here are some specific limitations that might be overcome by using Cassette:
 
 - Overloading-based approaches to nonstandard execution are ultimately thwarted by dispatch and/or structural type constraints in non-generic target programs.
 
@@ -12,7 +12,7 @@ Here are some specific problems that a developer might overcome or sidestep by u
 
 - Not all relevant Julia language mechanisms are fully exposed/interceptable via method overloading (e.g. control flow, literals, bindings). Additionally, many different compiler passes require access to a wider scope of information than is locally available at individual method callsites (e.g. graph-based transformations).
 
-- Ambiguity resolution when composing multiple dispatch rules can be difficult. Brute-force solutions often end up generating an excessive number of methods, and are either load-order dependent or incomplete. Julia's promotion mechanism resolves this problem when the involved types are efficiently convertible to one another, but this is not often the case.
+- Ambiguity resolution when composing multiple dispatch rules can be difficult. Brute-force solutions end up generating an excessive number of methods, and are often either load-order dependent or incomplete. Julia's promotion mechanism resolves this problem when the involved types are efficiently convertible to one another, but this is not often the case (e.g. subtypes of `AbstractArray`).
 
 # No, why the *name* "Cassette"?
 
