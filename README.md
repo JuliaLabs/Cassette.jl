@@ -6,6 +6,9 @@
 [![Build Status](https://travis-ci.org/jrevels/Cassette.jl.svg?branch=master)](https://travis-ci.org/jrevels/Cassette.jl)
 [![Coverage Status](https://coveralls.io/repos/github/jrevels/Cassette.jl/badge.svg)](https://coveralls.io/github/jrevels/Cassette.jl)
 
+[![](https://img.shields.io/badge/docs-stable-blue.svg)](http://www.juliadiff.org/ForwardDiff.jl/stable)
+[![](https://img.shields.io/badge/docs-latest-blue.svg)](http://www.juliadiff.org/ForwardDiff.jl/latest)
+
 ## Overview
 
 Cassette lets you easily extend the Julia language by directly injecting the Julia compiler with new, context-specific behaviors.
