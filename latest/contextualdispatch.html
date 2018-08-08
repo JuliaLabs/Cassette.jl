@@ -5,4 +5,112 @@
     tmp = isa(tmp, Cassette.OverdubInstead) ? overdub(context, f, args...) : tmp
     Cassette.posthook(context, tmp, f, args...)
     tmp
-end</code></pre><p>This transformation yields several extra points of overloadability in the form of various Cassette methods, such as <a href="api.html#Cassette.prehook"><code>prehook</code></a>, <a href="api.html#Cassette.posthook"><code>posthook</code></a>, and <a href="api.html#Cassette.execute"><code>execute</code></a>. Together, these methods form Cassette&#39;s &quot;contextual dispatch&quot; interface, so called because it allows an extra context parameter to participate in what would normally be a simple dispatch to the underlying method call.</p><p>In this section, we&#39;ll go over these functions in a bit more detail.</p><p>Coming Soon!</p><footer><hr/><a class="previous" href="overdub.html"><span class="direction">Previous</span><span class="title">The Overdubbing Mechanism</span></a><a class="next" href="contextualtagging.html"><span class="direction">Next</span><span class="title">Contextual Tagging of Values</span></a></footer></article></body></html>
+end</code></pre><p>This transformation yields several extra points of overloadability in the form of various Cassette methods, such as <a href="api.html#Cassette.prehook"><code>prehook</code></a>, <a href="api.html#Cassette.posthook"><code>posthook</code></a>, and <a href="api.html#Cassette.execute"><code>execute</code></a>. Together, these methods form Cassette&#39;s &quot;contextual dispatch&quot; interface, so called because it allows the extra context parameter to participate in what would normally be a simple dispatch to the underlying method call.</p><p>In this section of the documentation, we&#39;ll go over these functions in a bit more detail.</p><p>To begin, let&#39;s define a simple contextual prehook by overloading the <a href="api.html#Cassette.prehook"><code>prehook</code></a> method w.r.t. to a dummy context:</p><pre><code class="language-julia">julia&gt; using Cassette
+
+julia&gt; Cassette.@context Ctx
+Cassette.Context{nametype(Ctx),M,P,T,B} where B&lt;:Union{Nothing, IdDict{Module,Dict{Symbol,BindingMeta}}} where P&lt;:Cassette.AbstractPass where T&lt;:Union{Nothing, Tag} where M
+
+# this prehook implements simple trace logging for overdubbed functions
+julia&gt; Cassette.prehook(::Ctx, f, args...) = println(f, args)
+
+julia&gt; Cassette.overdub(Ctx(), /, 1, 2)
+float(1,)
+AbstractFloat(1,)
+Float64(1,)
+sitofp(Float64, 1)
+float(2,)
+AbstractFloat(2,)
+Float64(2,)
+sitofp(Float64, 2)
+/(1.0, 2.0)
+div_float(1.0, 2.0)
+0.5</code></pre><p>Cool beans!</p><p>Actually, there&#39;s a subtlety about <code>overdub</code> here we should address before moving on. Why wasn&#39;t the first line in the trace log <code>/(1, 2)</code>? I&#39;ll leave the answer as an exercise to the reader - just recall the definition of <code>overdub</code> from the previous section. If this you have trouble understanding the barrier between <code>overdub</code> and the contextual dispatch interface, try comparing the above with the log generated via <code>overdub(Ctx(), () -&gt; 1/2)</code>.</p><p>For pedagogy&#39;s sake, let&#39;s make our <code>prehook</code> slightly more complicated; let&#39;s only print calls whose first argument matches a specific type. A nice configurable way to do this is as follows:</p><pre><code class="language-julia"># reset our prehook to a no-op
+julia&gt; Cassette.prehook(::Ctx, f, args...) = nothing
+
+# parameterize our prehook on the type of metadata stored in our context instance
+julia&gt; Cassette.prehook(::Ctx{Val{T}}, f, arg::T, rest...) where {T} = println(f, (arg, rest...))
+
+# construct our context instance with metadata to configure the prehook
+julia&gt; Cassette.overdub(Ctx(metadata=Val(Int)), /, 1, 2)
+float(1,)
+AbstractFloat(1,)
+Float64(1,)
+float(2,)
+AbstractFloat(2,)
+Float64(2,)
+0.5
+
+julia&gt; Cassette.overdub(Ctx(metadata=Val(DataType)), /, 1, 2)
+sitofp(Float64, 1)
+sitofp(Float64, 2)
+0.5</code></pre><p>We won&#39;t go into too much detail on <code>posthook</code>, since it&#39;s quite similar to <code>prehook</code>. The key difference is that <code>posthook</code> runs after the overdubbed invocation is executed, such that it has access to the output of the overdubbed invocation. For example, here we use <code>posthook</code> and <code>prehook</code> together to accumulate a trace that preserves nesting information:</p><pre><code class="language-julia">using Cassette
+
+Cassette.@context TraceCtx
+
+mutable struct Trace
+    current::Vector{Any}
+    stack::Vector{Any}
+    Trace() = new(Any[], Any[])
+end
+
+function enter!(t::Trace, args...)
+    pair = args =&gt; Any[]
+    push!(t.current, pair)
+    push!(t.stack, t.current)
+    t.current = pair.second
+    return nothing
+end
+
+function exit!(t::Trace)
+    t.current = pop!(t.stack)
+    return nothing
+end
+
+Cassette.prehook(ctx::TraceCtx, args...) = enter!(ctx.metadata, args...)
+Cassette.posthook(ctx::TraceCtx, args...) = exit!(ctx.metadata)
+
+trace = Trace()
+x, y, z = rand(3)
+f(x, y, z) = x*y + y*z
+Cassette.overdub(TraceCtx(metadata = trace), () -&gt; f(x, y, z))
+
+# returns `true`
+trace.current == Any[
+    (f,x,y,z) =&gt; Any[
+        (*,x,y) =&gt; Any[(Base.mul_float,x,y)=&gt;Any[]]
+        (*,y,z) =&gt; Any[(Base.mul_float,y,z)=&gt;Any[]]
+        (+,x*y,y*z) =&gt; Any[(Base.add_float,x*y,y*z)=&gt;Any[]]
+    ]
+]</code></pre><p>Next, let&#39;s tackle the meatiest part of the contextual dispatch interface: contextual primitives, as defined by the <a href="api.html#Cassette.execute"><code>execute</code></a>. Here&#39;s Cassette&#39;s default definition of <code>execute</code>:</p><pre><code class="language-julia">execute(::Context, ::Vararg{Any}) = OverdubInstead()</code></pre><p>With this definition in mind, the default case for the above contextual dispatch transformation can be reduced to:</p><pre><code class="language-julia">begin
+    Cassette.prehook(context, f, args...)
+    tmp = overdub(context, f, args...)
+    Cassette.posthook(context, tmp, f, args...)
+    tmp
+end</code></pre><p>In other words, the <code>execute</code>&#39;s default behavior is to not interfere with the recursive application of <code>overdub</code> at all. If <code>execute</code> is ever overloaded to return something other than <code>OverdubInstead</code>, however, then it means the recursive overdubbing stops. Thus, in Cassette terminology, overloading <code>execute</code> defines a &quot;contextual primitive&quot; w.r.t. the overdubbing mechanism.</p><p>Note that upon context definition (via <a href="api.html#Cassette.@context"><code>@context</code></a>) a bunch of reasonable default contextual primitives are generated automatically. It is possible, of course, to simply override these defaults if necessary. For more details, see <a href="api.html#Cassette.@context"><code>@context</code></a>.</p><p>As an aside, one might wonder why the default definition of <code>execute</code> isn&#39;t simply <code>execute(context, args...) = overdub(context, args...)</code>. The reason is that this definition is a bit harder on the compiler, since it adds an extra cycle (e.g. <code>execute</code> -&gt; <code>overdub</code> -&gt; <code>execute</code>) in the recursion inherent to Cassette&#39;s overdubbing mechanism. The branching based definition is much nicer, since it is much cheaper to evaluate a trivial <code>isa</code> check at compile time than it is to determine the worth of inferring through deep multi-cycle recursion.</p><p>To get a sense of the interaction between <code>execute</code> and <code>overdub</code>, let&#39;s reimplement our previous nested tracing example using recursion instead of maintaining a stack:</p><pre><code class="language-julia">using Cassette
+
+Cassette.@context TraceCtx
+
+function Cassette.execute(ctx::TraceCtx, args...)
+    subtrace = Any[]
+    push!(ctx.metadata, args =&gt; subtrace)
+    if Cassette.canoverdub(ctx, args...)
+        newctx = Cassette.similarcontext(ctx, metadata = subtrace)
+        return Cassette.overdub(newctx, args...)
+    else
+        return Cassette.fallback(ctx, args...)
+    end
+end
+
+trace = Any[]
+x, y, z = rand(3)
+f(x, y, z) = x*y + y*z
+Cassette.overdub(TraceCtx(metadata = trace), () -&gt; f(x, y, z))
+
+# returns `true`
+trace == Any[
+   (f,x,y,z) =&gt; Any[
+       (*,x,y) =&gt; Any[(Base.mul_float,x,y)=&gt;Any[]]
+       (*,y,z) =&gt; Any[(Base.mul_float,y,z)=&gt;Any[]]
+       (+,x*y,y*z) =&gt; Any[(Base.add_float,x*y,y*z)=&gt;Any[]]
+   ]
+]</code></pre><footer><hr/><a class="previous" href="overdub.html"><span class="direction">Previous</span><span class="title">The Overdubbing Mechanism</span></a><a class="next" href="contextualtagging.html"><span class="direction">Next</span><span class="title">Contextual Tagging of Values</span></a></footer></article></body></html>
