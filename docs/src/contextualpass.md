@@ -82,28 +82,47 @@ I'm about to add [0.457465, 0.62078, 0.954555] + [0.0791336, 0.744041, 0.976194]
 c = [0.536599, 1.36482, 1.93075]
 ```
 
-This is pretty cool, but also a bit limited. First of all, what if we want to move more than just
-`println` invocations into our callback? What if we want to slice the construction of `println`'s
-arguments as well? Another potential issue is that this implementation requires an explicit `Any`
-barrier, preventing the compiler from inferring callback construction (note, however, that this
-does not prevent the inference of *invoking* the callback). This is possibly desirable in some
-cases, since you're being easier on the compiler, but what if you really wanted to expose
-Julia's type inference to callback construction?
+This is pretty cool, but also a bit limited. First of all, what if we want to move more than
+just `println` invocations into our callback, e.g. what if we want to slice the construction
+of  `println`'s arguments as well? Another potential issue is that this implementation
+requires an  explicit `Any` barrier, preventing the compiler from inferring callback
+construction (note, however, that this does not prevent the inference of *invoking* the
+callback). This is possibly desirable in some cases, since you're being easier on the
+compiler, but what if you really wanted to expose Julia's type inference to callback
+construction?
 
 To resolve issues like these, we'll need to dig deeper than contextual dispatch and implement an
-actual compiler pass.
+actual compiler pass. First, let's go over a high-level description of the pass we'll implement.
+Essentially, we want this method:
 
 ```julia
-using Cassette
-using Core: CodeInfo, SlotNumber, SSAValue
+function add(a, b)
+    println("I'm about to add $a + $b")
+    c = a + b
+    println("c = $c")
+    return c
+end
+```
 
-Cassette.@context Ctx
+...to become something akin to the following when overdubbed:
 
-struct Slice end
+```julia
+function overdub(ctx::Ctx, add, a, b)
+    _callback_ = ctx.metadata
+    _, _callback_ = execute(ctx, _callback_, println, "I'm about to add $a + $b")
+    c, _callback_ = execute(ctx, _callback_, +, a, b)
+    _, _callback_ = execute(ctx, _callback_, println, "c = $c")
+    return c, _callback_
+end
+```
 
-const SLICE = Slice()
+Note that I reduced a lot of the contextual dispatch boilerplate, such that the above is
+essentially pseudocode.
 
-function Cassette.execute(ctx::Ctx, ::Slice, callback, f, args...)
+Here, we can define `Ctx`'s `execute` method to be:
+
+```julia
+function Cassette.execute(ctx::Ctx, callback, f, args...)
     if Cassette.canoverdub(ctx, f, args...)
         _ctx = Cassette.similarcontext(ctx, metadata = callback)
         return Cassette.overdub(_ctx, f, args...) # return result, callback
@@ -112,7 +131,48 @@ function Cassette.execute(ctx::Ctx, ::Slice, callback, f, args...)
     end
 end
 
-function Cassette.execute(ctx::Ctx, ::Slice, callback, ::typeof(println), args...)
+function Cassette.execute(ctx::Ctx, callback, ::typeof(println), args...)
+    return nothing, () -> (callback(); println(args...))
+end
+```
+
+This, then, essentially accumulates the same closure we were accumulating before, but does so in a
+way where...
+
+- ...in theory, there is no longer any barrier to the inference of the closure construction.
+- ...the pass itself determines the "capture region" manually, such that one could just alter it
+    to do e.g. linear dependence analysis to capture `println` argument construction code an arbitrary
+    number of degrees out from the actual `println` invocation.
+
+Next, let's list the steps our compiler pass will actually need to perform in order to actually
+accomplish the above:
+
+- At the beginning of each method body, insert something like `_callback_ = context.metadata`
+- Change every method invocation of the form `f(args...)` to `_callback_(f, args...)`.
+- Change every return statement of the form `return x` to `return (x, _callback_)`
+- Ensure the output of every method invocation is properly destructured into the original
+    assignment slot/SSAValue and the `_callback_` slot.
+
+Okay! Now that we have a high-level description of our pass, let's look at the code that implements
+it. **I highly recommend reading the documentation for [`@pass`](@ref) and
+[`insert_statements!`](@ref) before trying to understand this code**.
+
+```julia
+using Cassette
+using Core: CodeInfo, SlotNumber, SSAValue
+
+Cassette.@context Ctx
+
+function Cassette.execute(ctx::Ctx, callback, f, args...)
+    if Cassette.canoverdub(ctx, f, args...)
+        _ctx = Cassette.similarcontext(ctx, metadata = callback)
+        return Cassette.overdub(_ctx, f, args...) # return result, callback
+    else
+        return Cassette.fallback(ctx, f, args...), callback
+    end
+end
+
+function Cassette.execute(ctx::Ctx, callback, ::typeof(println), args...)
     return nothing, () -> (callback(); println(args...))
 end
 
@@ -142,7 +202,7 @@ function sliceprintln(::Type{<:Ctx}, ::Type{S}, ir::CodeInfo) where {S}
                                  (stmt, i) -> begin
                                      items = Any[]
                                      callstmt = Base.Meta.isexpr(stmt, :(=)) ? stmt.args[2] : stmt
-                                     push!(items, Expr(:call, GlobalRef(Main, :SLICE), callbackslot, callstmt.args...))
+                                     push!(items, Expr(:call, callbackslot, callstmt.args...))
                                      push!(items, Expr(:(=), callbackslot, Expr(:call, Expr(:nooverdub, GlobalRef(Core, :getfield)), SSAValue(i), 2)))
                                      result = Expr(:call, Expr(:nooverdub, GlobalRef(Core, :getfield)), SSAValue(i), 1)
                                      if Base.Meta.isexpr(stmt, :(=))
