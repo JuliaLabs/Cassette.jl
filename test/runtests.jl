@@ -187,6 +187,34 @@ trkwtest(x; _y = 1.0, _z = 2.0) = trtest(x, _y, _z)
 subtracekw = first(Iterators.filter(t -> t[1] === (Core.kwfunc(trkwtest), (_y = y, _z = z), trkwtest, x), tracekw))[2]
 @test subtracekw == trace
 
+@context HookTraceCtx
+
+mutable struct HookTrace
+    current::Vector{Any}
+    stack::Vector{Any}
+    HookTrace() = new(Any[], Any[])
+end
+
+function enter!(t::HookTrace, args...)
+    pair = args => Any[]
+    push!(t.current, pair)
+    push!(t.stack, t.current)
+    t.current = pair.second
+    return nothing
+end
+
+function exit!(t::HookTrace)
+    t.current = pop!(t.stack)
+    return nothing
+end
+
+Cassette.prehook(ctx::HookTraceCtx, args...) = enter!(ctx.metadata, args...)
+Cassette.posthook(ctx::HookTraceCtx, args...) = exit!(ctx.metadata)
+
+htrace = HookTrace()
+@overdub(HookTraceCtx(metadata = htrace), trtest(x, y, z))
+@test htrace.current == trace
+
 ############################################################################################
 
 @context NestedReflectCtx
