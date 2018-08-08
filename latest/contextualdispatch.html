@@ -43,7 +43,7 @@ Float64(2,)
 julia&gt; Cassette.overdub(Ctx(metadata=Val(DataType)), /, 1, 2)
 sitofp(Float64, 1)
 sitofp(Float64, 2)
-0.5</code></pre><p>We won&#39;t go into too much detail on <code>posthook</code>, since it&#39;s quite similar to <code>prehook</code>. The key difference is that <code>posthook</code> runs after the overdubbed invocation is executed, such that it has access to the output of the overdubbed invocation. For example, here we use <code>posthook</code> and <code>prehook</code> together to accumulate a trace that preserves nesting information:</p><pre><code class="language-julia">using Cassette
+0.5</code></pre><p>Also of note is <code>prehook</code>&#39;s long-lost cousin <a href="api.html#Cassette.posthook"><code>posthook</code></a>, with which <code>prehook</code> shares many similarities. In fact, these functions are so similar that we won&#39;t be spending too much time on <code>posthook</code> individually. The key difference between <code>prehook</code> and <code>posthook</code> is that <code>posthook</code> runs <em>after</em> the overdubbed invocation is executed, such that it has access to the output of the overdubbed invocation.</p><p>For example, here we use <code>posthook</code> and <code>prehook</code> together to accumulate a trace that preserves nesting information:</p><pre><code class="language-julia">using Cassette
 
 Cassette.@context TraceCtx
 
