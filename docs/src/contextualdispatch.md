@@ -57,8 +57,9 @@ Cool beans!
 Actually, there's a subtlety about `overdub` here we should address before moving on. Why
 wasn't the first line in the trace log `/(1, 2)`? I'll leave the answer as an exercise to
 the reader - just recall the definition of `overdub` from the previous section. If this
-you have trouble understanding the barrier between `overdub` and the contextual dispatch
-interface, try comparing the above with the log generated via `overdub(Ctx(), () -> 1/2)`.
+the barrier between the `overdub` and the contextual dispatch interface seems confusing, try
+comparing the output from the above example with the output generated via
+`overdub(Ctx(), () -> 1/2)`.
 
 For pedagogy's sake, let's make our `prehook` slightly more complicated; let's only print
 calls whose first argument matches a specific type. A nice configurable way to do this is
