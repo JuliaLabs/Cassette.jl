@@ -25,7 +25,9 @@ to see what's actually going on.
 
 First, we define a new [`Context`](@ref) type alias called `Ctx` via the [`@context`](@ref)
 macro. In practical usage, one normally defines one or more contexts specific to one's
-application of Cassette. Here, we just made a dummy one for illustrative purposes.
+application of Cassette. Here, we just made a dummy one for illustrative purposes. Context
+instances are central to Cassette's function, but are relatively simple to construct and
+understand. I recommend skimming the [`Context`](@ref) docstring before moving forward.
 
 Next, we "overdubbed" a call to `1/2` w.r.t. `Ctx()` using the [`overdub`](@ref) function. To
 get a sense of what that means, let's look at the lowered IR for the original call:
