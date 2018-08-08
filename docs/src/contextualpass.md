@@ -84,9 +84,9 @@ c = [0.536599, 1.36482, 1.93075]
 
 This is pretty cool, but also a bit limited. First of all, what if we want to move more than
 just `println` invocations into our callback, e.g. what if we want to slice the construction
-of  `println`'s arguments as well? Another potential issue is that this implementation
-requires an  explicit `Any` barrier, preventing the compiler from inferring callback
-construction (note, however, that this does not prevent the inference of *invoking* the
+of `println`'s arguments as well? Another potential issue is that this implementation
+requires an explicit `Any` barrier, preventing the compiler from inferring callback
+construction (note, however, that this does not prevent inferring *invocation* of the
 callback). This is possibly desirable in some cases, since you're being easier on the
 compiler, but what if you really wanted to expose Julia's type inference to callback
 construction?
