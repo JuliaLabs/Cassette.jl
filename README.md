@@ -6,8 +6,8 @@
 [![Build Status](https://travis-ci.org/jrevels/Cassette.jl.svg?branch=master)](https://travis-ci.org/jrevels/Cassette.jl)
 [![Coverage Status](https://coveralls.io/repos/github/jrevels/Cassette.jl/badge.svg)](https://coveralls.io/github/jrevels/Cassette.jl)
 
-[![](https://img.shields.io/badge/docs-stable-blue.svg)](https://jrevels.github.io/Cassette.jl/latest/)
-[![](https://img.shields.io/badge/docs-latest-blue.svg)](https://jrevels.github.io/Cassette.jl/stable/)
+[![](https://img.shields.io/badge/docs-stable-blue.svg)](https://jrevels.github.io/Cassette.jl/stable/)
+[![](https://img.shields.io/badge/docs-latest-blue.svg)](https://jrevels.github.io/Cassette.jl/latest/)
 
 ## Overview
 
