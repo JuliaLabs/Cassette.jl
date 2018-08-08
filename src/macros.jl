@@ -127,7 +127,10 @@ it has been registered with `@pass`.
 Note also that `transform` should be "relatively pure." More specifically, Julia's compiler
 has license to apply `transform` multiple times, even if only compiling a single method
 invocation once. Thus, it is required that `transform` always return a generally "equivalent"
-`CodeInfo` for a given context, method body, and signature.
+`CodeInfo` for a given context, method body, and signature. If your `transform`
+implementation is not naturally "pure" in this sense, then it is still possible to guarantee
+this property by memoizing your implementation (i.e. maintaining a cache of previously
+computed IR results, instead of recomputing results every time).
 
 Two special `Expr` heads are available to Cassette pass authors that are not normally valid
 in Julia IR. `Expr`s with these heads can be used to interact with the downstream built-in
