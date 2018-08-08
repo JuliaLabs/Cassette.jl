@@ -87,10 +87,14 @@ sitofp(Float64, 2)
 0.5
 ```
 
-We won't go into too much detail on `posthook`, since it's quite similar to `prehook`. The
-key difference is that `posthook` runs after the overdubbed invocation is executed, such that
-it has access to the output of the overdubbed invocation. For example, here we use `posthook`
-and `prehook` together to accumulate a trace that preserves nesting information:
+Also of note is `prehook`'s long-lost cousin [`posthook`](@ref), with which `prehook` shares
+many similarities. In fact, these functions are so similar that we won't be spending too much
+time on `posthook` individually. The key difference between `prehook` and `posthook` is that
+`posthook` runs *after* the overdubbed invocation is executed, such that it has access to the
+output of the overdubbed invocation.
+
+For example, here we use `posthook` and `prehook` together to accumulate a trace that
+preserves nesting information:
 
 ```julia
 using Cassette
