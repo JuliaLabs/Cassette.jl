@@ -13,7 +13,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Introduction",
     "title": "Introduction",
     "category": "section",
-    "text": "Hello! Welcome to Cassette\'s documentation.For an initial overview of Cassette, please see the README.Otherwise, feel free to peruse available documentation via the sidebar.It is recommended that all Cassette users read the documentation in its entirety.It is highly recommended that all Cassette users at least read the Disclaimers section before attempting to use Cassette."
+    "text": "Hello! Welcome to Cassette\'s documentation.For an initial overview of Cassette, please see the README. Otherwise, feel free to peruse available documentation via the sidebar.It is recommended that all Cassette users read the documentation in its entirety. It is highly recommended that all Cassette users at least read the Disclaimers section before attempting to use Cassette."
 },
 
 {
