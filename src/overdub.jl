@@ -137,7 +137,7 @@ Invoking `execute` immediately returns `Cassette.OverdubInstead()` by default.
 
 See also: [`overdub`](@ref), [`prehook`](@ref), [`posthook`](@ref), [`fallback`](@ref)
 """
-@inline execute(ctx::Context, args...) = OverdubInstead()
+@inline execute(::Context, ::Vararg{Any}) = OverdubInstead()
 
 """
 ```
