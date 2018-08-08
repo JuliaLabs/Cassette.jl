@@ -183,19 +183,16 @@ function sliceprintln(::Type{<:Ctx}, ::Type{S}, ir::CodeInfo) where {S}
     callbackslot = SlotNumber(length(ir.slotnames))
     getmetadata = Expr(:call, Expr(:nooverdub, GlobalRef(Core, :getfield)), Expr(:contextslot), QuoteNode(:metadata))
 
-    # Insert the initial `callbackslot` assignment into the IR.
-    # This is an internal Cassette utility, which we'll use for now for convenience. It'd be
-    # nice for Base to expose something like this for pre-inference IR...
+    # insert the initial `callbackslot` assignment into the IR.
     Cassette.insert_statements!(ir.code, ir.codelocs,
                                  (stmt, i) -> i == 1 ? 2 : nothing,
                                  (stmt, i) -> [Expr(:(=), callbackslot, getmetadata), stmt])
 
-    # Replace all calls of the form `f(args...)` with `SLICE(callback, f, args...)`,
-    # taking care to properly destructure the returned `(result, callback)` into the
-    # appropriate statements.
+    # replace all calls of the form `f(args...)` with `callback(f, args...)`, taking care to
+    # properly destructure the returned `(result, callback)` into the appropriate statements
     Cassette.insert_statements!(ir.code, ir.codelocs,
                                  (stmt, i) -> begin
-                                    i > 1 || return nothing # don't slice callback assignment
+                                    i > 1 || return nothing # don't slice the callback assignment
                                     stmt = Base.Meta.isexpr(stmt, :(=)) ? stmt.args[2] : stmt
                                     return Base.Meta.isexpr(stmt, :call) ? 3 : nothing
                                  end,
@@ -212,7 +209,7 @@ function sliceprintln(::Type{<:Ctx}, ::Type{S}, ir::CodeInfo) where {S}
                                      return items
                                  end)
 
-    # Replace return statements of the form `return x` with `return x, callback`.
+    # replace return statements of the form `return x` with `return (x, callback)`
     Cassette.insert_statements!(ir.code, ir.codelocs,
                                   (stmt, i) -> Base.Meta.isexpr(stmt, :return) ? 2 : nothing,
                                   (stmt, i) -> begin
