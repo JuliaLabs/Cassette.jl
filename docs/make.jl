@@ -9,8 +9,8 @@ makedocs(modules=[Cassette],
                   "Why Cassette?" => "whycassette.md",
                   "The Overdubbing Mechanism" => "overdub.md",
                   "Contextual Dispatch" => "contextualdispatch.md",
-                  "Contextual Tagging of Values" => "contextualtagging.md",
                   "Contextual Compiler Pass Injection" => "contextualpass.md",
+                  "Contextual Tagging of Values" => "contextualtagging.md",
                   "Cassette API Documentation" => "api.md",
                   "Related Work" => "relatedwork.md"])
 
