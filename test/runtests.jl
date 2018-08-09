@@ -43,7 +43,7 @@ end
 
 @context HookCtx
 Cassette.prehook(ctx::HookCtx, f, args...) = push!(ctx.metadata[1], (f, args))
-Cassette.posthook(ctx::HookCtx, out, f, args...) = push!(ctx.metadata[2], (f, args))
+Cassette.posthook(ctx::HookCtx, out, f, args...) = (push!(ctx.metadata[2], (f, args)); out)
 
 ctx = HookCtx(metadata=(Any[], Any[]))
 @overdub(ctx, 1 + 1 * 1)
@@ -667,3 +667,10 @@ x = rand()
 @test D(x -> (x + 2) * (3 + x), x) === 2x + 5
 @test D(x -> CrazyPropModule.crazy_sum_mul([x], [x]), x) === (x + x)
 @test D(x -> CrazyPropModule.crazy_sum_mul([x, 2], [3, x]), x) === 2x + 5
+
+############################################################################################
+
+@context CrazyCompilerBugCtx
+
+# This is just testing to make sure we're not hitting a known miscompile case TODO: xref Base issue
+@test overdub(CrazyCompilerBugCtx(metadata=1), Broadcast._newindexer, (Base.OneTo(10),)) === ((true,), (1,))
