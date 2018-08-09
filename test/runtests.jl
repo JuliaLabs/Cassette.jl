@@ -656,8 +656,6 @@ function Cassette.execute(ctx::DiffCtxWithTag{T}, ::Typ(+), x::Real, y::Tagged{T
     return tag(x + vy, ctx, dy)
 end
 
-Cassette.execute(ctx::DiffCtx, ::typeof(println), args...) = println(args...)
-
 @test D(sin, 1) === cos(1)
 @test D(x -> D(sin, x), 1) === -sin(1)
 @test D(x -> sin(x) * cos(x), 1) === cos(1)^2 - sin(1)^2
