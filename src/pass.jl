@@ -1,6 +1,67 @@
-############################
-# Expression Match/Replace #
-############################
+#########
+# @pass #
+#########
+
+"""
+```
+Cassette.@pass transform
+```
+
+Return a Cassette pass that can be provided to the `Context` constructor's `pass` keyword
+argument in order to apply `transform` to the lowered IR representations of all methods
+invoked during contextual execution.
+
+`transform` must be a Julia object that is callable with the following signature:
+
+```
+transform(::Type{<:Context}, signature::Type{Tuple{...}}, method_body::CodeInfo)::CodeInfo
+```
+
+Note that the `@pass` macro expands to an `eval` call and thus should only be called at
+top-level. Furthermore, to avoid world-age issues, `transform` should not be overloaded after
+it has been registered with `@pass`.
+
+Note also that `transform` should be "relatively pure." More specifically, Julia's compiler
+has license to apply `transform` multiple times, even if only compiling a single method
+invocation once. Thus, it is required that `transform` always return a generally "equivalent"
+`CodeInfo` for a given context, method body, and signature. If your `transform`
+implementation is not naturally "pure" in this sense, then it is still possible to guarantee
+this property by memoizing your implementation (i.e. maintaining a cache of previously
+computed IR results, instead of recomputing results every time).
+
+Two special `Expr` heads are available to Cassette pass authors that are not normally valid
+in Julia IR. `Expr`s with these heads can be used to interact with the downstream built-in
+Cassette passes that consume them.
+
+- `:nooverdub`: Wrap an `Expr` with this head value around the first argument in an
+    `Expr(:call)` to tell downstream built-in Cassette passes not to overdub that call. For
+    example, `Expr(:call, Expr(:nooverdub, GlobalRef(MyModule, :myfunc)), args...)`.
+
+- `:contextslot`: Cassette will replace any `Expr(:contextslot)` with the actual `SlotNumber`
+    corresponding to the context object associated with the execution trace. For example, one
+    could construct an IR element that accesses the context's `metadata` field by emitting:
+    `Expr(:call, Expr(:nooverdub, GlobalRef(Core, :getfield)), Expr(:contextslot), QuoteNode(:metadata))`
+
+Cassette provides a few IR-munging utility functions of interest to pass authors: [`insert_statements!`](@ref), [`replace_match!`](@ref)
+
+See also: [`Context`](@ref), [`overdub`](@ref)
+"""
+macro pass(transform)
+    Pass = gensym("PassType")
+    name = Expr(:quote, :($__module__.$Pass))
+    line = Expr(:quote, __source__.line)
+    file = Expr(:quote, __source__.file)
+    return esc(quote
+        struct $Pass <: $Cassette.AbstractPass end
+        (::Type{$Pass})(ctxtype, signature, codeinfo) = $transform(ctxtype, signature, codeinfo)
+        Core.eval($Cassette, $Cassette.overdub_definition($name, $line, $file))
+        $Pass()
+    end)
+end
+
+#############
+# utilities #
+#############
 
 """
 ```
@@ -30,47 +91,6 @@ function replace_match!(replace, ismatch, x)
     return x
 end
 
-############
-# Julia IR #
-############
-
-#=== reflection ===#
-
-mutable struct Reflection
-    signature::DataType
-    method::Method
-    static_params::Vector{Any}
-    code_info::CodeInfo
-end
-
-# Return `Reflection` for signature `sigtypes` and `world`, if possible. Otherwise, return `nothing`.
-function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
-    # This works around a subtyping bug. Basically, callers can deconstruct upstream
-    # `UnionAll` types in such a way that results in a type with free type variables, in
-    # which case subtyping can just break.
-    #
-    # God help you if you try to use a type parameter here (e.g. `::Type{S} where S<:Tuple`)
-    # instead of this nutty workaround, because the compiler can just rewrite `S` into
-    # whatever it thinks is "type equal" to the actual provided value. In other words, if
-    # `S` is defined as e.g. `f(::Type{S}) where S`, and you call `f(T)`, you should NOT
-    # assume that `S === T`. If you did, SHAME ON YOU. It doesn't matter that such an
-    # assumption holds true for essentially all other kinds of values. I haven't counted in
-    # a while, but I'm pretty sure I have ~40+ hellish years of Julia experience, and this
-    # still catches me every time. Who even uses this crazy language?
-    S = Tuple{map(s -> Core.Compiler.has_free_typevars(s) ? typeof(s.parameters[1]) : s, sigtypes)...}
-    (S.parameters[1]::DataType).name.module === Core.Compiler && return nothing
-    _methods = Base._methods_by_ftype(S, -1, world)
-    length(_methods) == 1 || return nothing
-    type_signature, raw_static_params, method = first(_methods)
-    method_instance = Core.Compiler.code_for_method(method, type_signature, raw_static_params, world, false)
-    method_instance === nothing && return nothing
-    method_signature = method.sig
-    static_params = Any[raw_static_params...]
-    code_info = Core.Compiler.retrieve_code_info(method_instance)
-    isa(code_info, CodeInfo) || return nothing
-    code_info = Core.Compiler.copy_code_info(code_info)
-    return Reflection(S, method, static_params, code_info)
-end
 
 """
 ```
@@ -145,9 +165,3 @@ function insert_statements!(code, codelocs, stmtcount, newstmts)
         end
     end
 end
-
-#############
-# Debugging #
-#############
-
-overdub_typed(args...; optimize=false) = code_typed(overdub, map(Core.Typeof, args); optimize=optimize)

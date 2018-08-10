@@ -1,190 +1,42 @@
-#########################
-# contextual operations #
-#########################
+##############
+# Reflection #
+##############
 
-struct OverdubInstead end
+mutable struct Reflection
+    signature::DataType
+    method::Method
+    static_params::Vector{Any}
+    code_info::CodeInfo
+end
 
-"""
-```
-prehook(context::Context, f, args...)
-```
-
-Overload this Cassette method w.r.t. a given context in order to define a new contextual
-prehook for that context.
-
-To understand when/how this method is called, see the documentation for [`overdub`](@ref).
-
-Invoking `prehook` is a no-op by default (it immediately returns `nothing`).
-
-See also: [`overdub`](@ref), [`posthook`](@ref), [`execute`](@ref), [`fallback`](@ref)
-
-# Examples
-
-Simple trace logging:
-
-```
-julia> Cassette.@context PrintCtx;
-
-julia> Cassette.prehook(::PrintCtx, f, args...) = println(f, args)
-
-julia> Cassette.overdub(PrintCtx(), /, 1, 2)
-float(1,)
-AbstractFloat(1,)
-Float64(1,)
-sitofp(Float64, 1)
-float(2,)
-AbstractFloat(2,)
-Float64(2,)
-sitofp(Float64, 2)
-/(1.0, 2.0)
-div_float(1.0, 2.0)
-0.5
-```
-
-Counting the number of method invocations with one or more arguments of a given type:
-
-```
-julia> mutable struct Count{T}
-           count::Int
-       end
-
-julia> Cassette.@context CountCtx;
-
-julia> Cassette.prehook(ctx::CountCtx{Count{T}}, f, arg::T, args::T...) where {T} = (ctx.metadata.count += 1)
-
-# count the number of calls of the form `f(::Float64, ::Float64...)`
-julia> ctx = CountCtx(metadata = Count{Float64}(0));
-
-julia> Cassette.overdub(ctx, /, 1, 2)
-0.5
-
-julia> ctx.metadata.count
-2
-```
-"""
-@inline prehook(::Context, ::Vararg{Any}) = nothing
-
-"""
-```
-posthook(context::Context, output, f, args...)
-```
-
-Overload this Cassette method w.r.t. a given context in order to define a new contextual
-posthook for that context.
-
-To understand when/how this method is called, see the documentation for [`overdub`](@ref).
-
-Invoking `posthook` is a no-op by default (it immediately returns `nothing`).
-
-See also: [`overdub`](@ref), [`prehook`](@ref), [`execute`](@ref), [`fallback`](@ref)
-
-# Examples
-
-Simple trace logging:
-
-```
-julia> Cassette.@context PrintCtx;
-
-julia> Cassette.posthook(::PrintCtx, output, f, args...) = println(output, " = ", f, args)
-
-julia> Cassette.overdub(PrintCtx(), /, 1, 2)
-1.0 = sitofp(Float64, 1)
-1.0 = Float64(1,)
-1.0 = AbstractFloat(1,)
-1.0 = float(1,)
-2.0 = sitofp(Float64, 2)
-2.0 = Float64(2,)
-2.0 = AbstractFloat(2,)
-2.0 = float(2,)
-0.5 = div_float(1.0, 2.0)
-0.5 = /(1.0, 2.0)
-0.5
-```
-
-Accumulate the sum of all numeric scalar outputs encountered in the trace:
-
-```
-julia> mutable struct Accum
-           x::Number
-       end
-
-julia> Cassette.@context AccumCtx;
-
-julia> Cassette.posthook(ctx::AccumCtx{Accum}, out::Number, f, args...) = (ctx.metadata.x += out)
-
-julia> ctx = AccumCtx(metadata = Accum(0));
-
-julia> Cassette.overdub(ctx, /, 1, 2)
-0.5
-
-julia> ctx.metadata.x
-13.0
-```
-"""
-@inline posthook(::Context, ::Vararg{Any}) = nothing
-
-"""
-```
-execute(context::Context, f, args...)
-```
-
-Overload this Cassette method w.r.t. a given context in order to define a new contextual
-execution primitive for that context.
-
-To understand when/how this method is called, see the documentation for [`overdub`](@ref).
-
-Invoking `execute` immediately returns `Cassette.OverdubInstead()` by default.
-
-See also: [`overdub`](@ref), [`prehook`](@ref), [`posthook`](@ref), [`fallback`](@ref)
-"""
-@inline execute(::Context, ::Vararg{Any}) = OverdubInstead()
-
-"""
-```
-fallback(context::Context, f, args...)
-```
-
-Overload this Cassette method w.r.t. a given context in order to define a new contextual
-execution fallback for that context.
-
-To understand when/how this method is called, see the documentation for [`overdub`](@ref) and
-[`canoverdub`](@ref).
-
-By default, invoking `fallback(context, f, args...)` will simply call `f(args...)` (with all
-arguments automatically untagged, if `hastagging(typeof(context))`).
-
-See also:  [`canoverdub`](@ref), [`overdub`](@ref), [`execute`](@ref), [`prehook`](@ref), [`posthook`](@ref)
-"""
-@inline fallback(ctx::Context, args...) = call(ctx, args...)
-
-@inline call(::ContextWithTag{Nothing}, f, args...) = f(args...)
-@inline call(context::Context, f, args...) = untag(f, context)(ntuple(i -> untag(args[i], context), Val(nfields(args)))...)
-
-# TODO: This is currently needed to force the compiler to specialize on the type arguments
-# to `Core.apply_type`. In the future, it would be best for Julia's compiler to better handle
-# varargs calls to such functions with type arguments, or at least provide a better way to
-# force specialization on the type arguments.
-@inline call(::ContextWithTag{Nothing}, f::typeof(Core.apply_type), ::Type{A}, ::Type{B}) where {A,B} = f(A, B)
-@inline call(::Context, f::typeof(Core.apply_type), ::Type{A}, ::Type{B}) where {A,B} = f(A, B)
-
-"""
-```
-canoverdub(context::Context, f, args...)
-```
-
-Return `true` if `f(args...)` has a lowered IR representation that Cassette can overdub,
-return `false` otherwise.
-
-Alternatively, but equivalently:
-
-Return `false` if `overdub(context, f, args...)` directly translates to
-`fallback(context, f, args...)`, return `true` otherwise.
-
-Note that unlike `execute`, `fallback`, etc., this function is not intended to be overloaded.
-
-See also:  [`overdub`](@ref), [`fallback`](@ref), [`execute`](@ref)
-"""
-@inline canoverdub(ctx::Context, f, args...) = !isa(untag(f, ctx), Core.Builtin)
+# Return `Reflection` for signature `sigtypes` and `world`, if possible. Otherwise, return `nothing`.
+function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
+    # This works around a subtyping bug. Basically, callers can deconstruct upstream
+    # `UnionAll` types in such a way that results in a type with free type variables, in
+    # which case subtyping can just break.
+    #
+    # God help you if you try to use a type parameter here (e.g. `::Type{S} where S<:Tuple`)
+    # instead of this nutty workaround, because the compiler can just rewrite `S` into
+    # whatever it thinks is "type equal" to the actual provided value. In other words, if
+    # `S` is defined as e.g. `f(::Type{S}) where S`, and you call `f(T)`, you should NOT
+    # assume that `S === T`. If you did, SHAME ON YOU. It doesn't matter that such an
+    # assumption holds true for essentially all other kinds of values. I haven't counted in
+    # a while, but I'm pretty sure I have ~40+ hellish years of Julia experience, and this
+    # still catches me every time. Who even uses this crazy language?
+    S = Tuple{map(s -> Core.Compiler.has_free_typevars(s) ? typeof(s.parameters[1]) : s, sigtypes)...}
+    (S.parameters[1]::DataType).name.module === Core.Compiler && return nothing
+    _methods = Base._methods_by_ftype(S, -1, world)
+    length(_methods) == 1 || return nothing
+    type_signature, raw_static_params, method = first(_methods)
+    method_instance = Core.Compiler.code_for_method(method, type_signature, raw_static_params, world, false)
+    method_instance === nothing && return nothing
+    method_signature = method.sig
+    static_params = Any[raw_static_params...]
+    code_info = Core.Compiler.retrieve_code_info(method_instance)
+    isa(code_info, CodeInfo) || return nothing
+    code_info = Core.Compiler.copy_code_info(code_info)
+    return Reflection(S, method, static_params, code_info)
+end
 
 ###########
 # overdub #
@@ -604,3 +456,17 @@ order to accomodate tagged value propagation:
 - load/stores to external module bindings are intercepted by the tagging system
 """,
 overdub)
+
+"""
+```
+Cassette.@overdub(ctx, expression)
+```
+
+A convenience macro for executing `expression` within the context `ctx`. This macro roughly
+expands to `Cassette.overdub(ctx, () -> expression)`.
+
+See also: [`overdub`](@ref)
+"""
+macro overdub(ctx, expr)
+    return :($Cassette.overdub($(esc(ctx)), () -> $(esc(expr))))
+end
