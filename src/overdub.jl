@@ -365,7 +365,7 @@ function overdub_pass!(reflection::Reflection,
 end
 
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
-function overdub_generator(pass_type, self, context_type, args::Tuple)
+function __overdub_generator__(pass_type, self, context_type, args::Tuple)
     if !(nfields(args) > 0 && args[1] <: Core.Builtin)
         try
             untagged_args = ((untagtype(args[i], context_type) for i in 1:nfields(args))...,)
@@ -390,26 +390,28 @@ end
 @inline apply_args(::ContextWithTag{Nothing}, args...) = Core._apply(Core.tuple, args...)
 @inline apply_args(ctx::Context, args...) = tagged_apply_args(ctx, args...)
 
+function overdub end
+
 function overdub_definition(pass, line, file)
     return quote
-        function overdub($OVERDUB_CTX_SYMBOL::ContextWithPass{pass}, $OVERDUB_ARGS_SYMBOL...) where {pass<:$pass}
+        function $Cassette.overdub($OVERDUB_CTX_SYMBOL::$Cassette.ContextWithPass{pass}, $OVERDUB_ARGS_SYMBOL...) where {pass<:$pass}
             $(Expr(:meta,
                    :generated,
                    Expr(:new,
                         Core.GeneratedFunctionStub,
-                        :overdub_generator,
+                        :__overdub_generator__,
                         Any[:overdub, OVERDUB_CTX_SYMBOL, OVERDUB_ARGS_SYMBOL],
                         Any[:pass],
                         line,
                         QuoteNode(Symbol(file)),
                         true)))
         end
-        @inline function overdub(ctx::ContextWithPass{pass}, ::typeof(Core._apply), f, _args...) where {pass<:$pass}
-            args = apply_args(ctx, _args...)
-            prehook(ctx, f, args...)
-            output = execute(ctx, f, args...)
-            output = isa(output, OverdubInstead) ? overdub(ctx, f, args...) : output
-            posthook(ctx, output, f, args...)
+        @inline function $Cassette.overdub(ctx::$Cassette.ContextWithPass{pass}, ::typeof(Core._apply), f, _args...) where {pass<:$pass}
+            args = $Cassette.apply_args(ctx, _args...)
+            $Cassette.prehook(ctx, f, args...)
+            output = $Cassette.execute(ctx, f, args...)
+            output = isa(output, $Cassette.OverdubInstead) ? $Cassette.overdub(ctx, f, args...) : output
+            $Cassette.posthook(ctx, output, f, args...)
             return output
         end
     end

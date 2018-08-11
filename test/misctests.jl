@@ -254,3 +254,16 @@ relulayer(W, x, b) = relu.(W*x .+ b)
 @inferred(overdub(InferCtx(), rand, Float32, 1))
 @inferred(overdub(InferCtx(), broadcast, +, rand(1), rand(1)))
 @inferred(overdub(InferCtx(), relulayer, rand(Float64, 1, 1), rand(Float32, 1), rand(Float32, 1)))
+
+#############################################################################################
+
+module DefineStuffInModule
+    using Cassette
+    Cassette.@context InModuleCtx
+    x = 0
+    incrpass = Cassette.@pass (ctx, sig, code) -> (global x += 1; code)
+    f(x) = Cassette.overdub(InModuleCtx(pass = incrpass), sin, x)
+end
+
+@test DefineStuffInModule.f(1) === sin(1)
+@test DefineStuffInModule.x > 0
