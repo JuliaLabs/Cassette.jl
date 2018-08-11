@@ -324,6 +324,7 @@ tagged_result = overdub(ctx, CrazyPropModule.crazy_sum_mul, tx, ty)
 #############################################################################################
 
 @context DiffCtx
+
 const DiffCtxWithTag{T} = DiffCtx{Nothing,T}
 
 Cassette.metadatatype(::Type{<:DiffCtx}, ::Type{T}) where {T<:Real} = T
@@ -378,11 +379,19 @@ function Cassette.execute(ctx::DiffCtxWithTag{T}, ::typeof(+), x::Real, y::Tagge
     return tag(x + vy, ctx, dy)
 end
 
+Cassette.execute(ctx::DiffCtx, ::typeof(sin), x::Real) = sin(x)
+Cassette.execute(ctx::DiffCtx, ::typeof(cos), x::Real) = cos(x)
+Cassette.execute(ctx::DiffCtx, ::typeof(*), x::Real, y::Real) = x * y
+Cassette.execute(ctx::DiffCtx, ::typeof(+), x::Real, y::Real) = x + y
+Cassette.execute(ctx::DiffCtx, ::typeof(*), x, y, z) = Cassette.execute(ctx, *, Cassette.execute(ctx, *, x, y), z)
+Cassette.execute(ctx::DiffCtx, ::typeof(+), x, y, z) = Cassette.execute(ctx, +, Cassette.execute(ctx, +, x, y), z)
+
 @test D(sin, 1) === cos(1)
 @test D(x -> D(sin, x), 1) === -sin(1)
 @test D(x -> sin(x) * cos(x), 1) === cos(1)^2 - sin(1)^2
 @test D(x -> x * D(y -> x * y, 1), 2) === 4
 @test D(x -> x * D(y -> x * y, 2), 1) === 2
+@test D(x -> x  * D(y -> 5*x*y, 3), 2) === 20
 @test D(x -> x * foo_bar_identity(x), 1) === 2.0
 
 x = rand()
