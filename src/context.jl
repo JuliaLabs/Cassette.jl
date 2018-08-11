@@ -465,4 +465,5 @@ Note that unlike `execute`, `fallback`, etc., this function is not intended to b
 
 See also:  [`overdub`](@ref), [`fallback`](@ref), [`execute`](@ref)
 """
-@inline canoverdub(ctx::Context, f, args...) = !isa(untag(f, ctx), Core.Builtin)
+@inline canoverdub(ctx::Context, f, ::Vararg{Any}) = !isa(untag(f, ctx), Core.Builtin)
+@inline canoverdub(ctx::Context, ::typeof(Core._apply), f, ::Vararg{Any}) = canoverdub(ctx, f)
