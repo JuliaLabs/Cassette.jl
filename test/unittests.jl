@@ -1,5 +1,7 @@
 # TODO: this file is pretty sparse...
 
+using InteractiveUtils: subtypes
+
 inferred_retval(f, sig) = code_typed(f, sig)[1].first.code[end].args[1]
 
 @context CanOverdubTestCtx
