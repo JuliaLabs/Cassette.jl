@@ -1,5 +1,9 @@
 #############################################################################################
 
+print("   running BazCtx test...")
+
+before_time = time()
+
 @context BazCtx
 
 struct Baz
@@ -23,7 +27,13 @@ result = overdub(ctx, baz_identity, tag(x, ctx, n))
 @test hasmetadata(result, ctx)
 @test !hasmetameta(result, ctx)
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running FooBarCtx test...")
+
+before_time = time()
 
 struct Bar{X,Y,Z}
     x::X
@@ -62,7 +72,13 @@ result = overdub(ctx, foo_bar_identity, tag(x, ctx, n))
 @test hasmetadata(result, ctx)
 @test !hasmetameta(result, ctx)
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running TaggedTupleCtx test...")
+
+before_time = time()
 
 @context TaggedTupleCtx
 Cassette.metadatatype(::Type{<:TaggedTupleCtx}, ::DataType) = Float64
@@ -82,7 +98,13 @@ result = overdub(ctx, x -> (x, [x], 1), x)
 @test !hasmetadata(result, ctx)
 @test hasmetameta(result, ctx)
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running ApplyCtx test...")
+
+before_time = time()
 
 @context ApplyCtx
 x = rand()
@@ -90,7 +112,13 @@ applytest(x) = Core._apply(hypot, (x,), (1,x), 1, x, (1,2))
 ctx = enabletagging(ApplyCtx(), 1)
 @test overdub(ctx, applytest, tag(x, ctx)) === applytest(x)
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running VATupleCtx test...")
+
+before_time = time()
 
 @context VATupleCtx
 x = rand(5)
@@ -105,7 +133,13 @@ result = overdub(ctx, broadcast, sin, x)
 @test !hasmetadata(result, ctx)
 @test !hasmetameta(result, ctx)
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running BroadcastCtx test...")
+
+before_time = time()
 
 @context BroadcastCtx
 
@@ -139,7 +173,13 @@ end
 @test !hasmetadata(result, ctx)
 @test hasmetameta(result, ctx)
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running BroadcastCtx2 test...")
+
+before_time = time()
 
 @context BroadcastCtx2
 
@@ -176,14 +216,26 @@ end
 @test !hasmetadata(result, ctx)
 @test hasmetameta(result, ctx)
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running MetaTypeCtx test...")
+
+before_time = time()
 
 @context MetaTypeCtx
 @test Cassette.metatype(typeof(MetaTypeCtx()), DataType) === Cassette.Meta{Cassette.NoMetaData,Cassette.NoMetaMeta}
 ctx = enabletagging(MetaTypeCtx(), 1)
 @test overdub(ctx, T -> (T,T), Float64) === (Float64, Float64)
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running TagConditionalCtx test...")
+
+before_time = time()
 
 @context TagConditionalCtx
 ctx = enabletagging(TagConditionalCtx(), 1)
@@ -198,14 +250,26 @@ function condtest(b)
 end
 @test overdub(ctx, condtest, tag(false, ctx)) === 0
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running KwargCtx test...")
+
+before_time = time()
 
 @context KwargCtx
 ctx = enabletagging(KwargCtx(), 1)
 kwargtest(x; y = 1) = x + y
 @test overdub(ctx, _y -> kwargtest(3; y = _y), tag(2, ctx)) === 5
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running RecurTagCtx test...")
+
+before_time = time()
 
 @context RecurTagCtx
 mutable struct RecurType
@@ -222,7 +286,13 @@ x = tag(RecurType(), ctx)
 @test isdefined(untag(x, ctx), :r)
 @test !(isdefined(untag(x, ctx).r, :r))
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running CrazyPropCtx test...")
+
+before_time = time()
 
 @context CrazyPropCtx
 
@@ -321,7 +391,13 @@ tagged_result = overdub(ctx, CrazyPropModule.crazy_sum_mul, tx, ty)
 @test isapprox(untag(tagged_result, ctx), primal_result)
 @test isapprox(metadata(tagged_result, ctx), CrazyPropModule.crazy_sum_mul(xm, ym))
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running DiffCtx test...")
+
+before_time = time()
 
 @context DiffCtx
 
@@ -398,3 +474,5 @@ x = rand()
 @test D(x -> (x + 2) * (3 + x), x) === 2x + 5
 @test D(x -> CrazyPropModule.crazy_sum_mul([x], [x]), x) === (x + x)
 @test D(x -> CrazyPropModule.crazy_sum_mul([x, 2], [3, x]), x) === 2x + 5
+
+println("done (took ", time() - before_time, " seconds)")

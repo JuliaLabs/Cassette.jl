@@ -1,5 +1,9 @@
 #############################################################################################
 
+print("   running RosCtx test...")
+
+before_time = time()
+
 @context RosCtx
 
 function rosenbrock(x::Vector{Float64})
@@ -33,7 +37,13 @@ for args in argslog
     @test all(x -> isa(x, Number), args)
 end
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running HookCtx test...")
+
+before_time = time()
 
 @context HookCtx
 
@@ -58,7 +68,13 @@ empty!(ctx.metadata[2])
 @test ctx.metadata[1][2] == ctx.metadata[2][1]
 @test ctx.metadata[1][3] == ctx.metadata[2][3]
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running SinCtx test...")
+
+before_time = time()
 
 @context SinCtx
 x = rand()
@@ -67,14 +83,26 @@ sin_plus_cos(x) = sin(x) + cos(x)
 Cassette.execute(::SinCtx, ::typeof(sin), x) = cos(x)
 @test @overdub(SinCtx(), sin_plus_cos(x)) === (2 * cos(x))
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running FoldCtx test...")
+
+before_time = time()
 
 @context FoldCtx
 x = 2
 foldmul(x, args...) = Core._apply(Base.afoldl, (*, x), args...)
 @test @overdub(FoldCtx(), foldmul(x)) === foldmul(x)
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running CountCtx test...")
+
+before_time = time()
 
 @context CountCtx
 count1 = Ref(0)
@@ -85,7 +113,13 @@ count2 = Ref(0)
 @overdub(CountCtx(metadata=count2), sin(1))
 @test (2 * count1[]) === count2[]
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running CountCtx2 test...")
+
+before_time = time()
 
 @context CountCtx2
 mutable struct Count{T}
@@ -101,7 +135,13 @@ end
     @test c.count > 1000
 end
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running SqrCtx test...")
+
+before_time = time()
 
 @context SqrCtx
 @testset "simple closure" begin
@@ -110,7 +150,13 @@ end
     @test square_closure(x) == @overdub(SqrCtx(), square_closure(x))
 end
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running CompCtx test...")
+
+before_time = time()
 
 @context CompCtx
 comprehension1(x) = [i for i in x]
@@ -120,7 +166,13 @@ f, x, y = hypot, rand(), rand(2)
 @test comprehension1(y) == @overdub(CompCtx(), comprehension1(y))
 @test comprehension2(f, x, y) == @overdub(CompCtx(), comprehension2(f, x, y))
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running PassCtx test...")
+
+before_time = time()
 
 @context PassCtx
 sig_collection = DataType[]
@@ -132,7 +184,13 @@ end
 @overdub(PassCtx(pass=mypass), sum(rand(3)))
 @test !isempty(sig_collection) && all(T -> T <: Tuple, sig_collection)
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running WorldCtx test...")
+
+before_time = time()
 
 @context WorldCtx
 worldtest = 0
@@ -152,7 +210,13 @@ Cassette.prehook(::WorldCtx, args...) = nothing
 overdub(WorldCtx(), sin, 1)
 @test tmp === worldtest
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running TraceCtx test...")
+
+before_time = time()
 
 x, y, z = rand(3)
 trtest(x, y, z) = x*y + y*z
@@ -214,7 +278,13 @@ htrace = HookTrace()
 @overdub(HookTraceCtx(metadata = htrace), trtest(x, y, z))
 @test htrace.current == trace
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running NestedReflectCtx test...")
+
+before_time = time()
 
 @context NestedReflectCtx
 r_pre = Cassette.reflect((typeof(sin), Int))
@@ -223,7 +293,13 @@ r_post = Cassette.reflect((typeof(overdub), typeof(NestedReflectCtx()), typeof(s
 Cassette.overdub_pass!(r_pre, typeof(NestedReflectCtx()))
 @test r_pre.code_info.code == r_post.code_info.code
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running GemvCtx test...")
+
+before_time = time()
 
 # issue #51
 @context GemvCtx
@@ -236,7 +312,13 @@ Y_copy_out = LinearAlgebra.BLAS.gemv!('T', α, A, X, β, Y_copy)
 @test Y_out === Y
 @test Y_copy_out === Y_copy
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running InferCtx test...")
+
+before_time = time()
 
 @context InferCtx
 
@@ -255,7 +337,13 @@ relulayer(W, x, b) = relu.(W*x .+ b)
 @inferred(overdub(InferCtx(), broadcast, +, rand(1), rand(1)))
 @inferred(overdub(InferCtx(), relulayer, rand(Float64, 1, 1), rand(Float32, 1), rand(Float32, 1)))
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
+
+print("   running InModuleCtx test...")
+
+before_time = time()
 
 module DefineStuffInModule
     using Cassette
@@ -267,3 +355,5 @@ end
 
 @test DefineStuffInModule.f(1) === sin(1)
 @test DefineStuffInModule.x > 0
+
+println("done (took ", time() - before_time, " seconds)")
