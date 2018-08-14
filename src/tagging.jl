@@ -32,11 +32,17 @@ store!(x::Immutable, y) = error("cannot mutate immutable field")
 struct NoMetaData end
 struct NoMetaMeta end
 
+_metadataconvert(T, x::NoMetaData) = x
+_metadataconvert(T, x) = convert(T, x)
+
+_metametaconvert(T, x::NoMetaMeta) = x
+_metametaconvert(T, x) = convert(T, x)
+
 struct Meta{D,M#=<:Union{Tuple,NamedTuple,Array,ModuleMeta}=#}
     data::Union{D,NoMetaData}
     meta::Union{M,NoMetaMeta}
     Meta(data::D, meta::M) where {D,M} = Meta{D,M}(data, meta)
-    Meta{D,M}(data, meta) where {D,M} = new{D,M}(data, meta)
+    Meta{D,M}(data, meta) where {D,M} = new{D,M}(_metadataconvert(D, data), _metametaconvert(M, meta))
 end
 
 const NOMETA = Meta(NoMetaData(), NoMetaMeta())
@@ -50,12 +56,6 @@ function Base.convert(::Type{Meta{D,M}}, meta::Meta) where {D,M}
     metameta = _metametaconvert(M, meta.meta)
     return Meta{D,M}(metadata, metameta)
 end
-
-_metadataconvert(T, x::NoMetaData) = x
-_metadataconvert(T, x) = convert(T, x)
-
-_metametaconvert(T, x::NoMetaMeta) = x
-_metametaconvert(T, x) = convert(T, x)
 
 ################
 # `ModuleMeta` #
@@ -615,56 +615,31 @@ end
 
 #=== tagged_getfield ===#
 
-tagged_getfield(context::ContextWithTag{T}, x, name, boundscheck) where {T} = getfield(x, untag(name, context), untag(boundscheck, context))
+tagged_getfield(context::Context, x, name) = tagged_getfield(context, x, name, false)
 
-tagged_getfield(context::ContextWithTag{T}, x, name) where {T} = getfield(x, untag(name, context))
+tagged_getfield(context::ContextWithTag{T}, x, name, boundscheck) where {T} = getfield(x, untag(name, context), untag(boundscheck, context))
 
 function tagged_getfield(context::ContextWithTag{T}, x::Tagged{T}, name, boundscheck) where {T}
     untagged_boundscheck = untag(boundscheck, context)
     untagged_name = untag(name, context)
-    y_value = getfield(untag(x, context), untagged_name, untagged_boundscheck)
     x_value = untag(x, context)
+    y_value = getfield(x_value, untagged_name, untagged_boundscheck)
     if isa(x_value, Module)
         return tagged_globalref(context, x, untagged_name, getfield(x_value, untagged_name))
     elseif hasmetameta(x, context)
         y_meta = load(getfield(x.meta.meta, untagged_name, untagged_boundscheck))
+        doesnotneedmeta(y_value) && y_meta === NOMETA && return y_value
+        return Tagged(context, y_value, y_meta)
+    elseif doesnotneedmeta(y_value)
+        return y_value
     else
-        y_meta = NOMETA
+        return Tagged(context, y_value, NOMETA)
     end
-    return Tagged(context, y_value, y_meta)
-end
-
-function tagged_getfield(context::ContextWithTag{T}, x::Tagged{T}, name) where {T}
-    untagged_name = untag(name, context)
-    y_value = getfield(untag(x, context), untagged_name)
-    x_value = untag(x, context)
-    if isa(x_value, Module)
-        return tagged_globalref(context, x, untagged_name, getfield(x_value, untagged_name))
-    elseif hasmetameta(x, context)
-        y_meta = load(getfield(x.meta.meta, untagged_name))
-    else
-        y_meta = NOMETA
-    end
-    return Tagged(context, y_value, y_meta)
 end
 
 #=== tagged_setfield! ===#
 
-tagged_setfield!(context::ContextWithTag{T}, x, name, y, boundscheck) where {T} = setfield!(x, untag(name, context), y, untag(boundscheck, context))
-
 tagged_setfield!(context::ContextWithTag{T}, x, name, y) where {T} = setfield!(x, untag(name, context), y)
-
-function tagged_setfield!(context::ContextWithTag{T}, x::Tagged{T}, name, y, boundscheck) where {T}
-    untagged_boundscheck = untag(boundscheck, context)
-    untagged_name = untag(name, context)
-    y_value = untag(y, context)
-    y_meta = istagged(y, context) ? y.meta : NOMETA
-    setfield!(x.value, untagged_name, y_value, untagged_boundscheck)
-    if hasmetameta(x, context)
-        store!(getfield(x.meta.meta, untagged_name, untagged_boundscheck), y_meta)
-    end
-    return y
-end
 
 function tagged_setfield!(context::ContextWithTag{T}, x::Tagged{T}, name, y) where {T}
     untagged_name = untag(name, context)
