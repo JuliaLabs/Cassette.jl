@@ -9,8 +9,7 @@ mutable struct Reflection
     code_info::CodeInfo
 end
 
-# Return `Reflection` for signature `sigtypes` and `world`, if possible. Otherwise, return `nothing`.
-function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
+function to_signature_type(@nospecialize(sigtypes::Tuple))
     # This works around a subtyping bug. Basically, callers can deconstruct upstream
     # `UnionAll` types in such a way that results in a type with free type variables, in
     # which case subtyping can just break.
@@ -23,7 +22,12 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     # assumption holds true for essentially all other kinds of values. I haven't counted in
     # a while, but I'm pretty sure I have ~40+ hellish years of Julia experience, and this
     # still catches me every time. Who even uses this crazy language?
-    S = Tuple{map(s -> Core.Compiler.has_free_typevars(s) ? typeof(s.parameters[1]) : s, sigtypes)...}
+    return Tuple{map(s -> Core.Compiler.has_free_typevars(s) ? typeof(s.parameters[1]) : s, sigtypes)...}
+end
+
+# Return `Reflection` for signature `sigtypes` and `world`, if possible. Otherwise, return `nothing`.
+function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
+    S = to_signature_type(sigtypes)
     (S.parameters[1]::DataType).name.module === Core.Compiler && return nothing
     _methods = Base._methods_by_ftype(S, -1, world)
     length(_methods) == 1 || return nothing
@@ -364,13 +368,17 @@ function overdub_pass!(reflection::Reflection,
     return reflection
 end
 
+overdub_dispatch(::DataType, args) = args
+
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
 function __overdub_generator__(pass_type, self, context_type, args::Tuple)
     if !(nfields(args) > 0 && args[1] <: Core.Builtin)
         try
-            untagged_args = ((untagtype(args[i], context_type) for i in 1:nfields(args))...,)
-            reflection = reflect(untagged_args)
+            actual_untagged_args = ((untagtype(args[i], context_type) for i in 1:nfields(args))...,)
+            dispatch_untagged_args = overdub_dispatch(context_type, actual_untagged_args)
+            reflection = reflect(dispatch_untagged_args)
             if isa(reflection, Reflection)
+                reflection.signature = to_signature_type(actual_untagged_args)
                 overdub_pass!(reflection, context_type, pass_type)
                 return reflection.code_info
             end
