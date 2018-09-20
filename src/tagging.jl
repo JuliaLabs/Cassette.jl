@@ -558,6 +558,11 @@ end
 # `tagged_*` intrisic primitives #
 ##################################
 
+_untag_all(context::Context, a) = untag(a, context)
+_untag_all(context::Context, a, b) = (untag(a, context), untag(b, context))
+_untag_all(context::Context, a, b, c) = (untag(a, context), untag(b, context), untag(c, context))
+_untag_all(context::Context, a, b, c, rest...) = (untag(a, context), untag(b, context), untag(c, context), _untag_all(context, rest...)...)
+
 #=== tagged_nameof ===#
 
 tagged_nameof(context::Context, x) = nameof(untag(x, context))
@@ -654,16 +659,16 @@ end
 
 #=== tagged_arrayref ===#
 
-function tagged_arrayref(context::ContextWithTag{T}, boundscheck, x, i) where {T}
-    return Core.arrayref(untag(boundscheck, context), x, untag(i, context))
+function tagged_arrayref(context::ContextWithTag{T}, boundscheck, x, inds...) where {T}
+    return Core.arrayref(untag(boundscheck, context), x, _untag_all(context, inds...)...)
 end
 
-function tagged_arrayref(context::ContextWithTag{T}, boundscheck, x::Tagged{T}, i) where {T}
+function tagged_arrayref(context::ContextWithTag{T}, boundscheck, x::Tagged{T}, inds...) where {T}
     untagged_boundscheck = untag(boundscheck, context)
-    untagged_i = untag(i, context)
-    y_value = Core.arrayref(untagged_boundscheck, untag(x, context), untagged_i)
+    untagged_inds = _untag_all(context, inds...)
+    y_value = Core.arrayref(untagged_boundscheck, untag(x, context), untagged_inds...)
     if hasmetameta(x, context)
-        y_meta = Core.arrayref(untagged_boundscheck, x.meta.meta, untagged_i)
+        y_meta = Core.arrayref(untagged_boundscheck, x.meta.meta, untagged_inds...)
     else
         y_meta = NOMETA
     end
@@ -672,18 +677,18 @@ end
 
 #=== tagged_arrayset ===#
 
-function tagged_arrayset(context::ContextWithTag{T}, boundscheck, x, y, i) where {T}
-    return Core.arrayset(untag(boundscheck, context), x, y, untag(i, context))
+function tagged_arrayset(context::ContextWithTag{T}, boundscheck, x, y, inds...) where {T}
+    return Core.arrayset(untag(boundscheck, context), x, y, _untag_all(context, inds...)...)
 end
 
-function tagged_arrayset(context::ContextWithTag{T}, boundscheck, x::Tagged{T}, y, i) where {T}
+function tagged_arrayset(context::ContextWithTag{T}, boundscheck, x::Tagged{T}, y, inds...) where {T}
     untagged_boundscheck = untag(boundscheck, context)
-    untagged_i = untag(i, context)
+    untagged_inds = _untag_all(context, inds...)
     y_value = untag(y, context)
     y_meta = istagged(y, context) ? y.meta : NOMETA
-    Core.arrayset(untagged_boundscheck, untag(x, context), y_value, untagged_i)
+    Core.arrayset(untagged_boundscheck, untag(x, context), y_value, untagged_inds...)
     if hasmetameta(x, context)
-        Core.arrayset(untagged_boundscheck, x.meta.meta, convert(eltype(x.meta.meta), y_meta), untagged_i)
+        Core.arrayset(untagged_boundscheck, x.meta.meta, convert(eltype(x.meta.meta), y_meta), untagged_inds...)
     end
     return x
 end

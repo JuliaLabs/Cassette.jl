@@ -476,3 +476,23 @@ x = rand()
 @test D(x -> CrazyPropModule.crazy_sum_mul([x, 2], [3, x]), x) === 2x + 5
 
 println("done (took ", time() - before_time, " seconds)")
+
+#############################################################################################
+
+print("   running ArrayIndexCtx test...")
+
+before_time = time()
+
+@context ArrayIndexCtx
+
+matrixliteral(x) = Int[x x; x x]
+
+Cassette.metadatatype(::Type{<:ArrayIndexCtx}, ::Type{Int}) = String
+
+ctx = enabletagging(ArrayIndexCtx(), matrixliteral)
+result = overdub(ctx, matrixliteral, tag(1, ctx, "hi"))
+
+@test untag(result, ctx) == matrixliteral(1)
+@test metameta(result, ctx) == fill(Cassette.Meta("hi", Cassette.NoMetaMeta()), 2, 2)
+
+println("done (took ", time() - before_time, " seconds)")

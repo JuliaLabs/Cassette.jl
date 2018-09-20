@@ -125,15 +125,13 @@ before_time = time()
 mutable struct Count{T}
     count::Int
 end
-@testset "prehook counting parameterized" begin
-    function Cassette.prehook(ctx::CountCtx2{Count{T}}, f, arg::T, args::T...) where {T}
-        ctx.metadata.count += 1
-    end
-    mapstr(x) = map(string, x)
-    c = Count{Union{String,Int}}(0)
-    @test @overdub(CountCtx2(metadata=c), mapstr(1:10)) == mapstr(1:10)
-    @test c.count > 1000
+function Cassette.prehook(ctx::CountCtx2{Count{T}}, f, arg::T, args::T...) where {T}
+    ctx.metadata.count += 1
 end
+mapstr(x) = map(string, x)
+c = Count{Union{String,Int}}(0)
+@test @overdub(CountCtx2(metadata=c), mapstr(1:10)) == mapstr(1:10)
+@test c.count > 1000
 
 println("done (took ", time() - before_time, " seconds)")
 
@@ -144,11 +142,9 @@ print("   running SqrCtx test...")
 before_time = time()
 
 @context SqrCtx
-@testset "simple closure" begin
-    square_closure(x) = (y -> y * x)(x)
-    x = rand()
-    @test square_closure(x) == @overdub(SqrCtx(), square_closure(x))
-end
+square_closure(x) = (y -> y * x)(x)
+x = rand()
+@test square_closure(x) == @overdub(SqrCtx(), square_closure(x))
 
 println("done (took ", time() - before_time, " seconds)")
 
