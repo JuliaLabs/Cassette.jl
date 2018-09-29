@@ -353,3 +353,26 @@ end
 @test DefineStuffInModule.x > 0
 
 println("done (took ", time() - before_time, " seconds)")
+
+#############################################################################################
+
+print("   running InvokeCtx test...")
+
+before_time = time()
+
+invoked(x::Int) = x + x
+invoked(x::Number) = x^2
+invoker(x) = invoke(invoked, Tuple{Number}, x)
+
+@context InvokeCtx
+Cassette.prehook(ctx::InvokeCtx, f, args...) = push!(ctx.metadata, f)
+ctx = InvokeCtx(metadata=Any[])
+
+@test overdub(ctx, invoker, 3) === 9
+# This is kind of fragile and may break for unrelated reasons - the main thing
+# we're testing here is that we properly trace through the `invoke` call.
+@test ctx.metadata == Any[Core.apply_type, Core.invoke, Core.apply_type,
+                          Val{2}, Core.apply_type, Base.literal_pow, *,
+                          Base.mul_int]
+
+println("done (took ", time() - before_time, " seconds)")
