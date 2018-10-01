@@ -6,10 +6,16 @@ inferred_retval(f, sig) = code_typed(f, sig)[1].first.code[end].args[1]
 
 @context CanOverdubTestCtx
 ctx = CanOverdubTestCtx()
-# test that the result value of is inferred exactly for `T <: Core.Builtin`
+# test that the result value of `canoverdub` is inferred exactly for `T <: Core.Builtin`
 for T in subtypes(Core.Builtin)
     if !(T <: typeof(Core._apply))
         @test !inferred_retval(canoverdub, (typeof(ctx), T))
         @test !inferred_retval(canoverdub, (typeof(ctx), typeof(Core._apply), T))
+        @test !inferred_retval(canoverdub, (typeof(ctx), typeof(Core.invoke), T))
     end
 end
+
+@test canoverdub(ctx, hypot, 1, 2)
+@test canoverdub(ctx, Core.invoke, hypot, Tuple{Int,Int}, 1, 2)
+@test canoverdub(ctx, Core._apply, hypot, (1, 2))
+@test canoverdub(ctx, Core._apply, Core.invoke, (hypot, Tuple{Int,Int}, 1, 2))

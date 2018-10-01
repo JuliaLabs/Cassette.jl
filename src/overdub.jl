@@ -11,6 +11,10 @@ end
 
 # Return `Reflection` for signature `sigtypes` and `world`, if possible. Otherwise, return `nothing`.
 function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
+    if length(sigtypes) > 2 && sigtypes[1] === typeof(invoke)
+        @assert sigtypes[3] <: Type{<:Tuple}
+        sigtypes = (sigtypes[2], sigtypes[3].parameters[1].parameters...)
+    end
     # This works around a subtyping bug. Basically, callers can deconstruct upstream
     # `UnionAll` types in such a way that results in a type with free type variables, in
     # which case subtyping can just break.
@@ -26,8 +30,15 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     S = Tuple{map(s -> Core.Compiler.has_free_typevars(s) ? typeof(s.parameters[1]) : s, sigtypes)...}
     (S.parameters[1]::DataType).name.module === Core.Compiler && return nothing
     _methods = Base._methods_by_ftype(S, -1, world)
-    length(_methods) == 1 || return nothing
-    type_signature, raw_static_params, method = first(_methods)
+    method_index = 0
+    for i in 1:length(_methods)
+        if _methods[i][1] === S
+            method_index = i
+            break
+        end
+    end
+    method_index === 0 && return nothing
+    type_signature, raw_static_params, method = _methods[method_index]
     method_instance = Core.Compiler.code_for_method(method, type_signature, raw_static_params, world, false)
     method_instance === nothing && return nothing
     method_signature = method.sig
@@ -62,14 +73,15 @@ const OVERDUB_TMP_SYMBOL = gensym("overdub_tmp")
 #   4. If tagging is enabled, do the necessary IR transforms for the metadata tagging system
 function overdub_pass!(reflection::Reflection,
                        context_type::DataType,
-                       pass_type::DataType = NoPass)
+                       pass_type::DataType = NoPass,
+                       is_invoke::Bool = false)
     signature = reflection.signature
     method = reflection.method
     static_params = reflection.static_params
     code_info = reflection.code_info
 
     # TODO: This `iskwfunc` is part of a hack that `overdub_pass!` implements in order to fix
-    # jrevels/Cassette.jl#48. These assumptions made by this hack are quite fragile, so we
+    # jrevels/Cassette.jl#48. The assumptions made by this hack are quite fragile, so we
     # should eventually get Base to expose a standard/documented API for this. Here, we see
     # this hack's first assumption: that `Core.kwfunc(f)` is going to return a function whose
     # type name is prefixed by `#kw##`. More assumptions for this hack will be commented on
@@ -96,6 +108,7 @@ function overdub_pass!(reflection::Reflection,
     overdub_ctx_slot = SlotNumber(2)
     overdub_args_slot = SlotNumber(3)
     overdub_tmp_slot = SlotNumber(length(code_info.slotnames))
+    invoke_offset = is_invoke ? 2 : 0
 
     # For the sake of convenience, the rest of this pass will translate `code_info`'s fields
     # into these overdubbed equivalents instead of updating `code_info` in-place. Then, at
@@ -108,7 +121,7 @@ function overdub_pass!(reflection::Reflection,
     n_method_args = Int(method.nargs)
     for i in 1:n_method_args
         slot = i + n_prepended_slots
-        actual_argument = Expr(:call, GlobalRef(Core, :getfield), overdub_args_slot, i)
+        actual_argument = Expr(:call, GlobalRef(Core, :getfield), overdub_args_slot, i + invoke_offset)
         push!(overdubbed_code, :($(SlotNumber(slot)) = $actual_argument))
         push!(overdubbed_codelocs, code_info.codelocs[1])
         code_info.slotflags[slot] |= 0x02 # ensure this slotflag has the "assigned" bit set
@@ -128,7 +141,7 @@ function overdub_pass!(reflection::Reflection,
             trailing_arguments = Expr(:call, GlobalRef(Core, :tuple))
         end
         for i in n_method_args:n_actual_args
-            push!(overdubbed_code, Expr(:call, GlobalRef(Core, :getfield), overdub_args_slot, i))
+            push!(overdubbed_code, Expr(:call, GlobalRef(Core, :getfield), overdub_args_slot, i + invoke_offset))
             push!(overdubbed_codelocs, code_info.codelocs[1])
             push!(trailing_arguments.args, SSAValue(length(overdubbed_code)))
         end
@@ -366,18 +379,22 @@ end
 
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
 function __overdub_generator__(pass_type, self, context_type, args::Tuple)
-    if !(nfields(args) > 0 && args[1] <: Core.Builtin)
-        try
-            untagged_args = ((untagtype(args[i], context_type) for i in 1:nfields(args))...,)
-            reflection = reflect(untagged_args)
-            if isa(reflection, Reflection)
-                overdub_pass!(reflection, context_type, pass_type)
-                return reflection.code_info
-            end
-        catch err
-            errmsg = "ERROR COMPILING $args IN CONTEXT $(context_type): \n" * sprint(showerror, err)
-            return quote
-                error($errmsg)
+    if nfields(args) > 0
+        is_builtin = args[1] <: Core.Builtin
+        is_invoke = args[1] === typeof(Core.invoke)
+        if !is_builtin || is_invoke
+            try
+                untagged_args = ((untagtype(args[i], context_type) for i in 1:nfields(args))...,)
+                reflection = reflect(untagged_args)
+                if isa(reflection, Reflection)
+                    overdub_pass!(reflection, context_type, pass_type, is_invoke)
+                    return reflection.code_info
+                end
+            catch err
+                errmsg = "ERROR COMPILING $args IN CONTEXT $(context_type): \n" * sprint(showerror, err)
+                return quote
+                    error($errmsg)
+                end
             end
         end
     end
