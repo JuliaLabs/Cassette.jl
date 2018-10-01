@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>The Overdubbing Mechanism · Cassette</title><link href="https://cdnjs.cloudflare.com/ajax/libs/normalize/4.2.0/normalize.min.css" rel="stylesheet" type="text/css"/><link href="https://fonts.googleapis.com/css?family=Lato|Roboto+Mono" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/default.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.2.0/require.min.js" data-main="assets/documenter.js"></script><script src="siteinfo.js"></script><script src="../versions.js"></script><link href="assets/documenter.css" rel="stylesheet" type="text/css"/></head><body><nav class="toc"><h1>Cassette</h1><select id="version-selector" onChange="window.location.href=this.value" style="visibility: hidden"></select><form class="search" id="search-form" action="search.html"><input id="search-query" name="q" type="text" placeholder="Search docs"/></form><ul><li><a class="toctext" href="index.html">Introduction</a></li><li><a class="toctext" href="disclaimers.html">Disclaimers</a></li><li><a class="toctext" href="whycassette.html">Why Cassette?</a></li><li class="current"><a class="toctext" href="overdub.html">The Overdubbing Mechanism</a><ul class="internal"></ul></li><li><a class="toctext" href="contextualdispatch.html">Contextual Dispatch</a></li><li><a class="toctext" href="contextualpass.html">Contextual Compiler Pass Injection</a></li><li><a class="toctext" href="contextualtagging.html">Contextual Tagging of Values</a></li><li><a class="toctext" href="api.html">Cassette API Documentation</a></li><li><a class="toctext" href="relatedwork.html">Related Work</a></li></ul></nav><article id="docs"><header><nav><ul><li><a href="overdub.html">The Overdubbing Mechanism</a></li></ul><a class="edit-page" href="https://github.com/jrevels/Cassette.jl/blob/master/docs/src/overdub.md"><span class="fa"></span> Edit on GitHub</a></nav><hr/><div id="topbar"><span>The Overdubbing Mechanism</span><a class="fa fa-bars" href="#"></a></div></header><h1><a class="nav-anchor" id="The-Overdubbing-Mechanism-1" href="#The-Overdubbing-Mechanism-1">The Overdubbing Mechanism</a></h1><p>The central mechanism that drives Cassette usage is called the &quot;overdubbing&quot; mechanism.</p><p>A naive usage of this mechanism looks like this:</p><pre><code class="language-julia">julia&gt; using Cassette
+
+julia&gt; Cassette.@context Ctx
+Cassette.Context{nametype(Ctx),M,P,T,B} where B&lt;:Union{Nothing, IdDict{Module,Dict{Symbol,BindingMeta}}} where P&lt;:Cassette.AbstractPass where T&lt;:Union{Nothing, Tag} where M
+
+julia&gt; Cassette.overdub(Ctx(), /, 1, 2)
+0.5</code></pre><p>Okay - what did we actually just do here? From the output, it seems like we just computed <code>1/2</code>...and indeed, we did! In reality, however, Cassette was doing a lot of work behind the scenes during this seemingly simple calculation. Let&#39;s drill down further into this example to see what&#39;s actually going on.</p><p>First, we define a new <a href="api.html#Cassette.Context"><code>Context</code></a> type alias called <code>Ctx</code> via the <a href="api.html#Cassette.@context"><code>@context</code></a> macro. In practical usage, one normally defines one or more contexts specific to one&#39;s application of Cassette. Here, we just made a dummy one for illustrative purposes. Context instances are central to Cassette&#39;s function, but are relatively simple to construct and understand. I recommend skimming the <a href="api.html#Cassette.Context"><code>Context</code></a> docstring before moving forward.</p><p>Next, we &quot;overdubbed&quot; a call to <code>1/2</code> w.r.t. <code>Ctx()</code> using the <a href="api.html#Cassette.overdub"><code>overdub</code></a> function. To get a sense of what that means, let&#39;s look at the lowered IR for the original call:</p><pre><code class="language-julia">julia&gt; @code_lowered 1/2
+CodeInfo(
+59 1 ─ %1 = (Base.float)(x)
+   │   %2 = (Base.float)(y)
+   │   %3 = %1 / %2
+   └──      return %3
+)</code></pre><p>And now let&#39;s look at lowered IR for the call to <code>overdub(Ctx(), /, 1, 2)</code></p><pre><code class="language-julia">julia&gt; @code_lowered Cassette.overdub(Ctx(), /, 1, 2)
+CodeInfo(
+59 1 ─       #self# = (Core.getfield)(##overdub_arguments#369, 1)
+   │         x = (Core.getfield)(##overdub_arguments#369, 2)
+   │         y = (Core.getfield)(##overdub_arguments#369, 3)
+   │         (Cassette.prehook)(##overdub_context#368, Base.float, x)
+   │         ##overdub_tmp#370 = (Cassette.execute)(##overdub_context#368, Base.float, x)
+   │   %6  = ##overdub_tmp#370 isa Cassette.OverdubInstead
+   └──       goto #3 if not %6
+   2 ─       ##overdub_tmp#370 = (Cassette.overdub)(##overdub_context#368, Base.float, x)
+   3 ─       (Cassette.posthook)(##overdub_context#368, ##overdub_tmp#370, Base.float, x)
+   │   %10 = ##overdub_tmp#370
+   │         (Cassette.prehook)(##overdub_context#368, Base.float, y)
+   │         ##overdub_tmp#370 = (Cassette.execute)(##overdub_context#368, Base.float, y)
+   │   %13 = ##overdub_tmp#370 isa Cassette.OverdubInstead
+   └──       goto #5 if not %13
+   4 ─       ##overdub_tmp#370 = (Cassette.overdub)(##overdub_context#368, Base.float, y)
+   5 ─       (Cassette.posthook)(##overdub_context#368, ##overdub_tmp#370, Base.float, y)
+   │   %17 = ##overdub_tmp#370
+   │         (Cassette.prehook)(##overdub_context#368, Base.:/, %10, %17)
+   │         ##overdub_tmp#370 = (Cassette.execute)(##overdub_context#368, Base.:/, %10, %17)
+   │   %20 = ##overdub_tmp#370 isa Cassette.OverdubInstead
+   └──       goto #7 if not %20
+   6 ─       ##overdub_tmp#370 = (Cassette.overdub)(##overdub_context#368, Base.:/, %10, %17)
+   7 ─       (Cassette.posthook)(##overdub_context#368, ##overdub_tmp#370, Base.:/, %10, %17)
+   │   %24 = ##overdub_tmp#370
+   └──       return %24
+)</code></pre><p>There&#39;s obviously a lot more going on here than in the lowered IR for <code>1/2</code>, but if you squint, you might notice that the overdubbed IR is actually the original IR with a special transformation applied to it. Specifically, the overdubbed IR is the lowered IR for the given function call with all internal method invocations of the form <code>f(args...)</code> replaced by statements similar to the following:</p><pre><code class="language-julia">begin
+    Cassette.prehook(context, f, args...)
+    tmp = Cassette.execute(context, f, args...)
+    tmp = isa(tmp, Cassette.OverdubInstead) ? overdub(context, f, args...) : tmp
+    Cassette.posthook(context, tmp, f, args...)
+    tmp
+end</code></pre><p>It is here that we experience our first bit of overdubbing magic: for every method call in the overdubbed trace, we obtain a bunch of extra overloading points that we didn&#39;t have before! In the <a href="contextualdispatch.html">following section on contextual dispatch</a>, we&#39;ll explore how <a href="api.html#Cassette.prehook"><code>prehook</code></a>, <a href="api.html#Cassette.posthook"><code>posthook</code></a>, <a href="api.html#Cassette.execute"><code>execute</code></a>, and more can all be overloaded to add new contextual behaviors to overdubbed programs.</p><p>In the meantime, we should clarify how <code>overdub</code> is achieving this feat. Let&#39;s start by examining a &quot;psuedo-implementation&quot; of <code>overdub</code>:</p><pre><code class="language-julia">@generated function overdub(context::C, args...) where C&lt;:Context
+    reflection = Cassette.reflect(args)
+    if isa(reflection, Cassette.Reflection)
+        Cassette.overdub_pass!(reflection, C)
+        return reflection.code_info
+    else
+        return :(Cassette.fallback(context, args...))
+    end
+end</code></pre><p>As you can see, <code>overdub</code> is a <code>@generated</code> function, and thus returns its own method body computed from the run-time types of its inputs. To actually compute this method body, <code>overdub</code> is doing something quite special.</p><p>First, via <code>Cassette.reflect</code>, <code>overdub</code> asks Julia&#39;s compiler to provide it with a bunch of information about the original method call as specified by <code>args</code>. The result of this query is <code>reflection</code>, which is a <code>Cassette.Reflection</code> object if the compiler found lowered IR for <code>args</code> and <code>nothing</code> otherwise (e.g. if <code>args</code> specifies a built-in call like <code>getfield</code> whose implementation is not, itself, Julia code). For the former case, we execute a pass over the <code>reflection</code> and the lowered IR stored within (<code>Cassette.overdub_pass!</code>) to perform the previously presented transformation, returning the new lowered IR as a <code>CodeInfo</code> object. Otherwise, if <code>reflection</code> is not a <code>Reflection</code> object, then no lowered IR is available, so we simply call the context&#39;s <a href="api.html#Cassette.fallback"><code>fallback</code></a> method (which, by default, simply calls the provided function).</p><footer><hr/><a class="previous" href="whycassette.html"><span class="direction">Previous</span><span class="title">Why Cassette?</span></a><a class="next" href="contextualdispatch.html"><span class="direction">Next</span><span class="title">Contextual Dispatch</span></a></footer></article></body></html>

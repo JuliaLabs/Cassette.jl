@@ -325,7 +325,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Related Work",
     "title": "Related Work",
     "category": "section",
-    "text": "Cassette draws inspiration from a bunch of different work (in no particular order):Aspect-Oriented Programming: https://en.wikipedia.org/wiki/Aspect-oriented_programming\nXRay for LLVM: https://ai.google/research/pubs/pub45287\nMultimethods for C++: http://www.stroustrup.com/multimethods.pdf\nMap-Closure for Scheme: http://www.bcl.hamilton.ie/~qobi/map-closure/\nCompiling to Categories for Haskell: http://conal.net/papers/compiling-to-categories/\nThe Checker Framework for Java: https://checkerframework.org/\nContext-Oriented Programming (this is not strictly what Cassette implements, despite the naming similarities): http://www.jot.fm/issues/issue200803/article4/\nJameson Nash\'s Brain: https://github.com/vtjnash"
+    "text": "Cassette draws inspiration from a bunch of different work (in no particular order):Aspect-Oriented Programming: https://en.wikipedia.org/wiki/Aspect-oriented_programming\nXRay for LLVM: https://ai.google/research/pubs/pub45287\nMultimethods for C++: http://www.stroustrup.com/multimethods.pdf\nMap-Closure for Scheme: http://www.bcl.hamilton.ie/~qobi/map-closure/\nStalingrad Compiler for VLAD: https://docs.lib.purdue.edu/cgi/viewcontent.cgi?article=1368&context=ecetr\nCompiling to Categories for Haskell: http://conal.net/papers/compiling-to-categories/\nThe Checker Framework for Java: https://checkerframework.org/\nContext-Oriented Programming (this is not strictly what Cassette implements, despite the naming similarities): http://www.jot.fm/issues/issue200803/article4/\nJameson Nash\'s Brain: https://github.com/vtjnash"
 },
 
 ]}
