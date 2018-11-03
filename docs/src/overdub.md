@@ -98,7 +98,7 @@ explore how [`prehook`](@ref), [`posthook`](@ref), [`execute`](@ref), and more c
 overloaded to add new contextual behaviors to overdubbed programs.
 
 In the meantime, we should clarify how `overdub` is achieving this feat. Let's start by
-examining a "psuedo-implementation" of `overdub`:
+examining a "pseudo-implementation" of `overdub`:
 
 ```julia
 @generated function overdub(context::C, args...) where C<:Context
