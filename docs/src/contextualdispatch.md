@@ -4,7 +4,7 @@
 CurrentModule = Cassette
 ```
 
-In [the previous section](contextualdispatch.md), we saw how, within a given execution
+In [the previous section](overdub.md), we saw how, within a given execution
 trace, Cassette's `overdub` mechanism transforms every method invocation of the
 form `f(args...)` into statements similar to the following:
 
