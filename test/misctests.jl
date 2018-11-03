@@ -376,3 +376,26 @@ ctx = InvokeCtx(metadata=Any[])
                           Base.mul_int]
 
 println("done (took ", time() - before_time, " seconds)")
+
+#############################################################################################
+
+# taken from https://stackoverflow.com/questions/52050262/how-to-do-memoization-or-memoisation-in-julia-1-0/52062639#52062639
+
+print("   running MemoizeCtx test...")
+
+fib(x) = x < 3 ? 1 : fib(x - 2) + fib(x - 1)
+fibtest(n) = fib(2 * n) + n
+
+@context MemoizeCtx
+Cassette.execute(ctx::MemoizeCtx, ::typeof(fib), x) = get(ctx.metadata, x, Cassette.OverdubInstead())
+Cassette.posthook(ctx::MemoizeCtx, fibx, ::typeof(fib), x) = (ctx.metadata[x] = fibx)
+
+ctx = MemoizeCtx(metadata = Dict{Int,Int}())
+n = 10
+result = Cassette.overdub(ctx, fibtest, n)
+
+@test result == fibtest(n)
+@test length(ctx.metadata) == 2 * n
+@test all(fib(k) == v for (k, v) in ctx.metadata)
+
+println("done (took ", time() - before_time, " seconds)")
