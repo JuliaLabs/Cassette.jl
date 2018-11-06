@@ -4,7 +4,7 @@
 CurrentModule = Cassette
 ```
 
-In [the previous section](contextualdispatch.md), we saw how, within a given execution
+In [the previous section](overdub.md), we saw how, within a given execution
 trace, Cassette's `overdub` mechanism transforms every method invocation of the
 form `f(args...)` into statements similar to the following:
 
@@ -165,20 +165,56 @@ than `OverdubInstead`, however, then it means the recursive overdubbing stops. T
 Cassette terminology, overloading `execute` defines a "contextual primitive" w.r.t. the
 overdubbing mechanism.
 
-Note that upon context definition (via [`@context`](@ref)) a bunch of reasonable default
-contextual primitives are generated automatically. It is possible, of course, to simply
-override these defaults if necessary. For more details, see [`@context`](@ref).
+!!! note
+    A bunch of reasonable default contextual primitives are generated automatically
+    upon context definition (via [`@context`](@ref)). It is possible, of course, to
+    simply override these defaults if necessary. For more details, see [`@context`](@ref).)
 
-As an aside, one might wonder why the default definition of `execute` isn't simply
+One might wonder why the default definition of `execute` isn't simply
 `execute(context, args...) = overdub(context, args...)`. The reason is that this definition
 is a bit harder on the compiler, since it adds an extra cycle (e.g. `execute` -> `overdub`
--> `execute`) in the recursion inherent to Cassette's overdubbing mechanism. The branching
-based definition is much nicer, since it is much cheaper to evaluate a trivial `isa` check
-at compile time than it is to determine the worth of inferring through deep multi-cycle
-recursion.
+-> `execute`) to the recursion inherent in Cassette's overdubbing mechanism. It is much
+cheaper for the compiler to evaluate `isa(tmp, OverdubInstead)` than it is to infer
+through deep multi-cycle recursion.
 
-To get a sense of the interaction between `execute` and `overdub`, let's reimplement our
-previous nested tracing example using recursion instead of maintaining a stack:
+Furthermore, it is often convenient to use `OverdubInstead` in your own contextual
+primitive definitions. For example, `OverdubInstead` is used in the below
+implementation, which memoizes the computation of Fibonacci numbers (many thanks
+to the illustrious Simon Byrne, [the original author of this example](https://stackoverflow.com/questions/52050262/how-to-do-memoization-or-memoisation-in-julia-1-0/52062639#52062639)):
+
+```julia
+using Cassette: Cassette, @context, OverdubInstead
+
+fib(x) = x < 3 ? 1 : fib(x - 2) + fib(x - 1)
+fibtest(n) = fib(2 * n) + n
+
+@context MemoizeCtx
+Cassette.execute(ctx::MemoizeCtx, ::typeof(fib), x) = get(ctx.metadata, x, OverdubInstead())
+Cassette.posthook(ctx::MemoizeCtx, fibx, ::typeof(fib), x) = (ctx.metadata[x] = fibx)
+```
+
+Then (skipping the warm-up calls used to compile both functions):
+
+```julia
+julia> ctx = MemoizeCtx(metadata = Dict{Int,Int}());
+
+julia> @time Cassette.overdub(ctx, fibtest, 20)
+  0.000011 seconds (8 allocations: 1.547 KiB)
+102334175
+
+julia> @time Cassette.overdub(ctx, fibtest, 20)
+  0.000006 seconds (5 allocations: 176 bytes)
+102334175
+
+julia> @time fibtest(20)
+  0.276069 seconds (5 allocations: 176 bytes)
+102334175
+```
+
+
+Finally, to get a sense of the interaction between `execute` and `overdub`, let's
+reimplement our previous nested tracing example using recursion instead of maintaining
+a stack:
 
 ```julia
 using Cassette
