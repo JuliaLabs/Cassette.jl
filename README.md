@@ -9,6 +9,8 @@
 [![](https://img.shields.io/badge/docs-stable-blue.svg)](https://jrevels.github.io/Cassette.jl/stable/)
 [![](https://img.shields.io/badge/docs-latest-blue.svg)](https://jrevels.github.io/Cassette.jl/latest/)
 
+[![DOI](https://zenodo.org/badge/86752121.svg)](https://zenodo.org/badge/latestdoi/86752121)
+
 ## Overview
 
 Cassette lets you easily extend the Julia language by directly injecting the Julia compiler with new, context-specific behaviors.
