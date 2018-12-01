@@ -9,6 +9,12 @@ mutable struct Reflection
     code_info::CodeInfo
 end
 
+if VERSION < v"1.1.0-DEV.762"
+    copy_code_info(code_info) = Core.Compiler.copy_code_info(code_info)
+else
+    copy_code_info(code_info) = copy(code_info)
+end
+
 # Return `Reflection` for signature `sigtypes` and `world`, if possible. Otherwise, return `nothing`.
 function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     if length(sigtypes) > 2 && sigtypes[1] === typeof(invoke)
@@ -45,7 +51,7 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     static_params = Any[raw_static_params...]
     code_info = Core.Compiler.retrieve_code_info(method_instance)
     isa(code_info, CodeInfo) || return nothing
-    code_info = Core.Compiler.copy_code_info(code_info)
+    code_info = copy_code_info(code_info)
     return Reflection(S, method, static_params, code_info)
 end
 
