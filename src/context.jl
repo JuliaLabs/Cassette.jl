@@ -220,8 +220,10 @@ See also: [`Context`](@ref)
 """
 macro context(Ctx)
     @assert isa(Ctx, Symbol) "context name must be a Symbol"
-    CtxName = gensym(string(Ctx, "Name"))
-    TaggedCtx = gensym(string(Ctx, "Tagged"))
+    
+    # No gensym on the name, so the same name returns the same Context type.
+    CtxName = Symbol("##$(Ctx)#Name")
+    TaggedCtx = Symbol("##$(Ctx)#Tagged")
     Typ = :(Core.Typeof)
     return esc(quote
         struct $CtxName <: $Cassette.AbstractContextName end
