@@ -218,67 +218,67 @@ is enabled.
 
 See also: [`Context`](@ref)
 """
-macro context(Ctx)
-    @assert isa(Ctx, Symbol) "context name must be a Symbol"
-    
-    # No gensym on the name, so the same name returns the same Context type.
-    CtxName = Symbol("##$(Ctx)#Name")
-    TaggedCtx = Symbol("##$(Ctx)#Tagged")
-    Typ = :(Core.Typeof)
-    return esc(quote
-        struct $CtxName <: $Cassette.AbstractContextName end
+macro context(_Ctx)
+    @assert isa(_Ctx, Symbol) "context name must be a Symbol"
+    # These are not necessarily hygienic, but allow for `@context C` to be
+    # repeatedly declared (as a no-op for redundant declarations) without
+    # error, similarly to repeated `struct` declarations.
+    CtxName = esc(Symbol("##$(_Ctx)#Name"))
+    CtxTagged = esc(Symbol("##$(_Ctx)#Tagged"))
+    Ctx = esc(_Ctx)
+    M, T, P = esc(:M), esc(:T), esc(:P)
+    return quote
+        struct $CtxName <: AbstractContextName end
 
-        Base.show(io::IO, ::Type{$CtxName}) = print(io, "nametype(", $(string(Ctx)), ")")
+        Base.show(io::IO, ::Type{$CtxName}) = print(io, "nametype(", $(string(_Ctx)), ")")
 
-        const $Ctx{M,T<:Union{Nothing,$Cassette.Tag},P<:$Cassette.AbstractPass} = $Cassette.Context{$CtxName,M,P,T}
-        const $TaggedCtx = $Ctx{<:Any,<:$Cassette.Tag}
+        const $Ctx{$M,$T<:Union{Nothing,Tag},$P<:AbstractPass} = Context{$CtxName,$M,$P,$T}
+        const $CtxTagged = $Ctx{$M,$T} where {$M<:Any,$T<:Tag}
 
-        $Ctx(; kwargs...) = $Cassette.Context($CtxName(); kwargs...)
+        $Ctx(; kwargs...) = Context($CtxName(); kwargs...)
 
-        @doc (@doc $Cassette.Context) $Ctx
-
-        @inline $Cassette.execute(::C, ::$Typ($Cassette.Tag), ::Type{N}, ::Type{X}) where {C<:$Ctx,N,X} = $Cassette.Tag(N, X, $Cassette.tagtype(C))
+        @inline Cassette.execute(::C, ::Typeof(Tag), ::Type{N}, ::Type{X}) where {C<:$Ctx,N,X} = Tag(N, X, tagtype(C))
 
         # TODO: There are certain non-`Core.Builtin` functions which the compiler often
         # relies upon constant propagation to infer, such as `isdispatchtuple`. Such
         # functions should generally be contextual primitives by default for the sake of
         # performance, and we should add more of them here as we encounter them.
-        @inline $Cassette.execute(ctx::$Ctx, f::$Typ(Base.isdispatchtuple), T::Type) = $Cassette.fallback(ctx, f, T)
-        @inline $Cassette.execute(ctx::$Ctx, f::$Typ(Base.eltype), T::Type) = $Cassette.fallback(ctx, f, T)
-        @inline $Cassette.execute(ctx::$Ctx, f::$Typ(Base.convert), T::Type, t::Tuple) = $Cassette.fallback(ctx, f, T, t)
-        @inline $Cassette.execute(ctx::$Ctx{<:Any,Nothing}, f::$Typ(Base.getproperty), x::Any, s::Symbol) = $Cassette.fallback(ctx, f, x, s)
+        @inline Cassette.execute(ctx::$Ctx, f::Typeof(Base.isdispatchtuple), T::Type) = fallback(ctx, f, T)
+        @inline Cassette.execute(ctx::$Ctx, f::Typeof(Base.eltype), T::Type) = fallback(ctx, f, T)
+        @inline Cassette.execute(ctx::$Ctx, f::Typeof(Base.convert), T::Type, t::Tuple) = fallback(ctx, f, T, t)
+        @inline Cassette.execute(ctx::$Ctx{<:Any,Nothing}, f::Typeof(Base.getproperty), x::Any, s::Symbol) = fallback(ctx, f, x, s)
 
-        # the below primitives are only active when the tagging system is enabled (`typeof(ctx) <: TaggedCtx`)
+        # the below primitives are only active when the tagging system is enabled (`typeof(ctx) <: CtxTagged`)
 
-        @inline $Cassette.execute(ctx::C, f::$Typ($Cassette.tag), value, ::C, metadata) where {C<:$TaggedCtx} = $Cassette.fallback(ctx, f, value, ctx, metadata)
-        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Array{T,N}), undef::UndefInitializer, args...) where {T,N} = $Cassette.tagged_new_array(ctx, Array{T,N}, undef, args...)
-        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core.Module), args...) = $Cassette.tagged_new_module(ctx, args...)
-        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core.tuple), args...) = $Cassette.tagged_new_tuple(ctx, args...)
-        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Base.nameof), args...) = $Cassette.tagged_nameof(ctx, m)
-        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core.getfield), args...) = $Cassette.tagged_getfield(ctx, args...)
-        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core.setfield!), args...) = $Cassette.tagged_setfield!(ctx, args...)
-        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core.arrayref), args...) = $Cassette.tagged_arrayref(ctx, args...)
-        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core.arrayset), args...) = $Cassette.tagged_arrayset(ctx, args...)
-        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Base._growbeg!), args...) = $Cassette.tagged_growbeg!(ctx, args...)
-        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Base._growend!), args...) = $Cassette.tagged_growend!(ctx, args...)
-        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Base._growat!), args...) = $Cassette.tagged_growat!(ctx, args...)
-        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Base._deletebeg!), args...) = $Cassette.tagged_deletebeg!(ctx, args...)
-        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Base._deleteend!), args...) = $Cassette.tagged_deleteend!(ctx, args...)
-        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Base._deleteat!), args...) = $Cassette.tagged_deleteat!(ctx, args...)
-        @inline $Cassette.execute(ctx::$TaggedCtx, ::$Typ(Core.typeassert), args...) = $Cassette.tagged_typeassert(ctx, args...)
+        @inline Cassette.execute(ctx::C, f::Typeof(tag), value, ::C, metadata) where {C<:$CtxTagged} = fallback(ctx, f, value, ctx, metadata)
+        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Array{T,N}), undef::UndefInitializer, args...) where {T,N} = tagged_new_array(ctx, Array{T,N}, undef, args...)
+        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.Module), args...) = tagged_new_module(ctx, args...)
+        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.tuple), args...) = tagged_new_tuple(ctx, args...)
+        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base.nameof), args...) = tagged_nameof(ctx, m)
+        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.getfield), args...) = tagged_getfield(ctx, args...)
+        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.setfield!), args...) = tagged_setfield!(ctx, args...)
+        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.arrayref), args...) = tagged_arrayref(ctx, args...)
+        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.arrayset), args...) = tagged_arrayset(ctx, args...)
+        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base._growbeg!), args...) = tagged_growbeg!(ctx, args...)
+        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base._growend!), args...) = tagged_growend!(ctx, args...)
+        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base._growat!), args...) = tagged_growat!(ctx, args...)
+        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base._deletebeg!), args...) = tagged_deletebeg!(ctx, args...)
+        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base._deleteend!), args...) = tagged_deleteend!(ctx, args...)
+        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base._deleteat!), args...) = tagged_deleteat!(ctx, args...)
+        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.typeassert), args...) = tagged_typeassert(ctx, args...)
 
-        @inline function $Cassette.execute(ctx::$TaggedCtx, f::Core.IntrinsicFunction, args...)
+        @inline function Cassette.execute(ctx::$CtxTagged, f::Core.IntrinsicFunction, args...)
             if f === Base.sitofp
-                return $Cassette.tagged_sitofp(ctx, args...)
+                return tagged_sitofp(ctx, args...)
             elseif f === Base.sle_int
-                return $Cassette.tagged_sle_int(ctx, args...)
+                return tagged_sle_int(ctx, args...)
             else # TODO: add more cases
-                return $Cassette.fallback(ctx, f, args...)
+                return fallback(ctx, f, args...)
             end
         end
 
         $Ctx
-    end)
+    end
 end
 
 ###############################
