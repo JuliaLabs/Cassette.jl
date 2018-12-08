@@ -383,6 +383,8 @@ println("done (took ", time() - before_time, " seconds)")
 
 print("   running MemoizeCtx test...")
 
+before_time = time()
+
 fib(x) = x < 3 ? 1 : fib(x - 2) + fib(x - 1)
 fibtest(n) = fib(2 * n) + n
 
@@ -399,3 +401,34 @@ result = Cassette.overdub(ctx, fibtest, n)
 @test all(fib(k) == v for (k, v) in ctx.metadata)
 
 println("done (took ", time() - before_time, " seconds)")
+
+#############################################################################################
+
+if VERSION >= v"1.1-"
+
+# ref https://github.com/jrevels/Cassette.jl/issues/73
+
+print("   running NoOpCtx test...")
+
+before_time = time()
+
+@context NoOpCtx;
+
+function loop(x, n)
+    r = x / x
+    while n > 0
+        r *= sin(x)
+        n -= 1
+    end
+    return r
+end
+
+f(x, n) = overdub(NoOpCtx(), loop, x, n)
+
+f(2, 50) # warm up
+
+@test @allocated(f(2, 50)) == 0
+
+println("done (took ", time() - before_time, " seconds)")
+
+end # if block
