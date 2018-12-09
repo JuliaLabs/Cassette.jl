@@ -7,6 +7,7 @@ mutable struct Reflection
     method::Method
     static_params::Vector{Any}
     code_info::CodeInfo
+    world::UInt
 end
 
 if VERSION < v"1.1.0-DEV.762"
@@ -16,7 +17,7 @@ else
 end
 
 # Return `Reflection` for signature `sigtypes` and `world`, if possible. Otherwise, return `nothing`.
-function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
+function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt); method_only = false)
     if length(sigtypes) > 2 && sigtypes[1] === typeof(invoke)
         @assert sigtypes[3] <: Type{<:Tuple}
         sigtypes = (sigtypes[2], sigtypes[3].parameters[1].parameters...)
@@ -45,6 +46,7 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     end
     method_index === 0 && return nothing
     type_signature, raw_static_params, method = _methods[method_index]
+    method_only && return method
     method_instance = Core.Compiler.code_for_method(method, type_signature, raw_static_params, world, false)
     method_instance === nothing && return nothing
     method_signature = method.sig
@@ -52,7 +54,7 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     code_info = Core.Compiler.retrieve_code_info(method_instance)
     isa(code_info, CodeInfo) || return nothing
     code_info = copy_code_info(code_info)
-    return Reflection(S, method, static_params, code_info)
+    return Reflection(S, method, static_params, code_info, world)
 end
 
 ###########
@@ -375,7 +377,18 @@ function overdub_pass!(reflection::Reflection,
     #=== set `code_info`/`reflection` fields accordingly ===#
 
     if code_info.method_for_inference_limit_heuristics === nothing
-        code_info.method_for_inference_limit_heuristics = method
+        underlying_method = method
+        underlying_type_parameters = (signature.parameters...,)
+        while isa(underlying_method, Method) && underlying_method.name == :overdub
+            if length(underlying_type_parameters) > 2
+                underlying_type_parameters = (underlying_type_parameters[3:end]...,)
+                result = reflect(underlying_type_parameters, reflection.world; method_only = true)
+                underlying_method = result === nothing ? Core.IntrinsicFunction : result
+            else
+                break
+            end
+        end
+        code_info.method_for_inference_limit_heuristics = underlying_method
     end
 
     code_info.code = overdubbed_code
