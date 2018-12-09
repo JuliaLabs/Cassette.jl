@@ -20,13 +20,7 @@ end
 @test canoverdub(ctx, Core._apply, hypot, (1, 2))
 @test canoverdub(ctx, Core._apply, Core.invoke, (hypot, Tuple{Int,Int}, 1, 2))
 
-
-###########
-
-# Declaring a `@context` with the same name twice, should be a No-Op, not an error
-# Code below will throw an error if this is not true
-
+# Declaring a `@context` with the same name twice should be a no-op, not an
+# error; this code will throw an error otherwise
 @context FooBar
 @context FooBar
-
-
