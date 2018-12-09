@@ -7,6 +7,7 @@ mutable struct Reflection
     method::Method
     static_params::Vector{Any}
     code_info::CodeInfo
+    world::UInt
 end
 
 if VERSION < v"1.1.0-DEV.762"
@@ -53,7 +54,7 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt); me
     code_info = Core.Compiler.retrieve_code_info(method_instance)
     isa(code_info, CodeInfo) || return nothing
     code_info = copy_code_info(code_info)
-    return Reflection(S, method, static_params, code_info)
+    return Reflection(S, method, static_params, code_info, world)
 end
 
 ###########
@@ -72,10 +73,8 @@ const OVERDUB_TMP_SYMBOL = gensym("overdub_tmp")
 #   3. Replace all calls of the form `output = f(args...)` with:
 #      ```
 #      prehook(ctx, f, args...)
-#      tmp = execute(ctx, f, args...)
-#      isa(tmp, OverdubInstead) ? overdub(ctx, f, args...) : tmp
+#      output = overdub(ctx, f, args...)
 #      posthook(ctx, f, args...)
-#      output = tmp
 #      ```
 #   4. If tagging is enabled, do the necessary IR transforms for the metadata tagging system
 function overdub_pass!(reflection::Reflection,
@@ -344,7 +343,7 @@ function overdub_pass!(reflection::Reflection,
             i >= original_code_start_index || return nothing
             stmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
             if Base.Meta.isexpr(stmt, :call) && !(Base.Meta.isexpr(stmt.args[1], :nooverdub))
-                return 7
+                return 4
             end
             return nothing
         end
@@ -354,9 +353,6 @@ function overdub_pass!(reflection::Reflection,
             overdubstmt = Expr(:call, GlobalRef(Cassette, :overdub), overdub_ctx_slot, callstmt.args...)
             return [
                 Expr(:call, GlobalRef(Cassette, :prehook), overdub_ctx_slot, callstmt.args...),
-                Expr(:(=), overdub_tmp_slot, execstmt),
-                Expr(:call, GlobalRef(Core, :isa), overdub_tmp_slot, GlobalRef(Cassette, :OverdubInstead)),
-                Expr(:gotoifnot, SSAValue(i + 2), i + 5),
                 Expr(:(=), overdub_tmp_slot, overdubstmt),
                 Expr(:call, GlobalRef(Cassette, :posthook), overdub_ctx_slot, overdub_tmp_slot, callstmt.args...),
                 Base.Meta.isexpr(x, :(=)) ? Expr(:(=), x.args[1], overdub_tmp_slot) : overdub_tmp_slot
@@ -376,35 +372,43 @@ function overdub_pass!(reflection::Reflection,
     #=== set `code_info`/`reflection` fields accordingly ===#
 
     if code_info.method_for_inference_limit_heuristics === nothing
-        code_info.method_for_inference_limit_heuristics = method
+        underlying_method = method
+
+        # TODO: This doesn't seem to improve our test case any, though
+        # it should have some advantages in theory...
+        # There is still an issue with constant-propping through `getfield`
+        # that has been nested overdubbed. Do an InferenceResult cache check
+        # to see where it gets inferred as Union{$element_types...} instead
+        # of correctly inferred.
+
+        # underlying_type_parameters = (signature.parameters...,)
+        # while isa(underlying_method, Method) && underlying_method.name == :overdub
+        #     if length(underlying_type_parameters) > 2
+        #         underlying_type_parameters = (underlying_type_parameters[3:end]...,)
+        #         result = reflect(underlying_type_parameters, reflection.world; method_only = true)
+        #         result === nothing && break # keep previous method token
+        #         underlying_method = result
+        #     else
+        #         break
+        #     end
+        # end
+
+        code_info.method_for_inference_limit_heuristics = underlying_method
     end
 
     code_info.code = overdubbed_code
     code_info.codelocs = overdubbed_codelocs
     code_info.ssavaluetypes = length(overdubbed_code)
-
-    if code_info.method_for_inference_limit_heuristics === nothing
-        underlying_method = method
-        underlying_type_parameters = (signature.parameters...,)
-        while isa(underlying_method, Method) && underlying_method.name === :overdub
-            if length(underlying_type_parameters) > 2
-                underlying_type_parameters = (underlying_type_parameters[3:end]...,)
-                result = reflect(underlying_type_parameters; method_only = true)
-                underlying_method = result === nothing ? Core.IntrinsicFunction : result
-            else
-                break
-            end
-        end
-        code_info.method_for_inference_limit_heuristics = underlying_method
-    end
-
     reflection.code_info = code_info
 
     return reflection
 end
 
+pass_type_from_context_type(::Type{<:Context{<:Any,<:Any,P}}) where {P} = P
+
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
-function __overdub_generator__(pass_type, self, context_type, args::Tuple)
+function __overdub_generator__(self, context_type, args::Tuple)
+    pass_type = pass_type_from_context_type(context_type)
     if nfields(args) > 0
         is_builtin = args[1] <: Core.Builtin
         is_invoke = args[1] === typeof(Core.invoke)
@@ -435,32 +439,24 @@ end
 
 function overdub end
 
-function overdub_definition(pass, line, file)
+function overdub_definition(line, file)
     return quote
-        function $Cassette.overdub($OVERDUB_CTX_SYMBOL::$Cassette.ContextWithPass{pass}, $OVERDUB_ARGS_SYMBOL...) where {pass<:$pass}
+        function $Cassette.overdub($OVERDUB_CTX_SYMBOL, $OVERDUB_ARGS_SYMBOL...)
             $(Expr(:meta,
                    :generated,
                    Expr(:new,
                         Core.GeneratedFunctionStub,
                         :__overdub_generator__,
                         Any[:overdub, OVERDUB_CTX_SYMBOL, OVERDUB_ARGS_SYMBOL],
-                        Any[:pass],
+                        Any[],
                         line,
                         QuoteNode(Symbol(file)),
                         true)))
         end
-        @inline function $Cassette.overdub(ctx::$Cassette.ContextWithPass{pass}, ::typeof(Core._apply), f, _args...) where {pass<:$pass}
-            args = $Cassette.apply_args(ctx, _args...)
-            $Cassette.prehook(ctx, f, args...)
-            output = $Cassette.execute(ctx, f, args...)
-            output = isa(output, $Cassette.OverdubInstead) ? $Cassette.overdub(ctx, f, args...) : output
-            $Cassette.posthook(ctx, output, f, args...)
-            return output
-        end
     end
 end
 
-@eval $(overdub_definition(:NoPass, @__LINE__, @__FILE__))
+@eval $(overdub_definition(@__LINE__, @__FILE__))
 
 @doc(
 """
@@ -476,7 +472,7 @@ replaced by statements similar to the following:
 ```
 begin
     prehook(context, g, x...)
-    tmp = execute(context, g, x...)
+    tmp = overdub(context, g, x...)
     tmp = isa(tmp, Cassette.OverdubInstead) ? overdub(context, g, x...) : tmp
     posthook(context, tmp, g, x...)
     tmp
@@ -515,3 +511,19 @@ See also: [`overdub`](@ref)
 macro overdub(ctx, expr)
     return :($Cassette.overdub($(esc(ctx)), () -> $(esc(expr))))
 end
+
+"""
+```
+execute(context::Context, f, args...)
+```
+
+Overload this Cassette method w.r.t. a given context in order to define a new contextual
+execution primitive for that context.
+
+To understand when/how this method is called, see the documentation for [`overdub`](@ref).
+
+Invoking `execute` immediately returns `Cassette.OverdubInstead()` by default.
+
+See also: [`overdub`](@ref), [`prehook`](@ref), [`posthook`](@ref), [`fallback`](@ref)
+"""
+const execute = overdub # TODO: deprecate `execute`

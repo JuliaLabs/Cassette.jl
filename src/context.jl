@@ -237,37 +237,45 @@ macro context(_Ctx)
 
         $Ctx(; kwargs...) = Context($CtxName(); kwargs...)
 
-        @inline Cassette.execute(::C, ::Typeof(Tag), ::Type{N}, ::Type{X}) where {C<:$Ctx,N,X} = Tag(N, X, tagtype(C))
+        @inline Cassette.overdub(::C, ::Typeof(Tag), ::Type{N}, ::Type{X}) where {C<:$Ctx,N,X} = Tag(N, X, tagtype(C))
+
+        @inline function Cassette.overdub(ctx::$Ctx, ::typeof(Core._apply), f, _args...)
+            args = apply_args(ctx, _args...)
+            prehook(ctx, f, args...)
+            output = overdub(ctx, f, args...)
+            posthook(ctx, output, f, args...)
+            return output
+        end
 
         # TODO: There are certain non-`Core.Builtin` functions which the compiler often
         # relies upon constant propagation to infer, such as `isdispatchtuple`. Such
         # functions should generally be contextual primitives by default for the sake of
         # performance, and we should add more of them here as we encounter them.
-        @inline Cassette.execute(ctx::$Ctx, f::Typeof(Base.isdispatchtuple), T::Type) = fallback(ctx, f, T)
-        @inline Cassette.execute(ctx::$Ctx, f::Typeof(Base.eltype), T::Type) = fallback(ctx, f, T)
-        @inline Cassette.execute(ctx::$Ctx, f::Typeof(Base.convert), T::Type, t::Tuple) = fallback(ctx, f, T, t)
-        @inline Cassette.execute(ctx::$Ctx{<:Any,Nothing}, f::Typeof(Base.getproperty), x::Any, s::Symbol) = fallback(ctx, f, x, s)
+        @inline Cassette.overdub(ctx::$Ctx, f::Typeof(Base.isdispatchtuple), T::Type) = fallback(ctx, f, T)
+        @inline Cassette.overdub(ctx::$Ctx, f::Typeof(Base.eltype), T::Type) = fallback(ctx, f, T)
+        @inline Cassette.overdub(ctx::$Ctx, f::Typeof(Base.convert), T::Type, t::Tuple) = fallback(ctx, f, T, t)
+        @inline Cassette.overdub(ctx::$Ctx{<:Any,Nothing}, f::Typeof(Base.getproperty), x::Any, s::Symbol) = fallback(ctx, f, x, s)
 
         # the below primitives are only active when the tagging system is enabled (`typeof(ctx) <: CtxTagged`)
 
-        @inline Cassette.execute(ctx::C, f::Typeof(tag), value, ::C, metadata) where {C<:$CtxTagged} = fallback(ctx, f, value, ctx, metadata)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Array{T,N}), undef::UndefInitializer, args...) where {T,N} = tagged_new_array(ctx, Array{T,N}, undef, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.Module), args...) = tagged_new_module(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.tuple), args...) = tagged_new_tuple(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base.nameof), args...) = tagged_nameof(ctx, m)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.getfield), args...) = tagged_getfield(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.setfield!), args...) = tagged_setfield!(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.arrayref), args...) = tagged_arrayref(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.arrayset), args...) = tagged_arrayset(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base._growbeg!), args...) = tagged_growbeg!(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base._growend!), args...) = tagged_growend!(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base._growat!), args...) = tagged_growat!(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base._deletebeg!), args...) = tagged_deletebeg!(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base._deleteend!), args...) = tagged_deleteend!(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base._deleteat!), args...) = tagged_deleteat!(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.typeassert), args...) = tagged_typeassert(ctx, args...)
+        @inline Cassette.overdub(ctx::C, f::Typeof(tag), value, ::C, metadata) where {C<:$CtxTagged} = fallback(ctx, f, value, ctx, metadata)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Array{T,N}), undef::UndefInitializer, args...) where {T,N} = tagged_new_array(ctx, Array{T,N}, undef, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Core.Module), args...) = tagged_new_module(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Core.tuple), args...) = tagged_new_tuple(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Base.nameof), args...) = tagged_nameof(ctx, m)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Core.getfield), args...) = tagged_getfield(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Core.setfield!), args...) = tagged_setfield!(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Core.arrayref), args...) = tagged_arrayref(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Core.arrayset), args...) = tagged_arrayset(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Base._growbeg!), args...) = tagged_growbeg!(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Base._growend!), args...) = tagged_growend!(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Base._growat!), args...) = tagged_growat!(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Base._deletebeg!), args...) = tagged_deletebeg!(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Base._deleteend!), args...) = tagged_deleteend!(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Base._deleteat!), args...) = tagged_deleteat!(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Core.typeassert), args...) = tagged_typeassert(ctx, args...)
 
-        @inline function Cassette.execute(ctx::$CtxTagged, f::Core.IntrinsicFunction, args...)
+        @inline function Cassette.overdub(ctx::$CtxTagged, f::Core.IntrinsicFunction, args...)
             if f === Base.sitofp
                 return tagged_sitofp(ctx, args...)
             elseif f === Base.sle_int
@@ -405,22 +413,6 @@ julia> ctx.metadata.x
 ```
 """
 @inline posthook(::Context, ::Vararg{Any}) = nothing
-
-"""
-```
-execute(context::Context, f, args...)
-```
-
-Overload this Cassette method w.r.t. a given context in order to define a new contextual
-execution primitive for that context.
-
-To understand when/how this method is called, see the documentation for [`overdub`](@ref).
-
-Invoking `execute` immediately returns `Cassette.OverdubInstead()` by default.
-
-See also: [`overdub`](@ref), [`prehook`](@ref), [`posthook`](@ref), [`fallback`](@ref)
-"""
-@inline execute(::Context, ::Vararg{Any}) = OverdubInstead()
 
 """
 ```
