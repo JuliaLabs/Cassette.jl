@@ -374,10 +374,13 @@ function overdub_pass!(reflection::Reflection,
 
     #=== set `code_info`/`reflection` fields accordingly ===#
 
+    if code_info.method_for_inference_limit_heuristics === nothing
+        code_info.method_for_inference_limit_heuristics = method
+    end
+
     code_info.code = overdubbed_code
     code_info.codelocs = overdubbed_codelocs
     code_info.ssavaluetypes = length(overdubbed_code)
-    code_info.method_for_inference_limit_heuristics = method
     reflection.code_info = code_info
 
     return reflection

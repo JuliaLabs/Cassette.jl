@@ -412,9 +412,9 @@ print("   running NoOpCtx test...")
 
 before_time = time()
 
-@context NoOpCtx;
+@context NoOpCtx
 
-function loop(x, n)
+function loop73(x, n)
     r = x / x
     while n > 0
         r *= sin(x)
@@ -423,11 +423,17 @@ function loop(x, n)
     return r
 end
 
-f(x, n) = overdub(NoOpCtx(), loop, x, n)
+f73(x, n) = overdub(NoOpCtx(), loop73, x, n)
+ff73(x, n) = overdub(NoOpCtx(), f73, x, n)
+fff73(x, n) = overdub(NoOpCtx(), ff73, x, n)
 
-f(2, 50) # warm up
+f73(2, 50) # warm up
+ff73(2, 50) # warm up
+fff73(2, 50) # warm up
 
-@test @allocated(f(2, 50)) == 0
+@test @allocated(f73(2, 50)) == 0
+@test @allocated(ff73(2, 50)) == 0
+@test_broken @allocated(ff573(2, 50)) == 0
 
 println("done (took ", time() - before_time, " seconds)")
 
