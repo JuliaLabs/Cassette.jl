@@ -176,6 +176,11 @@ function Cassette.execute(ctx::Ctx, callback, ::typeof(println), args...)
     return nothing, () -> (callback(); println(args...))
 end
 
+# handle Core._apply calls; Cassette might do this for you in a future update
+function Cassette.execute(ctx::Ctx, callback, ::typeof(Core._apply), f, args...)
+    return Core._apply(Cassette.execute, (ctx,), (callback,), (f,), args...)
+end
+
 function sliceprintln(::Type{<:Ctx}, ::Type{S}, ir::CodeInfo) where {S}
     callbackslotname = gensym("callback")
     push!(ir.slotnames, callbackslotname)
