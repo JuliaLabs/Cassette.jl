@@ -1,7 +1,8 @@
 using Test, Cassette, LinearAlgebra
-using Cassette: @context, @pass, @overdub, overdub, hasmetadata, metadata, hasmetameta,
-                metameta, untag, tag, enabletagging, untagtype, istagged, istaggedtype,
-                Tagged, fallback, canoverdub, similarcontext
+using Cassette: @context, @pass, @overdub, overdub, recurse, hasmetadata,
+                metadata, hasmetameta, metameta, untag, tag, enabletagging,
+                untagtype, istagged, istaggedtype, Tagged, fallback, canrecurse,
+                similarcontext, disablehooks
 
 println("running unit tests")
 @time @testset "unit tests" begin include("unittests.jl") end

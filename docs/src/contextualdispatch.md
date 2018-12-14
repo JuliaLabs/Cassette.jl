@@ -183,14 +183,21 @@ implementation, which memoizes the computation of Fibonacci numbers (many thanks
 to the illustrious Simon Byrne, [the original author of this example](https://stackoverflow.com/questions/52050262/how-to-do-memoization-or-memoisation-in-julia-1-0/52062639#52062639)):
 
 ```julia
-using Cassette: Cassette, @context, OverdubInstead
+using Cassette: Cassette, @context, overdub, recurse
 
 fib(x) = x < 3 ? 1 : fib(x - 2) + fib(x - 1)
 fibtest(n) = fib(2 * n) + n
 
 @context MemoizeCtx
-Cassette.execute(ctx::MemoizeCtx, ::typeof(fib), x) = get(ctx.metadata, x, OverdubInstead())
-Cassette.posthook(ctx::MemoizeCtx, fibx, ::typeof(fib), x) = (ctx.metadata[x] = fibx)
+
+function Cassette.overdub(ctx::MemoizeCtx, ::typeof(fib), x)
+    result = get(ctx.metadata, x, 0)
+    if result === 0
+        result = recurse(ctx, fib, x)
+        ctx.metadata[x] = result
+    end
+    return result
+end
 ```
 
 Then (skipping the warm-up calls used to compile both functions):
@@ -224,7 +231,7 @@ Cassette.@context TraceCtx
 function Cassette.execute(ctx::TraceCtx, args...)
     subtrace = Any[]
     push!(ctx.metadata, args => subtrace)
-    if Cassette.canoverdub(ctx, args...)
+    if Cassette.canrecurse(ctx, args...)
         newctx = Cassette.similarcontext(ctx, metadata = subtrace)
         return Cassette.overdub(newctx, args...)
     else

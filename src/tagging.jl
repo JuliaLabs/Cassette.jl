@@ -310,14 +310,14 @@ end
 # `Tagged` #
 ############
 
-struct Tagged{T<:Tag,V,D,M}
-    tag::T
+struct Tagged{T<:Tag,V,D,M,C<:ContextTagged}
+    context::C
     value::V
     meta::Meta{D,M}
-    function Tagged(context::C, value::V, meta::Meta) where {T<:Tag,V,C<:ContextWithTag{T}}
+    function Tagged(context::C, value::V, meta::Meta) where {T<:Tag,V,C<:ContextTagged{T}}
         D = metadatatype(C, V)
         M = metametatype(C, V)
-        return new{T,V,D,M}(context.tag, value, convert(Meta{D,M}, meta))
+        return new{T,V,D,M,C}(context, value, convert(Meta{D,M}, meta))
     end
 end
 
@@ -343,7 +343,7 @@ function tag(value, context::Context, metadata = NoMetaData())
     return Tagged(context, value, initmeta(context, value, metadata))
 end
 
-function tag(value, context::ContextWithTag{Nothing}, metadata = NoMetaData())
+function tag(value, context::ContextUntagged, metadata = NoMetaData())
     error("cannot `tag` a value w.r.t. a `context` if `!hastagging(typeof(context))`")
 end
 
@@ -454,28 +454,11 @@ hasmetameta(x, tag::Union{Tag,Nothing}) = !isa(metameta(x, tag), NoMetaMeta)
 # Core._apply iteration #
 #########################
 
-struct TaggedApplyIterable{C<:Context,T<:Tagged}
-    context::C
-    tagged::T
-end
-
-destructstate(ctx::ContextWithTag{T}, state::Tagged{T,<:Tuple}) where {T} = (tagged_getfield(ctx, state, 1), tagged_getfield(ctx, state, 2))
+destructstate(ctx::ContextTagged{T}, state::Tagged{T,<:Tuple}) where {T} = (tagged_getfield(ctx, state, 1), tagged_getfield(ctx, state, 2))
 destructstate(ctx, state) = untag(state, ctx)
 
-Base.iterate(iter::TaggedApplyIterable) = destructstate(iter.context, overdub(iter.context, iterate, iter.tagged))
-Base.iterate(iter::TaggedApplyIterable, state) = destructstate(iter.context, overdub(iter.context, iterate, iter.tagged, state))
-
-@generated function tagged_apply_args(context::ContextWithTag{T}, args...) where {T}
-    newargs = Any[]
-    for i in 1:nfields(args)
-        x = args[i]
-        newarg = istaggedtype(x, context) ? :(TaggedApplyIterable(context, args[$i])) : :(args[$i])
-        push!(newargs, newarg)
-    end
-    return quote
-        Core._apply(tuple, $(newargs...))
-    end
-end
+Base.iterate(t::Tagged) = destructstate(t.context, overdub(t.context, iterate, t))
+Base.iterate(t::Tagged, state) = destructstate(t.context, overdub(t.context, iterate, t, state))
 
 ################
 # `tagged_new` #
@@ -567,7 +550,7 @@ _untag_all(context::Context, a, b, c, rest...) = (untag(a, context), untag(b, co
 
 tagged_nameof(context::Context, x) = nameof(untag(x, context))
 
-function tagged_nameof(context::ContextWithTag{T}, x::Tagged{T,Module}) where {T}
+function tagged_nameof(context::ContextTagged{T}, x::Tagged{T,Module}) where {T}
     name_value = nameof(x.value)
     name_meta = hasmetameta(x, context) ? x.meta.meta.name : NOMETA
     return Tagged(context, name_value, name_meta)
@@ -575,7 +558,7 @@ end
 
 #=== tagged_globalref ===#
 
-@inline function tagged_globalref(context::ContextWithTag{T},
+@inline function tagged_globalref(context::ContextTagged{T},
                                   m::Tagged{T},
                                   name,
                                   primal) where {T}
@@ -587,14 +570,14 @@ end
 end
 
 # assume that `context` === `primal` TODO is this assumption valid?
-@inline function tagged_globalref(context::ContextWithTag{T},
+@inline function tagged_globalref(context::ContextTagged{T},
                                   m::Tagged{T},
                                   name,
-                                  primal::ContextWithTag{T}) where {T}
+                                  primal::ContextTagged{T}) where {T}
     return primal
 end
 
-@inline function _tagged_globalref(context::ContextWithTag{T},
+@inline function _tagged_globalref(context::ContextTagged{T},
                                    m::Tagged{T},
                                    name,
                                    primal) where {T}
@@ -612,7 +595,7 @@ end
 
 #=== tagged_globalref_set_meta! ===#
 
-@inline function tagged_globalref_set_meta!(context::ContextWithTag{T}, m::Tagged{T}, name::Symbol, primal) where {T}
+@inline function tagged_globalref_set_meta!(context::ContextTagged{T}, m::Tagged{T}, name::Symbol, primal) where {T}
     bindingmeta = _fetch_bindingmeta!(context, m.value, m.meta.meta.bindings, name)
     bindingmeta.data = istagged(primal, context) ? primal.meta : NOMETA
     return nothing
@@ -622,9 +605,9 @@ end
 
 tagged_getfield(context::Context, x, name) = tagged_getfield(context, x, name, false)
 
-tagged_getfield(context::ContextWithTag{T}, x, name, boundscheck) where {T} = getfield(x, untag(name, context), untag(boundscheck, context))
+tagged_getfield(context::ContextTagged{T}, x, name, boundscheck) where {T} = getfield(x, untag(name, context), untag(boundscheck, context))
 
-function tagged_getfield(context::ContextWithTag{T}, x::Tagged{T}, name, boundscheck) where {T}
+function tagged_getfield(context::ContextTagged{T}, x::Tagged{T}, name, boundscheck) where {T}
     untagged_boundscheck = untag(boundscheck, context)
     untagged_name = untag(name, context)
     x_value = untag(x, context)
@@ -644,9 +627,9 @@ end
 
 #=== tagged_setfield! ===#
 
-tagged_setfield!(context::ContextWithTag{T}, x, name, y) where {T} = setfield!(x, untag(name, context), y)
+tagged_setfield!(context::ContextTagged{T}, x, name, y) where {T} = setfield!(x, untag(name, context), y)
 
-function tagged_setfield!(context::ContextWithTag{T}, x::Tagged{T}, name, y) where {T}
+function tagged_setfield!(context::ContextTagged{T}, x::Tagged{T}, name, y) where {T}
     untagged_name = untag(name, context)
     y_value = untag(y, context)
     y_meta = istagged(y, context) ? y.meta : NOMETA
@@ -659,11 +642,11 @@ end
 
 #=== tagged_arrayref ===#
 
-function tagged_arrayref(context::ContextWithTag{T}, boundscheck, x, inds...) where {T}
+function tagged_arrayref(context::ContextTagged{T}, boundscheck, x, inds...) where {T}
     return Core.arrayref(untag(boundscheck, context), x, _untag_all(context, inds...)...)
 end
 
-function tagged_arrayref(context::ContextWithTag{T}, boundscheck, x::Tagged{T}, inds...) where {T}
+function tagged_arrayref(context::ContextTagged{T}, boundscheck, x::Tagged{T}, inds...) where {T}
     untagged_boundscheck = untag(boundscheck, context)
     untagged_inds = _untag_all(context, inds...)
     y_value = Core.arrayref(untagged_boundscheck, untag(x, context), untagged_inds...)
@@ -677,11 +660,11 @@ end
 
 #=== tagged_arrayset ===#
 
-function tagged_arrayset(context::ContextWithTag{T}, boundscheck, x, y, inds...) where {T}
+function tagged_arrayset(context::ContextTagged{T}, boundscheck, x, y, inds...) where {T}
     return Core.arrayset(untag(boundscheck, context), x, y, _untag_all(context, inds...)...)
 end
 
-function tagged_arrayset(context::ContextWithTag{T}, boundscheck, x::Tagged{T}, y, inds...) where {T}
+function tagged_arrayset(context::ContextTagged{T}, boundscheck, x::Tagged{T}, y, inds...) where {T}
     untagged_boundscheck = untag(boundscheck, context)
     untagged_inds = _untag_all(context, inds...)
     y_value = untag(y, context)
@@ -695,9 +678,9 @@ end
 
 #=== tagged_growbeg! ===#
 
-tagged_growbeg!(context::ContextWithTag{T}, x, delta) where {T} = Base._growbeg!(x, untag(delta, context))
+tagged_growbeg!(context::ContextTagged{T}, x, delta) where {T} = Base._growbeg!(x, untag(delta, context))
 
-function tagged_growbeg!(context::ContextWithTag{T}, x::Tagged{T}, delta) where {T}
+function tagged_growbeg!(context::ContextTagged{T}, x::Tagged{T}, delta) where {T}
     delta_untagged = untag(delta, context)
     Base._growbeg!(x.value, delta_untagged)
     if hasmetameta(x, context)
@@ -709,9 +692,9 @@ end
 
 #=== tagged_growend! ===#
 
-tagged_growend!(context::ContextWithTag{T}, x, delta) where {T} = Base._growend!(x, untag(delta, context))
+tagged_growend!(context::ContextTagged{T}, x, delta) where {T} = Base._growend!(x, untag(delta, context))
 
-function tagged_growend!(context::ContextWithTag{T}, x::Tagged{T}, delta) where {T}
+function tagged_growend!(context::ContextTagged{T}, x::Tagged{T}, delta) where {T}
     delta_untagged = untag(delta, context)
     Base._growend!(x.value, delta_untagged)
     if hasmetameta(x, context)
@@ -724,11 +707,11 @@ end
 
 #=== tagged_growat! ===#
 
-function tagged_growat!(context::ContextWithTag{T}, x, i, delta) where {T}
+function tagged_growat!(context::ContextTagged{T}, x, i, delta) where {T}
     return Base._growat!(x, untag(i, context), untag(delta, context))
 end
 
-function tagged_growat!(context::ContextWithTag{T}, x::Tagged{T}, i, delta) where {T}
+function tagged_growat!(context::ContextTagged{T}, x::Tagged{T}, i, delta) where {T}
     i_untagged = untag(i, context)
     delta_untagged = untag(delta, context)
     Base._growat!(x.value, i_untagged, delta_untagged)
@@ -741,9 +724,9 @@ end
 
 #=== tagged_deletebeg! ===#
 
-tagged_deletebeg!(context::ContextWithTag{T}, x, delta) where {T} = Base._deletebeg!(x, untag(delta, context))
+tagged_deletebeg!(context::ContextTagged{T}, x, delta) where {T} = Base._deletebeg!(x, untag(delta, context))
 
-function tagged_deletebeg!(context::ContextWithTag{T}, x::Tagged{T}, delta) where {T}
+function tagged_deletebeg!(context::ContextTagged{T}, x::Tagged{T}, delta) where {T}
     delta_untagged = untag(delta, context)
     Base._deletebeg!(x.value, delta_untagged)
     hasmetameta(x, context) && Base._deletebeg!(x.meta.meta, delta_untagged)
@@ -752,9 +735,9 @@ end
 
 #=== tagged_deleteend! ===#
 
-tagged_deleteend!(context::ContextWithTag{T}, x, delta) where {T} = Base._deleteend!(x, untag(delta, context))
+tagged_deleteend!(context::ContextTagged{T}, x, delta) where {T} = Base._deleteend!(x, untag(delta, context))
 
-function tagged_deleteend!(context::ContextWithTag{T}, x::Tagged{T}, delta) where {T}
+function tagged_deleteend!(context::ContextTagged{T}, x::Tagged{T}, delta) where {T}
     delta_untagged = untag(delta, context)
     Base._deleteend!(x.value, delta_untagged)
     hasmetameta(x, context) && Base._deleteend!(x.meta.meta, delta_untagged)
@@ -763,11 +746,11 @@ end
 
 #=== tagged_deleteat! ===#
 
-function tagged_deleteat!(context::ContextWithTag{T}, x, i, delta) where {T}
+function tagged_deleteat!(context::ContextTagged{T}, x, i, delta) where {T}
     return Base._deleteat!(x, untag(i, context), untag(delta, context))
 end
 
-function tagged_deleteat!(context::ContextWithTag{T}, x::Tagged{T}, i, delta) where {T}
+function tagged_deleteat!(context::ContextTagged{T}, x::Tagged{T}, i, delta) where {T}
     i_untagged = untag(i, context)
     delta_untagged = untag(delta, context)
     Base._deleteat!(x.value, i_untagged, delta_untagged)
@@ -777,22 +760,22 @@ end
 
 #=== tagged_typeassert ===#
 
-function tagged_typeassert(context::ContextWithTag{T}, x, typ) where {T}
+function tagged_typeassert(context::ContextTagged{T}, x, typ) where {T}
     return Core.typeassert(x, untag(typ, context))
 end
 
-function tagged_typeassert(context::ContextWithTag{T}, x::Tagged{T}, typ) where {T}
+function tagged_typeassert(context::ContextTagged{T}, x::Tagged{T}, typ) where {T}
     untagged_result = Core.typeassert(untag(x, context), untag(typ, context))
     return Tagged(context, untagged_result, x.meta)
 end
 
 #=== tagged_sitofp ===#
 
-function tagged_sitofp(context::ContextWithTag{T}, F, x) where {T}
+function tagged_sitofp(context::ContextTagged{T}, F, x) where {T}
     return Base.sitofp(untag(F, context), x)
 end
 
-function tagged_sitofp(context::ContextWithTag{T}, F, x::Tagged{T}) where {T}
+function tagged_sitofp(context::ContextTagged{T}, F, x::Tagged{T}) where {T}
     return Tagged(context, Base.sitofp(untag(F, context), x.value), x.meta)
 end
 
@@ -845,6 +828,6 @@ function Base.show(io::IO, meta::Meta)
     end
 end
 
-Base.show(io::IO, x::Tagged) = print(io, "Tagged(", x.tag, ", ", x.value, ", ", x.meta, ")")
+Base.show(io::IO, x::Tagged) = print(io, "Tagged(", x.context.tag, ", ", x.value, ", ", x.meta, ")")
 
 Base.show(io::IO, ::Tag{N,X,E}) where {N,X,E} = print(io, "Tag{", N, ",", X, ",", E, "}()")
