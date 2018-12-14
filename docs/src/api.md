@@ -19,7 +19,7 @@ Cassette.prehook
 Cassette.posthook
 Cassette.execute
 Cassette.fallback
-Cassette.canoverdub
+Cassette.canrecurse
 ```
 
 ```@docs

@@ -61,7 +61,6 @@ end
 
 const OVERDUB_CTX_SYMBOL = gensym("overdub_context")
 const OVERDUB_ARGS_SYMBOL = gensym("overdub_arguments")
-const OVERDUB_TMP_SYMBOL = gensym("overdub_tmp")
 
 # The `overdub` pass has four intertwined tasks:
 #   1. Apply the user-provided pass, if one is given
@@ -71,15 +70,13 @@ const OVERDUB_TMP_SYMBOL = gensym("overdub_tmp")
 #   3. Replace all calls of the form `output = f(args...)` with:
 #      ```
 #      prehook(ctx, f, args...)
-#      tmp = execute(ctx, f, args...)
-#      isa(tmp, OverdubInstead) ? overdub(ctx, f, args...) : tmp
-#      posthook(ctx, f, args...)
-#      output = tmp
+#      overdub(ctx, f, args...) # %n
+#      posthook(ctx, %n, f, args...)
+#      output = %n
 #      ```
 #   4. If tagging is enabled, do the necessary IR transforms for the metadata tagging system
 function overdub_pass!(reflection::Reflection,
                        context_type::DataType,
-                       pass_type::DataType = NoPass,
                        is_invoke::Bool = false)
     signature = reflection.signature
     method = reflection.method
@@ -98,7 +95,7 @@ function overdub_pass!(reflection::Reflection,
     #=== execute user-provided pass (is a no-op by default) ===#
 
     if !iskwfunc
-        code_info = pass_type(context_type, signature, code_info)
+        code_info = passtype(context_type)(context_type, signature, code_info)
     end
 
     #=== munge the code into a valid form for `overdub_generator` ===#
@@ -108,12 +105,11 @@ function overdub_pass!(reflection::Reflection,
     # not seem to match Julia's developer documentation.
 
     # construct new slotnames/slotflags for added slots
-    code_info.slotnames = Any[:overdub, OVERDUB_CTX_SYMBOL, OVERDUB_ARGS_SYMBOL, code_info.slotnames..., OVERDUB_TMP_SYMBOL]
+    code_info.slotnames = Any[:overdub, OVERDUB_CTX_SYMBOL, OVERDUB_ARGS_SYMBOL, code_info.slotnames...]
     code_info.slotflags = UInt8[0x00, 0x00, 0x00, code_info.slotflags..., 0x00]
     n_prepended_slots = 3
     overdub_ctx_slot = SlotNumber(2)
     overdub_args_slot = SlotNumber(3)
-    overdub_tmp_slot = SlotNumber(length(code_info.slotnames))
     invoke_offset = is_invoke ? 2 : 0
 
     # For the sake of convenience, the rest of this pass will translate `code_info`'s fields
@@ -174,6 +170,7 @@ function overdub_pass!(reflection::Reflection,
         modules = Any[]
         original_code_region = view(overdubbed_code, original_code_start_index:length(overdubbed_code))
         replace_match!(x -> isa(x, GlobalRef), original_code_region) do x
+            x.mod === Core && in(x.name, (:tuple, :_apply)) && return x
             m = GlobalRef(parentmodule(x.mod), nameof(x.mod))
             i = findfirst(isequal(m), modules)
             if isa(i, Nothing)
@@ -322,10 +319,10 @@ function overdub_pass!(reflection::Reflection,
     if iskwfunc
         # Another assumption of this `iskwfunc` hack is that the second to last statement in
         # the lowered IR for `Core.kwfunc(f)` is the call to the "underlying" non-kwargs form
-        # of `f`. Thus, we `overdub` that call instead of replacing it with `call`.
+        # of `f`. Thus, we `recurse` that call instead of replacing it with `call`.
         for i in 1:length(overdubbed_code)
             stmt = overdubbed_code[i]
-            replacewith = i === (length(overdubbed_code) - 1) ? :overdub : :call
+            replacewith = i === (length(overdubbed_code) - 1) ? :recurse : :call
             if Base.Meta.isexpr(stmt, :(=))
                 replacein = stmt.args
                 replaceat = 2
@@ -339,27 +336,61 @@ function overdub_pass!(reflection::Reflection,
             end
         end
     else
+        arehooksenabled = hashooks(context_type)
         stmtcount = (x, i) -> begin
             i >= original_code_start_index || return nothing
-            stmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
+            isassign = Base.Meta.isexpr(x, :(=))
+            stmt = isassign ? x.args[2] : x
             if Base.Meta.isexpr(stmt, :call) && !(Base.Meta.isexpr(stmt.args[1], :nooverdub))
-                return 7
+                isapplycall = is_ir_element(stmt.args[1], GlobalRef(Core, :_apply), overdubbed_code)
+                if isapplycall && arehooksenabled
+                    return 6
+                elseif isapplycall
+                    return 2 + isassign
+                elseif arehooksenabled
+                    return 4
+                else
+                    return 1 + isassign
+                end
             end
             return nothing
         end
         newstmts = (x, i) -> begin
             callstmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
-            execstmt = Expr(:call, GlobalRef(Cassette, :execute), overdub_ctx_slot, callstmt.args...)
-            overdubstmt = Expr(:call, GlobalRef(Cassette, :overdub), overdub_ctx_slot, callstmt.args...)
-            return [
-                Expr(:call, GlobalRef(Cassette, :prehook), overdub_ctx_slot, callstmt.args...),
-                Expr(:(=), overdub_tmp_slot, execstmt),
-                Expr(:call, GlobalRef(Core, :isa), overdub_tmp_slot, GlobalRef(Cassette, :OverdubInstead)),
-                Expr(:gotoifnot, SSAValue(i + 2), i + 5),
-                Expr(:(=), overdub_tmp_slot, overdubstmt),
-                Expr(:call, GlobalRef(Cassette, :posthook), overdub_ctx_slot, overdub_tmp_slot, callstmt.args...),
-                Base.Meta.isexpr(x, :(=)) ? Expr(:(=), x.args[1], overdub_tmp_slot) : overdub_tmp_slot
-            ]
+            isapplycall = is_ir_element(callstmt.args[1], GlobalRef(Core, :_apply), overdubbed_code)
+            if isapplycall && arehooksenabled
+                callf = callstmt.args[2]
+                callargs = callstmt.args[3:end]
+                stmts = Any[
+                    Expr(:call, GlobalRef(Core, :tuple), overdub_ctx_slot, callf),
+                    Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :prehook), SSAValue(i), callargs...),
+                    Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :overdub), SSAValue(i), callargs...),
+                    Expr(:call, GlobalRef(Core, :tuple), SSAValue(i + 2)),
+                    Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :posthook), SSAValue(i), SSAValue(i + 3), callargs...),
+                    Base.Meta.isexpr(x, :(=)) ? Expr(:(=), x.args[1], SSAValue(i + 2)) : SSAValue(i + 2)
+                ]
+            elseif isapplycall
+                callf = callstmt.args[2]
+                callargs = callstmt.args[3:end]
+                stmts = Any[
+                    Expr(:call, GlobalRef(Core, :tuple), overdub_ctx_slot, callf),
+                    Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :overdub), SSAValue(i), callargs...),
+                ]
+                Base.Meta.isexpr(x, :(=)) && push!(stmts, Expr(:(=), x.args[1], SSAValue(i + 1)))
+            elseif arehooksenabled
+                stmts = Any[
+                    Expr(:call, GlobalRef(Cassette, :prehook), overdub_ctx_slot, callstmt.args...),
+                    Expr(:call, GlobalRef(Cassette, :overdub), overdub_ctx_slot, callstmt.args...),
+                    Expr(:call, GlobalRef(Cassette, :posthook), overdub_ctx_slot, SSAValue(i + 1), callstmt.args...),
+                    Base.Meta.isexpr(x, :(=)) ? Expr(:(=), x.args[1], SSAValue(i + 1)) : SSAValue(i + 1)
+                ]
+            else
+                stmts = Any[
+                    Expr(:call, GlobalRef(Cassette, :overdub), overdub_ctx_slot, callstmt.args...),
+                ]
+                Base.Meta.isexpr(x, :(=)) && push!(stmts, Expr(:(=), x.args[1], SSAValue(i)))
+            end
+            return stmts
         end
         insert_statements!(overdubbed_code, overdubbed_codelocs, stmtcount, newstmts)
     end
@@ -386,8 +417,16 @@ function overdub_pass!(reflection::Reflection,
     return reflection
 end
 
+@eval _overdub_fallback($OVERDUB_CTX_SYMBOL, $OVERDUB_ARGS_SYMBOL...) = fallback($OVERDUB_CTX_SYMBOL, $OVERDUB_ARGS_SYMBOL...)
+
+const OVERDUB_FALLBACK = begin
+    code_info = reflect((typeof(_overdub_fallback), Any, Vararg{Any})).code_info
+    code_info.inlineable = true
+    code_info
+end
+
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
-function __overdub_generator__(pass_type, self, context_type, args::Tuple)
+function __overdub_generator__(self, context_type, args::Tuple)
     if nfields(args) > 0
         is_builtin = args[1] <: Core.Builtin
         is_invoke = args[1] === typeof(Core.invoke)
@@ -396,7 +435,7 @@ function __overdub_generator__(pass_type, self, context_type, args::Tuple)
                 untagged_args = ((untagtype(args[i], context_type) for i in 1:nfields(args))...,)
                 reflection = reflect(untagged_args)
                 if isa(reflection, Reflection)
-                    overdub_pass!(reflection, context_type, pass_type, is_invoke)
+                    overdub_pass!(reflection, context_type, is_invoke)
                     return reflection.code_info
                 end
             catch err
@@ -407,43 +446,45 @@ function __overdub_generator__(pass_type, self, context_type, args::Tuple)
             end
         end
     end
-    return quote
-        $(Expr(:meta, :inline))
-        $Cassette.fallback($OVERDUB_CTX_SYMBOL, $OVERDUB_ARGS_SYMBOL...)
-    end
+    return copy_code_info(OVERDUB_FALLBACK)
 end
-
-@inline apply_args(::ContextWithTag{Nothing}, args...) = Core._apply(Core.tuple, args...)
-@inline apply_args(ctx::Context, args...) = tagged_apply_args(ctx, args...)
 
 function overdub end
 
-function overdub_definition(pass, line, file)
+function recurse end
+
+recurse(ctx::Context, ::typeof(Core._apply), f, args...) = Core._apply(recurse, (ctx, f), args...)
+
+function overdub_definition(line, file)
     return quote
-        function $Cassette.overdub($OVERDUB_CTX_SYMBOL::$Cassette.ContextWithPass{pass}, $OVERDUB_ARGS_SYMBOL...) where {pass<:$pass}
+        function $Cassette.overdub($OVERDUB_CTX_SYMBOL::$Cassette.Context, $OVERDUB_ARGS_SYMBOL...)
             $(Expr(:meta,
                    :generated,
                    Expr(:new,
                         Core.GeneratedFunctionStub,
                         :__overdub_generator__,
                         Any[:overdub, OVERDUB_CTX_SYMBOL, OVERDUB_ARGS_SYMBOL],
-                        Any[:pass],
+                        Any[],
                         line,
                         QuoteNode(Symbol(file)),
                         true)))
         end
-        @inline function $Cassette.overdub(ctx::$Cassette.ContextWithPass{pass}, ::typeof(Core._apply), f, _args...) where {pass<:$pass}
-            args = $Cassette.apply_args(ctx, _args...)
-            $Cassette.prehook(ctx, f, args...)
-            output = $Cassette.execute(ctx, f, args...)
-            output = isa(output, $Cassette.OverdubInstead) ? $Cassette.overdub(ctx, f, args...) : output
-            $Cassette.posthook(ctx, output, f, args...)
-            return output
+        function $Cassette.recurse($OVERDUB_CTX_SYMBOL::$Cassette.Context, $OVERDUB_ARGS_SYMBOL...)
+            $(Expr(:meta,
+                   :generated,
+                   Expr(:new,
+                        Core.GeneratedFunctionStub,
+                        :__overdub_generator__,
+                        Any[:recurse, OVERDUB_CTX_SYMBOL, OVERDUB_ARGS_SYMBOL],
+                        Any[],
+                        line,
+                        QuoteNode(Symbol(file)),
+                        true)))
         end
     end
 end
 
-@eval $(overdub_definition(:NoPass, @__LINE__, @__FILE__))
+@eval $(overdub_definition(@__LINE__, @__FILE__))
 
 @doc(
 """
@@ -459,18 +500,20 @@ replaced by statements similar to the following:
 ```
 begin
     prehook(context, g, x...)
-    tmp = execute(context, g, x...)
-    tmp = isa(tmp, Cassette.OverdubInstead) ? overdub(context, g, x...) : tmp
-    posthook(context, tmp, g, x...)
-    tmp
+    overdub(context, g, x...) # %n
+    posthook(context, %n, g, x...)
+    %n
 end
 ```
 
 If Cassette cannot retrieve lowered IR for the method body of `f(args...)` (as determined by
-`canoverdub(context, f, args...)`), then `overdub(context, f, args...)` will directly
+`canrecurse(context, f, args...)`), then `overdub(context, f, args...)` will directly
 translate to a call to `fallback(context, f, args...)`.
 
-Additionally, for every method body encountered in execute trace, apply the compiler pass
+If the injected `prehook`/`posthook` statements are not needed for your use
+case, you can disable their injection via the [`disablehooks`](@ref) function.
+
+Additionally, for every method body encountered in the execution trace, apply the compiler pass
 associated with `context` if one exists. Note that this user-provided pass is performed on
 the method IR before method invocations are transformed into the form specified above. See
 the [`@pass`](@ref) macro for further details.
@@ -482,19 +525,77 @@ order to accomodate tagged value propagation:
 - conditional values passed to `Expr(:gotoifnot)` are untagged
 - arguments to `Expr(:foreigncall)` are untagged
 - load/stores to external module bindings are intercepted by the tagging system
+
+The default definition of `overdub` is to recursively enter the given function
+and continue overdubbing, but one can interrupt/redirect this recursion by
+overloading `overdub` w.r.t. a given context and/or method signature to define
+new contextual execution primitives. For example:
+
+```
+julia> using Cassette
+
+julia> Cassette.@context Ctx;
+
+julia> Cassette.overdub(::Ctx, ::typeof(sin), x) = cos(x)
+
+julia> Cassette.overdub(Ctx(), x -> sin(x) + cos(x), 1) == 2 * cos(1)
+true
+```
+
+See also: [`recurse`](@ref), [`prehook`](@ref), [`posthook`](@ref)
 """,
 overdub)
+
+@doc(
+"""
+```
+recurse(context::Context, f, args...)
+```
+
+Execute `f(args...)` overdubbed with respect to `context`.
+
+This method performs exactly the same transformation as the default
+[`overdub`](@ref) transformation, but is not meant to be overloaded. Thus, one
+can call `recurse` to "continue" recursively overdubbing a function when calling
+`overdub` directly on that function might've dispatched to a contextual
+primitive.
+
+To illustrate why `recurse` might be useful, consider the following example
+which utilizes `recurse` as part of a Cassette-based memoization implementation
+for the classic Fibonacci function:
+
+```
+using Cassette: Cassette, @context, overdub, recurse
+
+fib(x) = x < 3 ? 1 : fib(x - 2) + fib(x - 1)
+fibtest(n) = fib(2 * n) + n
+
+@context MemoizeCtx
+
+function Cassette.overdub(ctx::MemoizeCtx, ::typeof(fib), x)
+    result = get(ctx.metadata, x, 0)
+    if result === 0
+        result = recurse(ctx, fib, x)
+        ctx.metadata[x] = result
+    end
+    return result
+end
+```
+
+See Cassette's Contextual Dispatch documentation for more details and examples.
+""",
+recurse)
 
 """
 ```
 Cassette.@overdub(ctx, expression)
 ```
 
-A convenience macro for executing `expression` within the context `ctx`. This macro roughly
-expands to `Cassette.overdub(ctx, () -> expression)`.
+A convenience macro for executing `expression` within the context `ctx`. This
+macro roughly expands to `Cassette.recurse(ctx, () -> expression)`.
 
-See also: [`overdub`](@ref)
+See also: [`overdub`](@ref), [`recurse`](@ref)
 """
 macro overdub(ctx, expr)
-    return :($Cassette.overdub($(esc(ctx)), () -> $(esc(expr))))
+    return :(recurse($(esc(ctx)), () -> $(esc(expr))))
 end

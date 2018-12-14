@@ -108,7 +108,7 @@ before_time = time()
 
 @context ApplyCtx
 x = rand()
-applytest(x) = Core._apply(hypot, (x,), (1,x), 1, x, (1,2))
+applytest(x) = Core._apply(hypot, (x,), (1, x), 1, x, (1, 2))
 ctx = enabletagging(ApplyCtx(), 1)
 @test overdub(ctx, applytest, tag(x, ctx)) === applytest(x)
 
@@ -359,7 +359,7 @@ x, y = rand(100), rand(100)
 primal_result = CrazyPropModule.crazy_sum_mul(x, y)
 @test isapprox(primal_result, sum(x) * sum(y))
 Cassette.metadatatype(::Type{<:CrazyPropCtx}, ::Type{T}) where T<:Number = T
-function Cassette.execute(ctx::CrazyPropCtx, ::typeof(*), x, y)
+function Cassette.overdub(ctx::CrazyPropCtx, ::typeof(*), x, y)
     z = untag(x, ctx) * untag(y, ctx)
     if hasmetadata(x, ctx) && hasmetadata(y, ctx)
         return tag(z, ctx, metadata(x, ctx) * metadata(y, ctx))
@@ -371,7 +371,7 @@ function Cassette.execute(ctx::CrazyPropCtx, ::typeof(*), x, y)
         return z
     end
 end
-function Cassette.execute(ctx::CrazyPropCtx, ::typeof(+), x, y)
+function Cassette.overdub(ctx::CrazyPropCtx, ::typeof(+), x, y)
     z = untag(x, ctx) + untag(y, ctx)
     if hasmetadata(x, ctx) && hasmetadata(y, ctx)
         return tag(z, ctx, metadata(x, ctx) + metadata(y, ctx))
@@ -413,54 +413,54 @@ function D(f, x)
     return tangent(result, ctx)
 end
 
-function Cassette.execute(ctx::DiffCtxWithTag{T}, ::typeof(sin), x::Tagged{T,<:Real}) where {T}
+function Cassette.overdub(ctx::DiffCtxWithTag{T}, ::typeof(sin), x::Tagged{T,<:Real}) where {T}
     vx, dx = untag(x, ctx), tangent(x, ctx)
     return tag(sin(vx), ctx, cos(vx) * dx)
 end
 
-function Cassette.execute(ctx::DiffCtxWithTag{T}, ::typeof(cos), x::Tagged{T,<:Real}) where {T}
+function Cassette.overdub(ctx::DiffCtxWithTag{T}, ::typeof(cos), x::Tagged{T,<:Real}) where {T}
     vx, dx = untag(x, ctx), tangent(x, ctx)
     return tag(cos(vx), ctx, -sin(vx) * dx)
 end
 
-function Cassette.execute(ctx::DiffCtxWithTag{T}, ::typeof(*), x::Tagged{T,<:Real}, y::Tagged{T,<:Real}) where {T}
+function Cassette.overdub(ctx::DiffCtxWithTag{T}, ::typeof(*), x::Tagged{T,<:Real}, y::Tagged{T,<:Real}) where {T}
     vx, dx = untag(x, ctx), tangent(x, ctx)
     vy, dy = untag(y, ctx), tangent(y, ctx)
     return tag(vx * vy, ctx, vy * dx + vx * dy)
 end
 
-function Cassette.execute(ctx::DiffCtxWithTag{T}, ::typeof(*), x::Tagged{T,<:Real}, y::Real) where {T}
+function Cassette.overdub(ctx::DiffCtxWithTag{T}, ::typeof(*), x::Tagged{T,<:Real}, y::Real) where {T}
     vx, dx = untag(x, ctx), tangent(x, ctx)
     return tag(vx * y, ctx, y * dx)
 end
 
-function Cassette.execute(ctx::DiffCtxWithTag{T}, ::typeof(*), x::Real, y::Tagged{T,<:Real}) where {T}
+function Cassette.overdub(ctx::DiffCtxWithTag{T}, ::typeof(*), x::Real, y::Tagged{T,<:Real}) where {T}
     vy, dy = untag(y, ctx), tangent(y, ctx)
     return tag(x * vy, ctx, x * dy)
 end
 
-function Cassette.execute(ctx::DiffCtxWithTag{T}, ::typeof(+), x::Tagged{T,<:Real}, y::Tagged{T,<:Real}) where {T}
+function Cassette.overdub(ctx::DiffCtxWithTag{T}, ::typeof(+), x::Tagged{T,<:Real}, y::Tagged{T,<:Real}) where {T}
     vx, dx = untag(x, ctx), tangent(x, ctx)
     vy, dy = untag(y, ctx), tangent(y, ctx)
     return tag(vx + vy, ctx, dx + dy)
 end
 
-function Cassette.execute(ctx::DiffCtxWithTag{T}, ::typeof(+), x::Tagged{T,<:Real}, y::Real) where {T}
+function Cassette.overdub(ctx::DiffCtxWithTag{T}, ::typeof(+), x::Tagged{T,<:Real}, y::Real) where {T}
     vx, dx = untag(x, ctx), tangent(x, ctx)
     return tag(vx + y, ctx, dx)
 end
 
-function Cassette.execute(ctx::DiffCtxWithTag{T}, ::typeof(+), x::Real, y::Tagged{T,<:Real}) where {T}
+function Cassette.overdub(ctx::DiffCtxWithTag{T}, ::typeof(+), x::Real, y::Tagged{T,<:Real}) where {T}
     vy, dy = untag(y, ctx), tangent(y, ctx)
     return tag(x + vy, ctx, dy)
 end
 
-Cassette.execute(ctx::DiffCtx, ::typeof(sin), x::Real) = sin(x)
-Cassette.execute(ctx::DiffCtx, ::typeof(cos), x::Real) = cos(x)
-Cassette.execute(ctx::DiffCtx, ::typeof(*), x::Real, y::Real) = x * y
-Cassette.execute(ctx::DiffCtx, ::typeof(+), x::Real, y::Real) = x + y
-Cassette.execute(ctx::DiffCtx, ::typeof(*), x, y, z) = Cassette.execute(ctx, *, Cassette.execute(ctx, *, x, y), z)
-Cassette.execute(ctx::DiffCtx, ::typeof(+), x, y, z) = Cassette.execute(ctx, +, Cassette.execute(ctx, +, x, y), z)
+Cassette.overdub(ctx::DiffCtx, ::typeof(sin), x::Real) = sin(x)
+Cassette.overdub(ctx::DiffCtx, ::typeof(cos), x::Real) = cos(x)
+Cassette.overdub(ctx::DiffCtx, ::typeof(*), x::Real, y::Real) = x * y
+Cassette.overdub(ctx::DiffCtx, ::typeof(+), x::Real, y::Real) = x + y
+Cassette.overdub(ctx::DiffCtx, ::typeof(*), x, y, z) = Cassette.overdub(ctx, *, Cassette.overdub(ctx, *, x, y), z)
+Cassette.overdub(ctx::DiffCtx, ::typeof(+), x, y, z) = Cassette.overdub(ctx, +, Cassette.overdub(ctx, +, x, y), z)
 
 @test D(sin, 1) === cos(1)
 @test D(x -> D(sin, x), 1) === -sin(1)

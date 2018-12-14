@@ -109,9 +109,9 @@ end
 ```julia
 function overdub(ctx::Ctx, add, a, b)
     _callback_ = ctx.metadata
-    _, _callback_ = execute(ctx, _callback_, println, "I'm about to add $a + $b")
-    c, _callback_ = execute(ctx, _callback_, +, a, b)
-    _, _callback_ = execute(ctx, _callback_, println, "c = $c")
+    _, _callback_ = execute(ctx, println, _callback_, "I'm about to add $a + $b")
+    c, _callback_ = execute(ctx, +, _callback_, a, b)
+    _, _callback_ = execute(ctx, println, _callback_, "c = $c")
     return c, _callback_
 end
 ```
@@ -119,19 +119,19 @@ end
 Note that I reduced a lot of the contextual dispatch boilerplate, such that the above is
 essentially pseudocode.
 
-Here, we can define `Ctx`'s `execute` method to be:
+Here, we can overload `Ctx`'s `overdub` method with the following definitions:
 
 ```julia
-function Cassette.execute(ctx::Ctx, callback, f, args...)
-    if Cassette.canoverdub(ctx, f, args...)
+function Cassette.overdub(ctx::SliceCtx, f, callback, args...)
+    if Cassette.canrecurse(ctx, f, args...)
         _ctx = Cassette.similarcontext(ctx, metadata = callback)
-        return Cassette.overdub(_ctx, f, args...) # return result, callback
+        return Cassette.recurse(_ctx, f, args...) # return result, callback
     else
         return Cassette.fallback(ctx, f, args...), callback
     end
 end
 
-function Cassette.execute(ctx::Ctx, callback, ::typeof(println), args...)
+function Cassette.overdub(ctx::SliceCtx, ::typeof(println), callback, args...)
     return nothing, () -> (callback(); println(args...))
 end
 ```
@@ -163,25 +163,20 @@ using Core: CodeInfo, SlotNumber, SSAValue
 
 Cassette.@context Ctx
 
-function Cassette.execute(ctx::Ctx, callback, f, args...)
-    if Cassette.canoverdub(ctx, f, args...)
+function Cassette.overdub(ctx::SliceCtx, f, callback, args...)
+    if Cassette.canrecurse(ctx, f, args...)
         _ctx = Cassette.similarcontext(ctx, metadata = callback)
-        return Cassette.overdub(_ctx, f, args...) # return result, callback
+        return Cassette.recurse(_ctx, f, args...) # return result, callback
     else
         return Cassette.fallback(ctx, f, args...), callback
     end
 end
 
-function Cassette.execute(ctx::Ctx, callback, ::typeof(println), args...)
+function Cassette.overdub(ctx::SliceCtx, ::typeof(println), callback, args...)
     return nothing, () -> (callback(); println(args...))
 end
 
-# handle Core._apply calls; Cassette might do this for you in a future update
-function Cassette.execute(ctx::Ctx, callback, ::typeof(Core._apply), f, args...)
-    return Core._apply(Cassette.execute, (ctx,), (callback,), (f,), args...)
-end
-
-function sliceprintln(::Type{<:Ctx}, ::Type{S}, ir::CodeInfo) where {S}
+function sliceprintln(::Type{<:SliceCtx}, ::Type{S}, ir::CodeInfo) where {S}
     callbackslotname = gensym("callback")
     push!(ir.slotnames, callbackslotname)
     push!(ir.slotflags, 0x00)
@@ -190,29 +185,41 @@ function sliceprintln(::Type{<:Ctx}, ::Type{S}, ir::CodeInfo) where {S}
 
     # insert the initial `callbackslot` assignment into the IR.
     Cassette.insert_statements!(ir.code, ir.codelocs,
-                                 (stmt, i) -> i == 1 ? 2 : nothing,
-                                 (stmt, i) -> [Expr(:(=), callbackslot, getmetadata), stmt])
+                                (stmt, i) -> i == 1 ? 2 : nothing,
+                                (stmt, i) -> [Expr(:(=), callbackslot, getmetadata), stmt])
 
-    # replace all calls of the form `f(args...)` with `callback(f, args...)`, taking care to
-    # properly destructure the returned `(result, callback)` into the appropriate statements
+    # replace all calls of the form `f(args...)` with `f(callback, args...)`, taking care to
+    # properly handle Core._apply calls and destructure the returned `(result, callback)`
+    # into the appropriate statements
     Cassette.insert_statements!(ir.code, ir.codelocs,
-                                 (stmt, i) -> begin
+                                (stmt, i) -> begin
                                     i > 1 || return nothing # don't slice the callback assignment
                                     stmt = Base.Meta.isexpr(stmt, :(=)) ? stmt.args[2] : stmt
-                                    return Base.Meta.isexpr(stmt, :call) ? 3 : nothing
-                                 end,
-                                 (stmt, i) -> begin
-                                     items = Any[]
-                                     callstmt = Base.Meta.isexpr(stmt, :(=)) ? stmt.args[2] : stmt
-                                     push!(items, Expr(:call, callbackslot, callstmt.args...))
-                                     push!(items, Expr(:(=), callbackslot, Expr(:call, Expr(:nooverdub, GlobalRef(Core, :getfield)), SSAValue(i), 2)))
-                                     result = Expr(:call, Expr(:nooverdub, GlobalRef(Core, :getfield)), SSAValue(i), 1)
-                                     if Base.Meta.isexpr(stmt, :(=))
-                                         result = Expr(:(=), stmt.args[1], result)
-                                     end
-                                     push!(items, result)
-                                     return items
-                                 end)
+                                    if Base.Meta.isexpr(stmt, :call)
+                                        isapply = Cassette.is_ir_element(stmt.args[1], GlobalRef(Core, :_apply), ir.code)
+                                        return 3 + isapply
+                                    end
+                                    return nothing
+                                end,
+                                (stmt, i) -> begin
+                                    items = Any[]
+                                    callstmt = Base.Meta.isexpr(stmt, :(=)) ? stmt.args[2] : stmt
+                                    callssa = SSAValue(i)
+                                    if Cassette.is_ir_element(callstmt.args[1], GlobalRef(Core, :_apply), ir.code)
+                                        push!(items, Expr(:call, Expr(:nooverdub, GlobalRef(Core, :tuple)), callbackslot))
+                                        push!(items, Expr(:call, callstmt.args[1], callstmt.args[2], SSAValue(i), callstmt.args[3:end]...))
+                                        callssa = SSAValue(i + 1)
+                                    else
+                                        push!(items, Expr(:call, callstmt.args[1], callbackslot, callstmt.args[2:end]...))
+                                    end
+                                    push!(items, Expr(:(=), callbackslot, Expr(:call, Expr(:nooverdub, GlobalRef(Core, :getfield)), callssa, 2)))
+                                    result = Expr(:call, Expr(:nooverdub, GlobalRef(Core, :getfield)), callssa, 1)
+                                    if Base.Meta.isexpr(stmt, :(=))
+                                        result = Expr(:(=), stmt.args[1], result)
+                                    end
+                                    push!(items, result)
+                                    return items
+                                end)
 
     # replace return statements of the form `return x` with `return (x, callback)`
     Cassette.insert_statements!(ir.code, ir.codelocs,

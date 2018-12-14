@@ -48,14 +48,13 @@ See also: [`Context`](@ref), [`overdub`](@ref)
 """
 macro pass(transform)
     Pass = gensym("PassType")
-    name = Expr(:quote, :($__module__.$Pass))
     line = Expr(:quote, __source__.line)
     file = Expr(:quote, __source__.file)
     return esc(quote
         import Cassette.__overdub_generator__
         struct $Pass <: $Cassette.AbstractPass end
         (::Type{$Pass})(ctxtype, signature, codeinfo) = $transform(ctxtype, signature, codeinfo)
-        Core.eval($__module__, $Cassette.overdub_definition($name, $line, $file))
+        Core.eval($__module__, $Cassette.overdub_definition($line, $file))
         $Pass()
     end)
 end
@@ -77,7 +76,7 @@ Generally, `x` should be of type `Expr`, `Array`, or `SubArray`.
 
 Note that this function modifies `x` (and potentially its subelements) in-place.
 
-See also: [`insert_statements!`](@ref)
+See also: [`insert_statements!`](@ref), [`is_ir_element`](@ref)
 """
 function replace_match!(replace, ismatch, x)
     if ismatch(x)
@@ -136,7 +135,7 @@ code = Any[oldstmt1,
 codelocs = Int[1, 2, 2, 3, 4, 5, 5, 5, 6]
 ```
 
-See also: [`replace_match!`](@ref)
+See also: [`replace_match!`](@ref), [`is_ir_element`](@ref)
 """
 function insert_statements!(code, codelocs, stmtcount, newstmts)
     ssachangemap = fill(0, length(code))
@@ -165,4 +164,30 @@ function insert_statements!(code, codelocs, stmtcount, newstmts)
             insert!(codelocs, i, codelocs[i])
         end
     end
+end
+
+
+"""
+```
+is_ir_element(x, y, code::Vector)
+```
+
+Return `true` if `x === y` or if `x` is an `SSAValue` such that
+`is_ir_element(code[x.id], y, code)` is `true`.
+
+See also: [`replace_match!`](@ref), [`insert_statements!`](@ref)
+"""
+function is_ir_element(x, y, code::Vector)
+    result = false
+    while true # break by default
+        if x === y #
+            result = true
+            break
+        elseif isa(x, SSAValue)
+            x = code[x.id]
+        else
+            break
+        end
+    end
+    return result
 end

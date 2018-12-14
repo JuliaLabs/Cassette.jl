@@ -41,13 +41,16 @@ const BindingMetaDictCache = IdDict{Module,BindingMetaDict}
 # `Context` #
 #############
 
+struct DisableHooks end
+
 """
 ```
 Context{N<:Cassette.AbstractContextName,
         M<:Any,
         P<:Cassette.AbstractPass,
         T<:Union{Nothing,Cassette.Tag},
-        B<:Union{Nothing,Cassette.BindingMetaDictCache}}
+        B<:Union{Nothing,Cassette.BindingMetaDictCache},
+        H<:Union{Nothing,Cassette.DisableHooks}}
 ```
 
 A type representing a Cassette execution context. This type is normally interacted with
@@ -55,10 +58,11 @@ through type aliases constructed via `Cassette.@context`:
 
 ```
 julia> Cassette.@context MyCtx
-Cassette.Context{nametype(MyCtx),M,P,T,B} where B<:Union{Nothing,IdDict{Module,Dict{Symbol,BindingMeta}}}
-                                          where P<:Cassette.AbstractPass
-                                          where T<:Union{Nothing,Tag}
-                                          where M
+Cassette.Context{nametype(MyCtx),M,P,T,B,H} where H<:Union{Nothing,DisableHooks}
+                                            where B<:Union{Nothing,IdDict{Module,Dict{Symbol,BindingMeta}}}
+                                            where P<:AbstractPass
+                                            where T<:Union{Nothing,Tag}
+                                            where M
 ```
 
 # Constructors
@@ -72,7 +76,7 @@ MyCtx(; metadata = nothing, pass = Cassette.NoPass())
 To construct a new context instance using an existing context instance as a template, see
 the `similarcontext` function.
 
-To enable contextual tagging for a given context instance, see the `enabletagging` function.
+To enable contextual tagging for a given context instance, see the [`enabletagging`](@ref) function.
 
 # Fields
 
@@ -82,58 +86,71 @@ To enable contextual tagging for a given context instance, see the `enabletaggin
 
 - `metadata::M<:Any`: trace-local metadata as provided to the context constructor
 
-- `pass::P<:Cassette.AbstractPass`: the Cassette pass that will be applied to all method
-    bodies encountered during contextual execution (see the `@pass` macro for details).
-
 - `tag::T<:Union{Nothing,Tag}`: the tag object that is attached to values when they are
     tagged w.r.t. the context instance
 
+- `pass::P<:Cassette.AbstractPass`: the Cassette pass that will be applied to all method
+    bodies encountered during contextual execution (see the [`@pass`](@ref) macro for details).
+
 - `bindingscache::B<:Union{Nothing,BindingMetaDictCache}}`: storage for metadata associated
     with tagged module bindings
+
+- `hooktoggle::H<:Union{Nothing,DisableHooks}`: configuration toggle for disabling
+    the `overdub` pass's `prehook`/`posthook` injection (see [`disablehooks`](@ref)
+    for details)
 """
 struct Context{N<:AbstractContextName,
                M<:Any,
-               P<:AbstractPass,
                T<:Union{Nothing,Tag},
-               B<:Union{Nothing,BindingMetaDictCache}}
+               P<:AbstractPass,
+               B<:Union{Nothing,BindingMetaDictCache},
+               H<:Union{Nothing,DisableHooks}}
     name::N
     metadata::M
-    pass::P
     tag::T
+    pass::P
     bindingscache::B
-    function Context(name::N, metadata::M, pass::P, ::Nothing, ::Nothing) where {N,M,P}
-        return new{N,M,P,Nothing,Nothing}(name, metadata, pass, nothing, nothing)
-    end
-    function Context(name::N, metadata::M, pass::P, tag::Tag{N}, bindingscache::BindingMetaDictCache) where {N,M,P}
-        return new{N,M,P,typeof(tag),BindingMetaDictCache}(name, metadata, pass, tag, bindingscache)
-    end
+    hooktoggle::H
 end
 
-const ContextWithTag{T} = Context{<:AbstractContextName,<:Any,<:AbstractPass,T}
-const ContextWithPass{P} = Context{<:AbstractContextName,<:Any,P}
+const ContextUntagged{N<:AbstractContextName} = Context{N,<:Any,Nothing}
+const ContextTagged{T<:Tag,N<:AbstractContextName} = Context{N,<:Any,T}
+const ContextWithPass{P<:AbstractPass,N<:AbstractContextName} = Context{N,<:Any,<:Union{Nothing,Tag},P}
+const ContextWithHookToggle{H<:Union{Nothing,DisableHooks},N<:AbstractContextName} = Context{N,<:Any,<:Union{Nothing,Tag},<:AbstractPass,<:Union{Nothing,BindingMetaDictCache},H}
 
 function Context(name::AbstractContextName; metadata = nothing, pass::AbstractPass = NoPass())
-    return Context(name, metadata, pass, nothing, nothing)
+    return Context(name, metadata, nothing, pass, nothing, nothing)
 end
 
 """
 ```
 similarcontext(context::Context;
                metadata = context.metadata,
-               pass = context.pass,
-               tag = context.tag,
-               bindingscache = context.bindingscache)
+               pass = context.pass)
 ```
 
-Return a copy of the given `context`, replacing field values in the returned instance with
-those provided via the keyword arguments.
+Return a copy of the given `context`, where the copy's `metadata` and/or `pass`
+fields are replaced with those provided via the corresponding keyword arguments.
 """
 function similarcontext(context::Context;
                         metadata = context.metadata,
-                        pass = context.pass,
-                        tag = context.tag,
-                        bindingscache = context.bindingscache)
-    return Context(context.name, metadata, pass, tag, bindingscache)
+                        pass = context.pass)
+    return Context(context.name, metadata, context.tag, pass,
+                   context.bindingscache, context.hooktoggle)
+end
+
+"""
+```
+disablehooks(context::Cassette.Context)
+```
+
+Return of copy of the given `context` with `prehook`/`posthook` injection
+disabled for the context. Disabling hook injection can reduce IR bloat in
+scenarios where these hooks are not being utilized.
+"""
+function disablehooks(context::Context)
+    return Context(context.name, context.metadata, context.tag, context.pass,
+                   context.bindingscache, DisableHooks())
 end
 
 """
@@ -155,9 +172,9 @@ each other's metadata propagation.
 See also: [`hastagging`](@ref)
 """
 function enabletagging(context::Context, f)
-    return similarcontext(context;
-                          tag = Tag(typeof(context.name), typeof(f)),
-                          bindingscache = BindingMetaDictCache())
+    return Context(context.name, context.metadata,
+                   Tag(typeof(context.name), typeof(f)),
+                   context.pass, BindingMetaDictCache(), context.hooktoggle)
 end
 
 """
@@ -186,13 +203,18 @@ true
 
 See also: [`enabletagging`](@ref)
 """
-hastagging(::Type{<:ContextWithTag{<:Tag}}) = true
-hastagging(::Type{<:ContextWithTag{Nothing}}) = false
+hastagging(::Type{<:ContextTagged}) = true
+hastagging(::Type{<:ContextUntagged}) = false
+
+hashooks(::Type{<:ContextWithHookToggle{Nothing}}) = true
+hashooks(::Type{<:ContextWithHookToggle{DisableHooks}}) = false
 
 tagtype(::C) where {C<:Context} = tagtype(C)
-tagtype(::Type{<:ContextWithTag{T}}) where {T} = T
+tagtype(::Type{<:ContextTagged{T}}) where {T} = T
 
 nametype(::Type{<:Context{N}}) where {N} = N
+
+passtype(::Type{<:ContextWithPass{P}}) where {P} = P
 
 ############
 # @context #
@@ -206,11 +228,11 @@ Cassette.@context Ctx
 Define a new Cassette context type with the name `Ctx`. In reality, `Ctx` is simply a type
 alias for `Cassette.Context{Cassette.nametype(Ctx)}`.
 
-Note that `Cassette.execute` is automatically overloaded w.r.t. `Ctx` to define several
+Note that `Cassette.overdub` is automatically overloaded w.r.t. `Ctx` to define several
 primitives by default. A full list of these default primitives can be obtained by running:
 
 ```
-methods(Cassette.execute, (Ctx, Vararg{Any}))
+methods(Cassette.overdub, (Ctx, Vararg{Any}))
 ```
 
 Note also that many of the default primitives' signatures only match when contextual tagging
@@ -226,48 +248,50 @@ macro context(_Ctx)
     CtxName = esc(Symbol("##$(_Ctx)#Name"))
     CtxTagged = esc(Symbol("##$(_Ctx)#Tagged"))
     Ctx = esc(_Ctx)
-    M, T, P = esc(:M), esc(:T), esc(:P)
+    N, M, T, P, H = esc(:N), esc(:M), esc(:T), esc(:P), esc(:H)
     return quote
         struct $CtxName <: AbstractContextName end
 
         Base.show(io::IO, ::Type{$CtxName}) = print(io, "nametype(", $(string(_Ctx)), ")")
 
-        const $Ctx{$M,$T<:Union{Nothing,Tag},$P<:AbstractPass} = Context{$CtxName,$M,$P,$T}
-        const $CtxTagged = $Ctx{$M,$T} where {$M<:Any,$T<:Tag}
+        const $Ctx{$M,$T<:Union{Nothing,Tag}} = Context{$CtxName,$M,$T}
+        const $CtxTagged = ContextTagged{$T,$CtxName} where {$T<:Tag}
 
         $Ctx(; kwargs...) = Context($CtxName(); kwargs...)
 
-        @inline Cassette.execute(::C, ::Typeof(Tag), ::Type{N}, ::Type{X}) where {C<:$Ctx,N,X} = Tag(N, X, tagtype(C))
+        @inline Cassette.overdub(::C, ::Typeof(Tag), ::Type{N}, ::Type{X}) where {C<:$Ctx,N,X} = Tag(N, X, tagtype(C))
+
+        @inline Cassette.overdub(ctx::$Ctx, ::typeof(Core._apply), f, args...) = Core._apply(overdub, (ctx, f), args...)
 
         # TODO: There are certain non-`Core.Builtin` functions which the compiler often
         # relies upon constant propagation to infer, such as `isdispatchtuple`. Such
         # functions should generally be contextual primitives by default for the sake of
         # performance, and we should add more of them here as we encounter them.
-        @inline Cassette.execute(ctx::$Ctx, f::Typeof(Base.isdispatchtuple), T::Type) = fallback(ctx, f, T)
-        @inline Cassette.execute(ctx::$Ctx, f::Typeof(Base.eltype), T::Type) = fallback(ctx, f, T)
-        @inline Cassette.execute(ctx::$Ctx, f::Typeof(Base.convert), T::Type, t::Tuple) = fallback(ctx, f, T, t)
-        @inline Cassette.execute(ctx::$Ctx{<:Any,Nothing}, f::Typeof(Base.getproperty), x::Any, s::Symbol) = fallback(ctx, f, x, s)
+        @inline Cassette.overdub(ctx::$Ctx, f::Typeof(Base.isdispatchtuple), T::Type) = fallback(ctx, f, T)
+        @inline Cassette.overdub(ctx::$Ctx, f::Typeof(Base.eltype), T::Type) = fallback(ctx, f, T)
+        @inline Cassette.overdub(ctx::$Ctx, f::Typeof(Base.convert), T::Type, t::Tuple) = fallback(ctx, f, T, t)
+        @inline Cassette.overdub(ctx::$Ctx{<:Any,Nothing}, f::Typeof(Base.getproperty), x::Any, s::Symbol) = fallback(ctx, f, x, s)
 
         # the below primitives are only active when the tagging system is enabled (`typeof(ctx) <: CtxTagged`)
 
-        @inline Cassette.execute(ctx::C, f::Typeof(tag), value, ::C, metadata) where {C<:$CtxTagged} = fallback(ctx, f, value, ctx, metadata)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Array{T,N}), undef::UndefInitializer, args...) where {T,N} = tagged_new_array(ctx, Array{T,N}, undef, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.Module), args...) = tagged_new_module(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.tuple), args...) = tagged_new_tuple(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base.nameof), args...) = tagged_nameof(ctx, m)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.getfield), args...) = tagged_getfield(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.setfield!), args...) = tagged_setfield!(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.arrayref), args...) = tagged_arrayref(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.arrayset), args...) = tagged_arrayset(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base._growbeg!), args...) = tagged_growbeg!(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base._growend!), args...) = tagged_growend!(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base._growat!), args...) = tagged_growat!(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base._deletebeg!), args...) = tagged_deletebeg!(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base._deleteend!), args...) = tagged_deleteend!(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Base._deleteat!), args...) = tagged_deleteat!(ctx, args...)
-        @inline Cassette.execute(ctx::$CtxTagged, ::Typeof(Core.typeassert), args...) = tagged_typeassert(ctx, args...)
+        @inline Cassette.overdub(ctx::C, f::Typeof(tag), value, ::C, metadata) where {C<:$CtxTagged} = fallback(ctx, f, value, ctx, metadata)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Array{T,N}), undef::UndefInitializer, args...) where {T,N} = tagged_new_array(ctx, Array{T,N}, undef, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Core.Module), args...) = tagged_new_module(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Core.tuple), args...) = tagged_new_tuple(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Base.nameof), args...) = tagged_nameof(ctx, m)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Core.getfield), args...) = tagged_getfield(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Core.setfield!), args...) = tagged_setfield!(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Core.arrayref), args...) = tagged_arrayref(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Core.arrayset), args...) = tagged_arrayset(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Base._growbeg!), args...) = tagged_growbeg!(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Base._growend!), args...) = tagged_growend!(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Base._growat!), args...) = tagged_growat!(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Base._deletebeg!), args...) = tagged_deletebeg!(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Base._deleteend!), args...) = tagged_deleteend!(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Base._deleteat!), args...) = tagged_deleteat!(ctx, args...)
+        @inline Cassette.overdub(ctx::$CtxTagged, ::Typeof(Core.typeassert), args...) = tagged_typeassert(ctx, args...)
 
-        @inline function Cassette.execute(ctx::$CtxTagged, f::Core.IntrinsicFunction, args...)
+        @inline function Cassette.overdub(ctx::$CtxTagged, f::Core.IntrinsicFunction, args...)
             if f === Base.sitofp
                 return tagged_sitofp(ctx, args...)
             elseif f === Base.sle_int
@@ -285,8 +309,6 @@ end
 # contextual dispatch methods #
 ###############################
 
-struct OverdubInstead end
-
 """
 ```
 prehook(context::Context, f, args...)
@@ -299,7 +321,7 @@ To understand when/how this method is called, see the documentation for [`overdu
 
 Invoking `prehook` is a no-op by default (it immediately returns `nothing`).
 
-See also: [`overdub`](@ref), [`posthook`](@ref), [`execute`](@ref), [`fallback`](@ref)
+See also: [`overdub`](@ref), [`posthook`](@ref), [`recurse`](@ref), [`fallback`](@ref)
 
 # Examples
 
@@ -359,7 +381,7 @@ To understand when/how this method is called, see the documentation for [`overdu
 
 Invoking `posthook` is a no-op by default (it immediately returns `nothing`).
 
-See also: [`overdub`](@ref), [`prehook`](@ref), [`execute`](@ref), [`fallback`](@ref)
+See also: [`overdub`](@ref), [`prehook`](@ref), [`recurse`](@ref), [`fallback`](@ref)
 
 # Examples
 
@@ -408,22 +430,6 @@ julia> ctx.metadata.x
 
 """
 ```
-execute(context::Context, f, args...)
-```
-
-Overload this Cassette method w.r.t. a given context in order to define a new contextual
-execution primitive for that context.
-
-To understand when/how this method is called, see the documentation for [`overdub`](@ref).
-
-Invoking `execute` immediately returns `Cassette.OverdubInstead()` by default.
-
-See also: [`overdub`](@ref), [`prehook`](@ref), [`posthook`](@ref), [`fallback`](@ref)
-"""
-@inline execute(::Context, ::Vararg{Any}) = OverdubInstead()
-
-"""
-```
 fallback(context::Context, f, args...)
 ```
 
@@ -431,28 +437,28 @@ Overload this Cassette method w.r.t. a given context in order to define a new co
 execution fallback for that context.
 
 To understand when/how this method is called, see the documentation for [`overdub`](@ref) and
-[`canoverdub`](@ref).
+[`canrecurse`](@ref).
 
 By default, invoking `fallback(context, f, args...)` will simply call `f(args...)` (with all
 arguments automatically untagged, if `hastagging(typeof(context))`).
 
-See also:  [`canoverdub`](@ref), [`overdub`](@ref), [`execute`](@ref), [`prehook`](@ref), [`posthook`](@ref)
+See also:  [`canrecurse`](@ref), [`overdub`](@ref), [`recurse`](@ref), [`prehook`](@ref), [`posthook`](@ref)
 """
 @inline fallback(ctx::Context, args...) = call(ctx, args...)
 
-@inline call(::ContextWithTag{Nothing}, f, args...) = f(args...)
-@inline call(context::Context, f, args...) = untag(f, context)(ntuple(i -> untag(args[i], context), Val(nfields(args)))...)
+@inline call(::ContextUntagged, f, args...) = f(args...)
+@inline call(context::ContextTagged, f, args...) = untag(f, context)(ntuple(i -> untag(args[i], context), Val(nfields(args)))...)
 
 # TODO: This is currently needed to force the compiler to specialize on the type arguments
 # to `Core.apply_type`. In the future, it would be best for Julia's compiler to better handle
 # varargs calls to such functions with type arguments, or at least provide a better way to
 # force specialization on the type arguments.
-@inline call(::ContextWithTag{Nothing}, f::typeof(Core.apply_type), ::Type{A}, ::Type{B}) where {A,B} = f(A, B)
-@inline call(::Context, f::typeof(Core.apply_type), ::Type{A}, ::Type{B}) where {A,B} = f(A, B)
+@inline call(::ContextUntagged, f::typeof(Core.apply_type), ::Type{A}, ::Type{B}) where {A,B} = f(A, B)
+@inline call(::ContextTagged, f::typeof(Core.apply_type), ::Type{A}, ::Type{B}) where {A,B} = f(A, B)
 
 """
 ```
-canoverdub(context::Context, f, args...)
+canrecurse(context::Context, f, args...)
 ```
 
 Return `true` if `f(args...)` has a lowered IR representation that Cassette can overdub,
@@ -460,15 +466,15 @@ return `false` otherwise.
 
 Alternatively, but equivalently:
 
-Return `false` if `overdub(context, f, args...)` directly translates to
+Return `false` if `recurse(context, f, args...)` directly translates to
 `fallback(context, f, args...)`, return `true` otherwise.
 
-Note that unlike `execute`, `fallback`, etc., this function is not intended to be overloaded.
+Note that unlike `overdub`, `fallback`, etc., this function is not intended to be overloaded.
 
-See also:  [`overdub`](@ref), [`fallback`](@ref), [`execute`](@ref)
+See also:  [`overdub`](@ref), [`fallback`](@ref), [`recurse`](@ref)
 """
-@inline canoverdub(ctx::Context, f, ::Vararg{Any}) = !(_iscompilerfunc(untag(f, ctx)) || isa(untag(f, ctx), Core.Builtin))
-@inline canoverdub(ctx::Context, ::typeof(Core._apply), f, args...) = canoverdub(ctx, f, apply_args(ctx, args...)...)
-@inline canoverdub(ctx::Context, ::typeof(Core.invoke), f, args...) = canoverdub(ctx, f, args...)
+@inline canrecurse(ctx::Context, f, ::Vararg{Any}) = !(isa(untag(f, ctx), Core.Builtin) || _iscompilerfunc(untag(f, ctx)))
+@inline canrecurse(ctx::Context, ::typeof(Core._apply), f, args...) = Core._apply(canrecurse, (ctx, f), args...)
+@inline canrecurse(ctx::Context, ::typeof(Core.invoke), f, _, args...) = canrecurse(ctx, f, args...)
 
-@generated _iscompilerfunc(f) = f.name.module === Core.Compiler
+_iscompilerfunc(::F) where {F} = Core.Compiler.typename(F).module === Core.Compiler
