@@ -4,10 +4,6 @@
 
 abstract type AbstractPass end
 
-struct NoPass <: AbstractPass end
-
-(::Type{NoPass})(::Any, ::Any, code_info) = code_info
-
 #########
 # `Tag` #
 #########
@@ -118,7 +114,7 @@ const ContextTagged{T<:Tag,N<:AbstractContextName} = Context{N,<:Any,T}
 const ContextWithPass{P<:AbstractPass,N<:AbstractContextName} = Context{N,<:Any,<:Union{Nothing,Tag},P}
 const ContextWithHookToggle{H<:Union{Nothing,DisableHooks},N<:AbstractContextName} = Context{N,<:Any,<:Union{Nothing,Tag},<:AbstractPass,<:Union{Nothing,BindingMetaDictCache},H}
 
-function Context(name::AbstractContextName; metadata = nothing, pass::AbstractPass = NoPass())
+function Context(name::AbstractContextName; metadata = nothing, pass::AbstractPass = NO_PASS)
     return Context(name, metadata, nothing, pass, nothing, nothing)
 end
 
