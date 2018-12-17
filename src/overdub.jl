@@ -95,7 +95,7 @@ function overdub_pass!(reflection::Reflection,
     #=== execute user-provided pass (is a no-op by default) ===#
 
     if !iskwfunc
-        code_info = passtype(context_type)(context_type, signature, code_info)
+        code_info = passtype(context_type)(context_type, reflection)
     end
 
     #=== munge the code into a valid form for `overdub_generator` ===#

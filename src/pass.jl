@@ -53,7 +53,7 @@ macro pass(transform)
     return esc(quote
         import Cassette.__overdub_generator__
         struct $Pass <: $Cassette.AbstractPass end
-        (::Type{$Pass})(ctxtype, signature, codeinfo) = $transform(ctxtype, signature, codeinfo)
+        (::Type{$Pass})(ctxtype, reflection) = $transform(ctxtype, reflection)
         Core.eval($__module__, $Cassette.overdub_definition($line, $file))
         $Pass()
     end)
