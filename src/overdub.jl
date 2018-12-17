@@ -96,6 +96,7 @@ function overdub_pass!(reflection::Reflection,
 
     if !iskwfunc
         code_info = passtype(context_type)(context_type, reflection)
+        isa(code_info, Expr) && return code_info
     end
 
     #=== munge the code into a valid form for `overdub_generator` ===#
@@ -435,7 +436,8 @@ function __overdub_generator__(self, context_type, args::Tuple)
                 untagged_args = ((untagtype(args[i], context_type) for i in 1:nfields(args))...,)
                 reflection = reflect(untagged_args)
                 if isa(reflection, Reflection)
-                    overdub_pass!(reflection, context_type, is_invoke)
+                    result = overdub_pass!(reflection, context_type, is_invoke)
+                    isa(result, Expr) && return result
                     return reflection.code_info
                 end
             catch err
