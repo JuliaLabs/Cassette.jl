@@ -486,8 +486,6 @@ function overdub_definition(line, file)
     end
 end
 
-@eval $(overdub_definition(@__LINE__, @__FILE__))
-
 @doc(
 """
 ```

@@ -172,10 +172,10 @@ before_time = time()
 
 @context PassCtx
 sig_collection = DataType[]
-mypass = @pass (ctx, sig, cinfo) -> begin
+mypass = @pass (ctx, ref) -> begin
     # TODO: check !in(sig, sig_collection) first to mimic a caching technique that will be used in practice
-    push!(sig_collection, sig)
-    return cinfo
+    push!(sig_collection, ref.signature)
+    return ref.code_info
 end
 @overdub(PassCtx(pass=mypass), sum(rand(3)))
 @test !isempty(sig_collection) && all(T -> T <: Tuple, sig_collection)
@@ -345,7 +345,7 @@ module DefineStuffInModule
     using Cassette
     Cassette.@context InModuleCtx
     x = 0
-    incrpass = Cassette.@pass (ctx, sig, code) -> (global x += 1; code)
+    incrpass = Cassette.@pass (ctx, ref) -> (global x += 1; ref.code_info)
     f(x) = Cassette.overdub(InModuleCtx(pass = incrpass), sin, x)
 end
 
@@ -487,7 +487,8 @@ function Cassette.overdub(ctx::SliceCtx, ::typeof(push_to_global_test_cache!), c
     return nothing, () -> (callback(); push_to_global_test_cache!(x))
 end
 
-function sliceprintln(::Type{<:SliceCtx}, ::Type{S}, ir::CodeInfo) where {S}
+function sliceprintln(::Type{<:SliceCtx}, reflection::Cassette.Reflection)
+    ir = reflection.code_info
     callbackslotname = gensym("callback")
     push!(ir.slotnames, callbackslotname)
     push!(ir.slotflags, 0x00)
