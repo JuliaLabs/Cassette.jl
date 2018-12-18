@@ -11,15 +11,14 @@ form `f(args...)` into statements similar to the following:
 ```julia
 begin
     Cassette.prehook(context, f, args...)
-    tmp = Cassette.execute(context, f, args...)
-    tmp = isa(tmp, Cassette.OverdubInstead) ? overdub(context, f, args...) : tmp
+    %n = Cassette.overdub(context, f, args...)
     Cassette.posthook(context, tmp, f, args...)
-    tmp
+    %n
 end
 ```
 
 This transformation yields several extra points of overloadability in the form of various
-Cassette methods, such as [`prehook`](@ref), [`posthook`](@ref), and [`execute`](@ref).
+Cassette methods, such as [`prehook`](@ref), [`posthook`](@ref), and [`overdub`](@ref) itself.
 Together, these methods form Cassette's "contextual dispatch" interface, so called because it
 allows the extra context parameter to participate in what would normally be a simple dispatch
 to the underlying method call.
@@ -32,8 +31,7 @@ method w.r.t. to a dummy context:
 ```julia
 julia> using Cassette
 
-julia> Cassette.@context Ctx
-Cassette.Context{nametype(Ctx),M,P,T,B} where B<:Union{Nothing, IdDict{Module,Dict{Symbol,BindingMeta}}} where P<:Cassette.AbstractPass where T<:Union{Nothing, Tag} where M
+julia> Cassette.@context Ctx;
 
 # this prehook implements simple trace logging for overdubbed functions
 julia> Cassette.prehook(::Ctx, f, args...) = println(f, args)
@@ -54,19 +52,20 @@ div_float(1.0, 2.0)
 
 Cool beans!
 
-Actually, there's a subtlety about `overdub` here we should address before moving on. Why
-wasn't the first line in the trace log `/(1, 2)`? I'll leave the answer as an exercise to
-the reader - just recall the definition of `overdub` from the previous section. If this
-the barrier between the `overdub` and the contextual dispatch interface seems confusing, try
-comparing the output from the above example with the output generated via
-`overdub(Ctx(), () -> 1/2)`.
+Actually, there's a subtlety about `overdub` here that we should address before
+moving on. Why wasn't the first line in the trace log `/(1, 2)`? If the answer
+isn't obvious, recall the definition of `overdub` from the previous section. With
+that definition in mind, it makes sense that `/(1, 2)` is not printed in the
+above example, since `prehook(Ctx(), /, 1, 2)` is not actually ever called in
+the above example. If this still seems confusing, compare the output from the
+above example with the output generated via `overdub(Ctx(), () -> 1/2)`.
 
-For pedagogy's sake, let's make our `prehook` slightly more complicated; let's only print
-calls whose first argument matches a specific type. A nice configurable way to do this is
-as follows:
+Moving on, let's make our `prehook` slightly more complicated for pedagogy's sake.
+This time around, we'll only print calls whose first argument matches a
+specific type. A nice configurable way to do this is as follows:
 
 ```julia
-# reset our prehook to a no-op
+# reset our prehook fallback for `Ctx` to a no-op
 julia> Cassette.prehook(::Ctx, f, args...) = nothing
 
 # parameterize our prehook on the type of metadata stored in our context instance
@@ -140,47 +139,49 @@ trace.current == Any[
 ```
 
 Next, let's tackle the meatiest part of the contextual dispatch interface: contextual
-primitives, as defined by the [`execute`](@ref). Here's Cassette's default definition
-of `execute`:
+primitives. A method invocation of the form `f(args...)` within a given context `Ctx`
+is a primitive w.r.t. `Ctx` if `overdub(Ctx(), f, args...)` does not recursively
+overdub the inner function calls that comprise the invoked method's implementation.
+There are two cases where `overdub(Ctx(), f, args...)` does not correspond to
+recursively overdubbing `f`'s implementation:
+
+1. `f(args...)` might be a built-in with no overdubbable Julia implementation
+(e.g. `getfield`), in which case `overdub(Ctx(), f, args...)` directly redirects
+to `Cassette.fallback(Ctx(), f, args...)`.
+
+2. `overdub` can be overloaded by the user such that `overdub(::Ctx, ::typeof(f), ...)` dispatches to a context-specific primitive definition.
+
+If this definition isn't exactly intuitive, never fear - the concept of a
+contextual primitive is more easily understood via examples. The simplest
+example is to define a context that simply redirects all method call of a
+specific type (let's say `sin(x)`) to a different method call of a specific
+type (let's say `cos(x)`). This can be expressed as follows:
 
 ```julia
-execute(::Context, ::Vararg{Any}) = OverdubInstead()
+using Cassette, Test
+
+Cassette.@context SinToCosCtx
+
+# Override the default recursive `overdub` implementation for `sin(x)`.
+# Note that there's no tricks here; this is just a normal Julia method
+# overload using the normal multiple dispatch semantics.
+Cassette.overdub(::SinToCosCtx, ::typeof(sin), x) = cos(x)
+
+x = rand(10)
+y = Cassette.overdub(SinToCosCtx(), sum, i -> cos(i) + sin(i), x)
+@test y == sum(i -> 2 * cos(i), x)
 ```
 
-With this definition in mind, the default case for the above contextual dispatch
-transformation can be reduced to:
+Pretty nifty!
 
-```julia
-begin
-    Cassette.prehook(context, f, args...)
-    tmp = overdub(context, f, args...)
-    Cassette.posthook(context, tmp, f, args...)
-    tmp
-end
-```
+Here's a more motivating example. Below, we define a context that allows us to
+memoize the computation of Fibonacci numbers (many thanks to the illustrious
+Simon Byrne, [the original author of this example](https://stackoverflow.com/questions/52050262/how-to-do-memoization-or-memoisation-in-julia-1-0/52062639#52062639)).
 
-In other words, the `execute`'s default behavior is to not interfere with the recursive
-application of `overdub` at all. If `execute` is ever overloaded to return something other
-than `OverdubInstead`, however, then it means the recursive overdubbing stops. Thus, in
-Cassette terminology, overloading `execute` defines a "contextual primitive" w.r.t. the
-overdubbing mechanism.
-
-!!! note
-    A bunch of reasonable default contextual primitives are generated automatically
-    upon context definition (via [`@context`](@ref)). It is possible, of course, to
-    simply override these defaults if necessary. For more details, see [`@context`](@ref).)
-
-One might wonder why the default definition of `execute` isn't simply
-`execute(context, args...) = overdub(context, args...)`. The reason is that this definition
-is a bit harder on the compiler, since it adds an extra cycle (e.g. `execute` -> `overdub`
--> `execute`) to the recursion inherent in Cassette's overdubbing mechanism. It is much
-cheaper for the compiler to evaluate `isa(tmp, OverdubInstead)` than it is to infer
-through deep multi-cycle recursion.
-
-Furthermore, it is often convenient to use `OverdubInstead` in your own contextual
-primitive definitions. For example, `OverdubInstead` is used in the below
-implementation, which memoizes the computation of Fibonacci numbers (many thanks
-to the illustrious Simon Byrne, [the original author of this example](https://stackoverflow.com/questions/52050262/how-to-do-memoization-or-memoisation-in-julia-1-0/52062639#52062639)):
+Note that this also uses Cassette's [`recurse`](@ref) function. This function is
+exactly equivalent to Cassette's default `overdub` implementation, but is not
+meant to be overloaded by users, thus allowing one to recursively overdub
+"through" invocations that might otherwise be contextual primitives.
 
 ```julia
 using Cassette: Cassette, @context, overdub, recurse
@@ -218,8 +219,12 @@ julia> @time fibtest(20)
 102334175
 ```
 
+!!! note
+    A bunch of reasonable default contextual primitives are generated automatically
+    upon context definition (via [`@context`](@ref)). It is possible, of course, to
+    simply override these defaults if necessary. For more details, see [`@context`](@ref).)
 
-Finally, to get a sense of the interaction between `execute` and `overdub`, let's
+Finally, to get a sense of the interaction between `recurse` and `overdub`, let's
 reimplement our previous nested tracing example using recursion instead of maintaining
 a stack:
 
@@ -228,12 +233,12 @@ using Cassette
 
 Cassette.@context TraceCtx
 
-function Cassette.execute(ctx::TraceCtx, args...)
+function Cassette.overdub(ctx::TraceCtx, args...)
     subtrace = Any[]
     push!(ctx.metadata, args => subtrace)
     if Cassette.canrecurse(ctx, args...)
         newctx = Cassette.similarcontext(ctx, metadata = subtrace)
-        return Cassette.overdub(newctx, args...)
+        return Cassette.recurse(newctx, args...)
     else
         return Cassette.fallback(ctx, args...)
     end
@@ -242,7 +247,7 @@ end
 trace = Any[]
 x, y, z = rand(3)
 f(x, y, z) = x*y + y*z
-Cassette.overdub(TraceCtx(metadata = trace), () -> f(x, y, z))
+Cassette.overdub(TraceCtx(metadata = trace), f, x, y, z)
 
 # returns `true`
 trace == Any[
