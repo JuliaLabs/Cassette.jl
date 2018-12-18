@@ -14,20 +14,13 @@ invoked during contextual execution.
 `transform` must be a Julia object that is callable with the following signature:
 
 ```
-transform(::Type{<:Context}, signature::Type{Tuple{...}}, method_body::CodeInfo)::CodeInfo
+transform(::Type{<:Context}, ::Cassette.Reflection)::Union{Expr,CodeInfo}
 ```
 
-Note that the `@pass` macro expands to an `eval` call and thus should only be called at
-top-level. Furthermore, to avoid world-age issues, `transform` should not be overloaded after
-it has been registered with `@pass`.
-
-Note also that `transform` should be "relatively pure." More specifically, Julia's compiler
-has license to apply `transform` multiple times, even if only compiling a single method
-invocation once. Thus, it is required that `transform` always return a generally "equivalent"
-`CodeInfo` for a given context, method body, and signature. If your `transform`
-implementation is not naturally "pure" in this sense, then it is still possible to guarantee
-this property by memoizing your implementation (i.e. maintaining a cache of previously
-computed IR results, instead of recomputing results every time).
+If `isa(transform(...), Expr)`, then the returned `Expr` will be emitted immediately
+without any additional processing. Otherwise, if `isa(transform(...), CodeInfo)`, then
+the returned `CodeInfo` will undergo the rest of Cassette's overdubbing transformation
+before being emitted from the `overdub` generator.
 
 Two special `Expr` heads are available to Cassette pass authors that are not normally valid
 in Julia IR. `Expr`s with these heads can be used to interact with the downstream built-in
@@ -42,7 +35,20 @@ Cassette passes that consume them.
     could construct an IR element that accesses the context's `metadata` field by emitting:
     `Expr(:call, Expr(:nooverdub, GlobalRef(Core, :getfield)), Expr(:contextslot), QuoteNode(:metadata))`
 
-Cassette provides a few IR-munging utility functions of interest to pass authors: [`insert_statements!`](@ref), [`replace_match!`](@ref)
+Cassette provides a few IR-munging utility functions of interest to pass authors; for details,
+see [`insert_statements!`](@ref), [`replace_match!`](@ref), and [`is_ir_element`](@ref).
+
+Note that the `@pass` macro expands to an `eval` call and thus should only be called at
+top-level. Furthermore, to avoid world-age issues, `transform` should not be overloaded after
+it has been registered with `@pass`.
+
+Note also that `transform` should be "relatively pure." More specifically, Julia's compiler
+has license to apply `transform` multiple times, even if only compiling a single method
+invocation once. Thus, it is required that `transform` always return a generally "equivalent"
+`CodeInfo` for a given context, method body, and signature. If your `transform`
+implementation is not naturally "pure" in this sense, then it is still possible to guarantee
+this property by memoizing your implementation (i.e. maintaining a cache of previously
+computed IR results, instead of recomputing results every time).
 
 See also: [`Context`](@ref), [`overdub`](@ref)
 """

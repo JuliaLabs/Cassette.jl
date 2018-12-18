@@ -184,6 +184,26 @@ println("done (took ", time() - before_time, " seconds)")
 
 #############################################################################################
 
+print("   running PassFallbackCtx test...")
+
+before_time = time()
+
+@context PassFallbackCtx
+fallbackpass = @pass (ctx, ref) -> begin
+    if ref.signature <: Tuple{typeof(sin),Any}
+        return :(cos($(Cassette.OVERDUB_ARGUMENTS_NAME)[2]))
+    end
+    return ref.code_info
+end
+x = rand(30)
+sin_kernel(i) = i > 0.5 ? sin(i) : i
+y = @inferred(overdub(PassFallbackCtx(pass=fallbackpass), sum, sin_kernel, x))
+@test sum(i -> i > 0.5 ? cos(i) : i, x) === y
+
+println("done (took ", time() - before_time, " seconds)")
+
+#############################################################################################
+
 print("   running WorldCtx test...")
 
 before_time = time()

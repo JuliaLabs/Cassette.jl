@@ -7,6 +7,7 @@ CurrentModule = Cassette
 ```@docs
 Cassette.Context
 Cassette.similarcontext
+Cassette.disablehooks
 Cassette.enabletagging
 Cassette.hastagging
 Cassette.@context
@@ -15,6 +16,7 @@ Cassette.@context
 ```@docs
 Cassette.overdub
 Cassette.@overdub
+Cassette.recurse
 Cassette.prehook
 Cassette.posthook
 Cassette.execute
@@ -26,6 +28,10 @@ Cassette.canrecurse
 Cassette.@pass
 Cassette.replace_match!
 Cassette.insert_statements!
+Cassette.is_ir_element
+Cassette.OVERDUB_CONTEXT_NAME
+Cassette.OVERDUB_ARGUMENTS_NAME
+Cassette.Reflection
 ```
 
 ```@docs

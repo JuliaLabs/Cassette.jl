@@ -2,6 +2,24 @@
 # Reflection #
 ##############
 
+"""
+    Cassette.Reflection
+
+A struct representing the information retrieved via `Cassette.reflect`.
+
+A `Reflection` is essentially just a convenient bundle of information about a
+specific method invocation.
+
+# Fields
+
+- `signature`: the invocation signature (in `Tuple{...}` type form) for the invoked method.
+
+- `method`: the `Method` object associated with the invoked method.
+
+- `static_params`: a `Vector` representing the invoked method's static parameter list.
+
+- `code_info`: the `CodeInfo` object associated with the invoked method.
+"""
 mutable struct Reflection
     signature::DataType
     method::Method
@@ -59,21 +77,38 @@ end
 # overdub #
 ###########
 
-const OVERDUB_CTX_SYMBOL = gensym("overdub_context")
-const OVERDUB_ARGS_SYMBOL = gensym("overdub_arguments")
+"""
+    Cassette.OVERDUB_CONTEXT_NAME
+
+The variable name bound to `overdub`'s `Context` argument in its `@generated`
+method definition.
+
+This binding can be used to manually reference/destructure `overdub` arguments
+within `Expr` thunks emitted by user-provided passes.
+
+See also: [`OVERDUB_ARGUMENTS_NAME`](@ref), [`pass`](@ref), [`overdub`](@ref)
+"""
+const OVERDUB_CONTEXT_NAME = gensym("overdub_context")
+
+"""
+    Cassette.OVERDUB_ARGUMENTS_NAME
+
+The variable name bound to `overdub`'s tuple of non-`Context` arguments in its
+`@generated` method definition.
+
+This binding can be used to manually reference/destructure `overdub` arguments
+within `Expr` thunks emitted by user-provided passes.
+
+See also: [`OVERDUB_CONTEXT_NAME`](@ref), [`pass`](@ref), [`overdub`](@ref)
+"""
+const OVERDUB_ARGUMENTS_NAME = gensym("overdub_arguments")
 
 # The `overdub` pass has four intertwined tasks:
 #   1. Apply the user-provided pass, if one is given
 #   2. Munge the reflection-generated IR into a valid form for returning from
-#      `recurse_generator` (i.e. add new argument slots, substitute static
+#      `overdub_generator` (i.e. add new argument slots, substitute static
 #      parameters, destructure overdub arguments into underlying method slots, etc.)
-#   3. Replace all calls of the form `output = f(args...)` with:
-#      ```
-#      prehook(ctx, f, args...)
-#      overdub(ctx, f, args...) # %n
-#      posthook(ctx, %n, f, args...)
-#      output = %n
-#      ```
+#   3. Perform the statement replacement central to the overdubbing pass (see `overdub` docstring)
 #   4. If tagging is enabled, do the necessary IR transforms for the metadata tagging system
 function overdub_pass!(reflection::Reflection,
                        context_type::DataType,
@@ -106,7 +141,7 @@ function overdub_pass!(reflection::Reflection,
     # not seem to match Julia's developer documentation.
 
     # construct new slotnames/slotflags for added slots
-    code_info.slotnames = Any[:overdub, OVERDUB_CTX_SYMBOL, OVERDUB_ARGS_SYMBOL, code_info.slotnames...]
+    code_info.slotnames = Any[:overdub, OVERDUB_CONTEXT_NAME, OVERDUB_ARGUMENTS_NAME, code_info.slotnames...]
     code_info.slotflags = UInt8[0x00, 0x00, 0x00, code_info.slotflags..., 0x00]
     n_prepended_slots = 3
     overdub_ctx_slot = SlotNumber(2)
@@ -418,7 +453,7 @@ function overdub_pass!(reflection::Reflection,
     return reflection
 end
 
-@eval _overdub_fallback($OVERDUB_CTX_SYMBOL, $OVERDUB_ARGS_SYMBOL...) = fallback($OVERDUB_CTX_SYMBOL, $OVERDUB_ARGS_SYMBOL...)
+@eval _overdub_fallback($OVERDUB_CONTEXT_NAME, $OVERDUB_ARGUMENTS_NAME...) = fallback($OVERDUB_CONTEXT_NAME, $OVERDUB_ARGUMENTS_NAME...)
 
 const OVERDUB_FALLBACK = begin
     code_info = reflect((typeof(_overdub_fallback), Any, Vararg{Any})).code_info
@@ -459,25 +494,25 @@ recurse(ctx::Context, ::typeof(Core._apply), f, args...) = Core._apply(recurse, 
 
 function overdub_definition(line, file)
     return quote
-        function $Cassette.overdub($OVERDUB_CTX_SYMBOL::$Cassette.Context, $OVERDUB_ARGS_SYMBOL...)
+        function $Cassette.overdub($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
             $(Expr(:meta,
                    :generated,
                    Expr(:new,
                         Core.GeneratedFunctionStub,
                         :__overdub_generator__,
-                        Any[:overdub, OVERDUB_CTX_SYMBOL, OVERDUB_ARGS_SYMBOL],
+                        Any[:overdub, OVERDUB_CONTEXT_NAME, OVERDUB_ARGUMENTS_NAME],
                         Any[],
                         line,
                         QuoteNode(Symbol(file)),
                         true)))
         end
-        function $Cassette.recurse($OVERDUB_CTX_SYMBOL::$Cassette.Context, $OVERDUB_ARGS_SYMBOL...)
+        function $Cassette.recurse($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
             $(Expr(:meta,
                    :generated,
                    Expr(:new,
                         Core.GeneratedFunctionStub,
                         :__overdub_generator__,
-                        Any[:recurse, OVERDUB_CTX_SYMBOL, OVERDUB_ARGS_SYMBOL],
+                        Any[:recurse, OVERDUB_CONTEXT_NAME, OVERDUB_ARGUMENTS_NAME],
                         Any[],
                         line,
                         QuoteNode(Symbol(file)),
