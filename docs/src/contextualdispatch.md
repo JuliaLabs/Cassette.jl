@@ -12,16 +12,17 @@ form `f(args...)` into statements similar to the following:
 begin
     Cassette.prehook(context, f, args...)
     %n = Cassette.overdub(context, f, args...)
-    Cassette.posthook(context, tmp, f, args...)
+    Cassette.posthook(context, %n, f, args...)
     %n
 end
 ```
 
-This transformation yields several extra points of overloadability in the form of various
-Cassette methods, such as [`prehook`](@ref), [`posthook`](@ref), and [`overdub`](@ref) itself.
-Together, these methods form Cassette's "contextual dispatch" interface, so called because it
-allows the extra context parameter to participate in what would normally be a simple dispatch
-to the underlying method call.
+This transformation yields several extra points of overloadability in the form
+of various Cassette methods, such as [`prehook`](@ref), [`posthook`](@ref), and
+even [`overdub`](@ref) itself. Together, these methods form Cassette's
+"contextual dispatch" interface, so-named because it enables an extra context
+parameter to participate in what would normally be a simple dispatch to the
+underlying method call.
 
 In this section of the documentation, we'll go over these functions in a bit more detail.
 
@@ -141,13 +142,11 @@ trace.current == Any[
 Next, let's tackle the meatiest part of the contextual dispatch interface: contextual
 primitives. A method invocation of the form `f(args...)` within a given context `Ctx`
 is a primitive w.r.t. `Ctx` if `overdub(Ctx(), f, args...)` does not recursively
-overdub the inner function calls that comprise the invoked method's implementation.
+overdub the function calls comprising the invoked method's implementation.
 There are two cases where `overdub(Ctx(), f, args...)` does not correspond to
 recursively overdubbing `f`'s implementation:
 
-1. `f(args...)` might be a built-in with no overdubbable Julia implementation
-(e.g. `getfield`), in which case `overdub(Ctx(), f, args...)` directly redirects
-to `Cassette.fallback(Ctx(), f, args...)`.
+1. `f(args...)` might be a built-in with no overdubbable Julia implementation (e.g. `getfield`), in which case `overdub(Ctx(), f, args...)` immediately redirects to `Cassette.fallback(Ctx(), f, args...)`.
 
 2. `overdub` can be overloaded by the user such that `overdub(::Ctx, ::typeof(f), ...)` dispatches to a context-specific primitive definition.
 
@@ -176,12 +175,7 @@ Pretty nifty!
 
 Here's a more motivating example. Below, we define a context that allows us to
 memoize the computation of Fibonacci numbers (many thanks to the illustrious
-Simon Byrne, [the original author of this example](https://stackoverflow.com/questions/52050262/how-to-do-memoization-or-memoisation-in-julia-1-0/52062639#52062639)).
-
-Note that this also uses Cassette's [`recurse`](@ref) function. This function is
-exactly equivalent to Cassette's default `overdub` implementation, but is not
-meant to be overloaded by users, thus allowing one to recursively overdub
-"through" invocations that might otherwise be contextual primitives.
+Simon Byrne, [the original author of this example](https://stackoverflow.com/questions/52050262/how-to-do-memoization-or-memoisation-in-julia-1-0/52062639#52062639)):
 
 ```julia
 using Cassette: Cassette, @context, overdub, recurse
@@ -201,7 +195,12 @@ function Cassette.overdub(ctx::MemoizeCtx, ::typeof(fib), x)
 end
 ```
 
-Then (skipping the warm-up calls used to compile both functions):
+Note that this example uses Cassette's [`recurse`](@ref) function. This function is
+exactly equivalent to Cassette's default `overdub` implementation, but is not
+meant to be overloaded by users, thus allowing one to recursively overdub
+"through" invocations that might otherwise be contextual primitives.
+
+We can do some toy performance tests to see that we get the expected speedup using this implementation (skipping the warm-up calls used to compile both functions):
 
 ```julia
 julia> ctx = MemoizeCtx(metadata = Dict{Int,Int}());
@@ -221,8 +220,8 @@ julia> @time fibtest(20)
 
 !!! note
     A bunch of reasonable default contextual primitives are generated automatically
-    upon context definition (via [`@context`](@ref)). It is possible, of course, to
-    simply override these defaults if necessary. For more details, see [`@context`](@ref).)
+    upon context definition. It is possible, of course, to simply override these
+    defaults if necessary. For more details, see [`@context`](@ref).
 
 Finally, to get a sense of the interaction between `recurse` and `overdub`, let's
 reimplement our previous nested tracing example using recursion instead of maintaining

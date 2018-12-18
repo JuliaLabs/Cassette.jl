@@ -16,7 +16,7 @@ makedocs(modules=[Cassette],
 
 deploydocs(repo = "github.com/jrevels/Cassette.jl.git",
            osname = "linux",
-           julia = "0.7",
+           julia = "1.0",
            target = "build",
            deps = nothing,
            make = nothing)

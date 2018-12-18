@@ -152,8 +152,7 @@ accomplish the above:
 - At the beginning of each method body, insert something like `_callback_ = context.metadata`
 - Change every method invocation of the form `f(args...)` to `f(_callback_, args...)`.
 - Change every return statement of the form `return x` to `return (x, _callback_)`
-- Ensure the output of every method invocation is properly destructured into the original
-assignment slot/SSAValue and the `_callback_` slot.
+- Ensure the output of every method invocation is properly destructured into the original assignment slot/SSAValue and the `_callback_` slot.
 
 Okay! Now that we have a high-level description of our pass, let's look at the code that implements
 it. **I highly recommend reading the documentation for [`@pass`](@ref) and
