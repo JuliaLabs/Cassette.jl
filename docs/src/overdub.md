@@ -11,8 +11,7 @@ A naive usage of this mechanism looks like this:
 ```julia
 julia> using Cassette
 
-julia> Cassette.@context Ctx
-Cassette.Context{nametype(Ctx),M,P,T,B} where B<:Union{Nothing, IdDict{Module,Dict{Symbol,BindingMeta}}} where P<:Cassette.AbstractPass where T<:Union{Nothing, Tag} where M
+julia> Cassette.@context Ctx;
 
 julia> Cassette.overdub(Ctx(), /, 1, 2)
 0.5
@@ -47,31 +46,22 @@ And now let's look at lowered IR for the call to `overdub(Ctx(), /, 1, 2)`
 ```julia
 julia> @code_lowered Cassette.overdub(Ctx(), /, 1, 2)
 CodeInfo(
-59 1 ─       #self# = (Core.getfield)(##overdub_arguments#369, 1)
-   │         x = (Core.getfield)(##overdub_arguments#369, 2)
-   │         y = (Core.getfield)(##overdub_arguments#369, 3)
-   │         (Cassette.prehook)(##overdub_context#368, Base.float, x)
-   │         ##overdub_tmp#370 = (Cassette.execute)(##overdub_context#368, Base.float, x)
-   │   %6  = ##overdub_tmp#370 isa Cassette.OverdubInstead
-   └──       goto #3 if not %6
-   2 ─       ##overdub_tmp#370 = (Cassette.overdub)(##overdub_context#368, Base.float, x)
-   3 ─       (Cassette.posthook)(##overdub_context#368, ##overdub_tmp#370, Base.float, x)
-   │   %10 = ##overdub_tmp#370
-   │         (Cassette.prehook)(##overdub_context#368, Base.float, y)
-   │         ##overdub_tmp#370 = (Cassette.execute)(##overdub_context#368, Base.float, y)
-   │   %13 = ##overdub_tmp#370 isa Cassette.OverdubInstead
-   └──       goto #5 if not %13
-   4 ─       ##overdub_tmp#370 = (Cassette.overdub)(##overdub_context#368, Base.float, y)
-   5 ─       (Cassette.posthook)(##overdub_context#368, ##overdub_tmp#370, Base.float, y)
-   │   %17 = ##overdub_tmp#370
-   │         (Cassette.prehook)(##overdub_context#368, Base.:/, %10, %17)
-   │         ##overdub_tmp#370 = (Cassette.execute)(##overdub_context#368, Base.:/, %10, %17)
-   │   %20 = ##overdub_tmp#370 isa Cassette.OverdubInstead
-   └──       goto #7 if not %20
-   6 ─       ##overdub_tmp#370 = (Cassette.overdub)(##overdub_context#368, Base.:/, %10, %17)
-   7 ─       (Cassette.posthook)(##overdub_context#368, ##overdub_tmp#370, Base.:/, %10, %17)
-   │   %24 = ##overdub_tmp#370
-   └──       return %24
+59 1 ─       #self# = (Core.getfield)(##overdub_arguments#361, 1)                                                 │
+   │         x = (Core.getfield)(##overdub_arguments#361, 2)                                                      │
+   │         y = (Core.getfield)(##overdub_arguments#361, 3)                                                      │
+   │         (Cassette.prehook)(##overdub_context#360, Base.float, x)                                             │
+   │   %5  = (Cassette.overdub)(##overdub_context#360, Base.float, x)                                             │
+   │         (Cassette.posthook)(##overdub_context#360, %5, Base.float, x)                                        │
+   │   %7  = %5                                                                                                   │
+   │         (Cassette.prehook)(##overdub_context#360, Base.float, y)                                             │
+   │   %9  = (Cassette.overdub)(##overdub_context#360, Base.float, y)                                             │
+   │         (Cassette.posthook)(##overdub_context#360, %9, Base.float, y)                                        │
+   │   %11 = %9                                                                                                   │
+   │         (Cassette.prehook)(##overdub_context#360, Base.:/, %7, %11)                                          │
+   │   %13 = (Cassette.overdub)(##overdub_context#360, Base.:/, %7, %11)                                          │
+   │         (Cassette.posthook)(##overdub_context#360, %13, Base.:/, %7, %11)                                    │
+   │   %15 = %13                                                                                                  │
+   └──       return %15                                                                                           │
 )
 ```
 
@@ -84,18 +74,17 @@ statements similar to the following:
 ```julia
 begin
     Cassette.prehook(context, f, args...)
-    tmp = Cassette.execute(context, f, args...)
-    tmp = isa(tmp, Cassette.OverdubInstead) ? overdub(context, f, args...) : tmp
+    %n = Cassette.overdub(context, f, args...)
     Cassette.posthook(context, tmp, f, args...)
-    tmp
+    %n
 end
 ```
 
 It is here that we experience our first bit of overdubbing magic: for every method call
 in the overdubbed trace, we obtain a bunch of extra overloading points that we didn't
 have before! In the [following section on contextual dispatch](contextualdispatch.md), we'll
-explore how [`prehook`](@ref), [`posthook`](@ref), [`execute`](@ref), and more can all be
-overloaded to add new contextual behaviors to overdubbed programs.
+explore how [`prehook`](@ref), [`posthook`](@ref), and more can all be overloaded to add new
+contextual behaviors to overdubbed programs.
 
 In the meantime, we should clarify how `overdub` is achieving this feat. Let's start by
 examining a "pseudo-implementation" of `overdub`:
@@ -118,7 +107,7 @@ computed from the run-time types of its inputs. To actually compute this method 
 
 First, via `Cassette.reflect`, `overdub` asks Julia's compiler to provide it with a bunch of
 information about the original method call as specified by `args`. The result of this query
-is `reflection`, which is a `Cassette.Reflection` object if the compiler found lowered IR for
+is `reflection`, which is a [`Cassette.Reflection`](@ref) object if the compiler found lowered IR for
 `args` and `nothing` otherwise (e.g. if `args` specifies a built-in call like `getfield`
 whose implementation is not, itself, Julia code). For the former case, we execute a pass over
 the `reflection` and the lowered IR stored within (`Cassette.overdub_pass!`) to perform the
