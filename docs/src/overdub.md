@@ -24,9 +24,9 @@ to see what's actually going on.
 
 First, we define a new [`Context`](@ref) type alias called `Ctx` via the [`@context`](@ref)
 macro. In practical usage, one normally defines one or more contexts specific to one's
-application of Cassette. Here, we just made a dummy one for illustrative purposes. Context
-instances are central to Cassette's function, but are relatively simple to construct and
-understand. I recommend skimming the [`Context`](@ref) docstring before moving forward.
+application of Cassette. Here, we just made a dummy one for illustrative purposes. Contexts
+are relatively simple to construct and understand, and are of central importance to Cassette's
+operation. I recommend skimming the [`Context`](@ref) docstring before moving forward.
 
 Next, we "overdubbed" a call to `1/2` w.r.t. `Ctx()` using the [`overdub`](@ref) function. To
 get a sense of what that means, let's look at the lowered IR for the original call:
@@ -75,16 +75,16 @@ statements similar to the following:
 begin
     Cassette.prehook(context, f, args...)
     %n = Cassette.overdub(context, f, args...)
-    Cassette.posthook(context, tmp, f, args...)
+    Cassette.posthook(context, %n, f, args...)
     %n
 end
 ```
 
 It is here that we experience our first bit of overdubbing magic: for every method call
-in the overdubbed trace, we obtain a bunch of extra overloading points that we didn't
+in the overdubbed trace, we obtain several extra points of overloadability that we didn't
 have before! In the [following section on contextual dispatch](contextualdispatch.md), we'll
-explore how [`prehook`](@ref), [`posthook`](@ref), and more can all be overloaded to add new
-contextual behaviors to overdubbed programs.
+explore how [`prehook`](@ref), [`posthook`](@ref), and even [`overdub`](@ref) itself can be
+overloaded to add new contextual behaviors to overdubbed programs.
 
 In the meantime, we should clarify how `overdub` is achieving this feat. Let's start by
 examining a "pseudo-implementation" of `overdub`:
@@ -101,7 +101,7 @@ examining a "pseudo-implementation" of `overdub`:
 end
 ```
 
-As you can see, `overdub` is a `@generated` function, and thus returns its own method body
+As you can see, `overdub` is a `@generated` function, and thus returns a method body
 computed from the run-time types of its inputs. To actually compute this method body,
 `overdub` is doing something quite special.
 
