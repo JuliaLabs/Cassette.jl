@@ -24,11 +24,13 @@ we'll be using the classic "trial-by-fire" technique to better understand this f
 
 Note that the following example was originally inspired by [jrevels/Cassette.jl#66](https://github.com/jrevels/Cassette.jl/issues/66).
 
-Let's say you wanted to use Cassette to "slice" various separable subcomputations out from an
-overall computation. For a specific example, let's say you wanted to implement a tool that takes a
-Julia function and strips out calls to `println` encountered in the trace. When this function
-returns, we also want to return a callback that executes all the `println` calls that we stripped
-out. How would you implement this with Cassette?
+Let's say you wanted to use Cassette to ["slice" various separable
+subcomputations out from an overall computation](https://en.wikipedia.org/wiki/Program_slicing).
+For a specific example, let's say you wanted to implement a tool that takes a
+Julia function and strips out calls to `println` encountered in the trace. When
+this function returns, we also want to return a callback that executes all the
+`println` calls that we stripped out. How would you implement this with
+Cassette?
 
 Well, it's not too hard to achieve this via the contextual dispatch interface:
 
@@ -41,7 +43,7 @@ mutable struct Callback
     f::Any
 end
 
-function Cassette.execute(ctx::Ctx, ::typeof(println), args...)
+function Cassette.overdub(ctx::Ctx, ::typeof(println), args...)
     previous = ctx.metadata.f
     ctx.metadata.f = () -> (previous(); println(args...))
     return nothing
@@ -109,9 +111,9 @@ end
 ```julia
 function overdub(ctx::Ctx, add, a, b)
     _callback_ = ctx.metadata
-    _, _callback_ = execute(ctx, println, _callback_, "I'm about to add $a + $b")
-    c, _callback_ = execute(ctx, +, _callback_, a, b)
-    _, _callback_ = execute(ctx, println, _callback_, "c = $c")
+    _, _callback_ = overdub(ctx, println, _callback_, "I'm about to add $a + $b")
+    c, _callback_ = overdub(ctx, +, _callback_, a, b)
+    _, _callback_ = overdub(ctx, println, _callback_, "c = $c")
     return c, _callback_
 end
 ```
@@ -148,10 +150,10 @@ Next, let's list the steps our compiler pass will actually need to perform in or
 accomplish the above:
 
 - At the beginning of each method body, insert something like `_callback_ = context.metadata`
-- Change every method invocation of the form `f(args...)` to `_callback_(f, args...)`.
+- Change every method invocation of the form `f(args...)` to `f(_callback_, args...)`.
 - Change every return statement of the form `return x` to `return (x, _callback_)`
 - Ensure the output of every method invocation is properly destructured into the original
-    assignment slot/SSAValue and the `_callback_` slot.
+assignment slot/SSAValue and the `_callback_` slot.
 
 Okay! Now that we have a high-level description of our pass, let's look at the code that implements
 it. **I highly recommend reading the documentation for [`@pass`](@ref) and
@@ -161,7 +163,7 @@ it. **I highly recommend reading the documentation for [`@pass`](@ref) and
 using Cassette
 using Core: CodeInfo, SlotNumber, SSAValue
 
-Cassette.@context Ctx
+Cassette.@context SliceCtx
 
 function Cassette.overdub(ctx::SliceCtx, f, callback, args...)
     if Cassette.canrecurse(ctx, f, args...)
@@ -176,7 +178,8 @@ function Cassette.overdub(ctx::SliceCtx, ::typeof(println), callback, args...)
     return nothing, () -> (callback(); println(args...))
 end
 
-function sliceprintln(::Type{<:SliceCtx}, ::Type{S}, ir::CodeInfo) where {S}
+function sliceprintln(::Type{<:SliceCtx}, reflection::Cassette.Reflection)
+    ir = reflection.code_info
     callbackslotname = gensym("callback")
     push!(ir.slotnames, callbackslotname)
     push!(ir.slotflags, 0x00)
@@ -257,9 +260,9 @@ c = [0.520778, 0.84658, 0.699457]
  0.846579992552251
  0.6994565474128307
 
-julia> ctx = Ctx(pass=sliceprintlnpass, metadata = () -> nothing);
+julia> ctx = SliceCtx(pass=sliceprintlnpass, metadata = () -> nothing);
 
-julia> result, callback = Cassette.overdub(ctx, add, a, b)
+julia> result, callback = Cassette.@overdub(ctx, add(a, b))
 ([0.520778, 0.84658, 0.699457], getfield(Main, Symbol("##4#5")){getfield(Main, Symbol("##4#5")){getfield(Main, Symbol("##18#19")),Tuple{String}},Tuple{String}}(getfield(Main, Symbol("##4#5")){getfield(Main, Symbol("##18#19")),Tuple{String}}(getfield(Main, Symbol("##18#19"))(), ("I'm about to add [0.325019, 0.19358, 0.200598] + [0.195759, 0.653, 0.498859]",)), ("c = [0.520778, 0.84658, 0.699457]",)))
 
 julia> callback()
