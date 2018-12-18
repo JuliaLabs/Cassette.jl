@@ -86,7 +86,7 @@ method definition.
 This binding can be used to manually reference/destructure `overdub` arguments
 within `Expr` thunks emitted by user-provided passes.
 
-See also: [`OVERDUB_ARGUMENTS_NAME`](@ref), [`pass`](@ref), [`overdub`](@ref)
+See also: [`OVERDUB_ARGUMENTS_NAME`](@ref), [`@pass`](@ref), [`overdub`](@ref)
 """
 const OVERDUB_CONTEXT_NAME = gensym("overdub_context")
 
@@ -99,7 +99,7 @@ The variable name bound to `overdub`'s tuple of non-`Context` arguments in its
 This binding can be used to manually reference/destructure `overdub` arguments
 within `Expr` thunks emitted by user-provided passes.
 
-See also: [`OVERDUB_CONTEXT_NAME`](@ref), [`pass`](@ref), [`overdub`](@ref)
+See also: [`OVERDUB_CONTEXT_NAME`](@ref), [`@pass`](@ref), [`overdub`](@ref)
 """
 const OVERDUB_ARGUMENTS_NAME = gensym("overdub_arguments")
 

@@ -19,7 +19,6 @@ Cassette.@overdub
 Cassette.recurse
 Cassette.prehook
 Cassette.posthook
-Cassette.execute
 Cassette.fallback
 Cassette.canrecurse
 ```
