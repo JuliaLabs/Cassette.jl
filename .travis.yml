@@ -17,6 +17,6 @@ notifications:
 #  - julia -e 'Pkg.clone(pwd()); Pkg.build("Cassette"); Pkg.test("Cassette"; coverage=true)'
 after_success:
   # push coverage results to Coveralls
-  - julia -e 'cd(Pkg.dir("Cassette")); Pkg.add("Coverage"); using Coverage; Coveralls.submit(Coveralls.process_folder())'
-  - julia -e 'ps=Pkg.PackageSpec(name="Documenter", version="0.19"); Pkg.add(ps); Pkg.pin(ps)'
-  - julia -e 'cd(Pkg.dir("Cassette")); include(joinpath("docs", "make.jl"))'
+  - julia -e 'using Pkg; cd(Pkg.dir("Cassette")); Pkg.add("Coverage"); using Coverage; Coveralls.submit(Coveralls.process_folder())'
+  - julia -e 'using Pkg; ps=Pkg.PackageSpec(name="Documenter", version="0.19"); Pkg.add(ps); Pkg.pin(ps)'
+  - julia -e 'using Pkg; cd(Pkg.dir("Cassette")); include(joinpath("docs", "make.jl"))'
