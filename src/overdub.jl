@@ -541,9 +541,9 @@ begin
 end
 ```
 
-If Cassette cannot retrieve lowered IR for the method body of `f(args...)` (as determined by
-`canrecurse(context, f, args...)`), then `overdub(context, f, args...)` will directly
-translate to a call to `fallback(context, f, args...)`.
+Otherwise, if Cassette cannot retrieve lowered IR for the method body of `f(args...)`,
+then `fallback(context, f, args...)` will be called instead. Cassette's [`canrecurse`](@ref)
+function is a useful utility for checking if this will occur.
 
 If the injected `prehook`/`posthook` statements are not needed for your use
 case, you can disable their injection via the [`disablehooks`](@ref) function.
