@@ -183,7 +183,12 @@ function sliceprintln(::Type{<:SliceCtx}, reflection::Cassette.Reflection)
     push!(ir.slotnames, callbackslotname)
     push!(ir.slotflags, 0x00)
     callbackslot = SlotNumber(length(ir.slotnames))
-    getmetadata = Expr(:call, Expr(:nooverdub, GlobalRef(Core, :getfield)), Expr(:contextslot), QuoteNode(:metadata))
+    getmetadata = Expr(
+        :call,
+        Expr(:nooverdub, GlobalRef(Core, :getfield)),
+        Expr(:contextslot),
+        QuoteNode(:metadata)
+    )
 
     # insert the initial `callbackslot` assignment into the IR.
     Cassette.insert_statements!(ir.code, ir.codelocs,
@@ -198,7 +203,11 @@ function sliceprintln(::Type{<:SliceCtx}, reflection::Cassette.Reflection)
                                     i > 1 || return nothing # don't slice the callback assignment
                                     stmt = Base.Meta.isexpr(stmt, :(=)) ? stmt.args[2] : stmt
                                     if Base.Meta.isexpr(stmt, :call)
-                                        isapply = Cassette.is_ir_element(stmt.args[1], GlobalRef(Core, :_apply), ir.code)
+                                        isapply = Cassette.is_ir_element(
+                                            stmt.args[1],
+                                            GlobalRef(Core, :_apply),
+                                            ir.code
+                                        )
                                         return 3 + isapply
                                     end
                                     return nothing
@@ -208,14 +217,63 @@ function sliceprintln(::Type{<:SliceCtx}, reflection::Cassette.Reflection)
                                     callstmt = Base.Meta.isexpr(stmt, :(=)) ? stmt.args[2] : stmt
                                     callssa = SSAValue(i)
                                     if Cassette.is_ir_element(callstmt.args[1], GlobalRef(Core, :_apply), ir.code)
-                                        push!(items, Expr(:call, Expr(:nooverdub, GlobalRef(Core, :tuple)), callbackslot))
-                                        push!(items, Expr(:call, callstmt.args[1], callstmt.args[2], SSAValue(i), callstmt.args[3:end]...))
+                                        push!(
+                                            items,
+                                            Expr(
+                                                :call,
+                                                Expr(:nooverdub, GlobalRef(Core, :tuple)),
+                                                callbackslot)
+                                            )
+                                        
+                                        push!(
+                                            items,
+                                            Expr(
+                                                :call,
+                                                callstmt.args[1],
+                                                callstmt.args[2],
+                                                SSAValue(i),
+                                                callstmt.args[3:end]...)
+                                            )
+                                                
                                         callssa = SSAValue(i + 1)
                                     else
-                                        push!(items, Expr(:call, callstmt.args[1], callbackslot, callstmt.args[2:end]...))
+                                        push!(
+                                            items,
+                                            Expr(
+                                                :call,
+                                                callstmt.args[1],
+                                                callbackslot,
+                                                callstmt.args[2:end]...
+                                            )
+                                        )
                                     end
-                                    push!(items, Expr(:(=), callbackslot, Expr(:call, Expr(:nooverdub, GlobalRef(Core, :getfield)), callssa, 2)))
-                                    result = Expr(:call, Expr(:nooverdub, GlobalRef(Core, :getfield)), callssa, 1)
+                                    push!(
+                                        items, 
+                                        Expr(
+                                            :(=),
+                                            callbackslot,
+                                            Expr(
+                                                :call,
+                                                Expr(
+                                                    :nooverdub,
+                                                    GlobalRef(Core, :getfield)
+                                                ),
+                                                callssa, 
+                                                2
+                                            )
+                                        )
+                                    )
+                                    
+                                    result = Expr(
+                                        :call,
+                                        Expr(
+                                            :nooverdub,
+                                            GlobalRef(Core, :getfield)
+                                        ),
+                                        callssa,
+                                        1
+                                    )
+
                                     if Base.Meta.isexpr(stmt, :(=))
                                         result = Expr(:(=), stmt.args[1], result)
                                     end
@@ -228,7 +286,12 @@ function sliceprintln(::Type{<:SliceCtx}, reflection::Cassette.Reflection)
                                   (stmt, i) -> Base.Meta.isexpr(stmt, :return) ? 2 : nothing,
                                   (stmt, i) -> begin
                                       return [
-                                          Expr(:call, Expr(:nooverdub, GlobalRef(Core, :tuple)), stmt.args[1], callbackslot)
+                                          Expr(
+                                            :call,
+                                            Expr(:nooverdub, GlobalRef(Core, :tuple)),
+                                            stmt.args[1],
+                                            callbackslot
+                                          )
                                           Expr(:return, SSAValue(i))
                                       ]
                                   end)
