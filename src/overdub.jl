@@ -477,6 +477,7 @@ function __overdub_generator__(self, context_type, args::Tuple)
                 end
             catch err
                 errmsg = "ERROR COMPILING $args IN CONTEXT $(context_type): \n" * sprint(showerror, err)
+                errmsg *= "\n" .* repr("text/plain", stacktrace(catch_backtrace()))
                 return quote
                     error($errmsg)
                 end
