@@ -380,7 +380,7 @@ function overdub_pass!(reflection::Reflection,
             if Base.Meta.isexpr(stmt, :call) && !(Base.Meta.isexpr(stmt.args[1], :nooverdub))
                 isapplycall = is_ir_element(stmt.args[1], GlobalRef(Core, :_apply), overdubbed_code)
                 if isapplycall && arehooksenabled
-                    return 6
+                    return 7
                 elseif isapplycall
                     return 2 + isassign
                 elseif arehooksenabled
@@ -398,12 +398,13 @@ function overdub_pass!(reflection::Reflection,
                 callf = callstmt.args[2]
                 callargs = callstmt.args[3:end]
                 stmts = Any[
-                    Expr(:call, GlobalRef(Core, :tuple), overdub_ctx_slot, callf),
-                    Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :prehook), SSAValue(i), callargs...),
-                    Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :overdub), SSAValue(i), callargs...),
-                    Expr(:call, GlobalRef(Core, :tuple), SSAValue(i + 2)),
-                    Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :posthook), SSAValue(i), SSAValue(i + 3), callargs...),
-                    Base.Meta.isexpr(x, :(=)) ? Expr(:(=), x.args[1], SSAValue(i + 2)) : SSAValue(i + 2)
+                    Expr(:call, GlobalRef(Core, :tuple), overdub_ctx_slot),
+                    Expr(:call, GlobalRef(Core, :tuple), callf),
+                    Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :prehook), SSAValue(i), SSAValue(i + 1), callargs...),
+                    Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :overdub), SSAValue(i), SSAValue(i + 1), callargs...),
+                    Expr(:call, GlobalRef(Core, :tuple), SSAValue(i + 3)),
+                    Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :posthook), SSAValue(i), SSAValue(i + 4), SSAValue(i + 1), callargs...),
+                    Base.Meta.isexpr(x, :(=)) ? Expr(:(=), x.args[1], SSAValue(i + 3)) : SSAValue(i + 3)
                 ]
             elseif isapplycall
                 callf = callstmt.args[2]
