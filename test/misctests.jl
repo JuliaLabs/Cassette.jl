@@ -48,25 +48,47 @@ before_time = time()
 @context HookCtx
 
 Cassette.prehook(ctx::HookCtx, f, args...) = push!(ctx.metadata[1], (f, args))
-Cassette.posthook(ctx::HookCtx, out, f, args...) = push!(ctx.metadata[2], (f, args))
+Cassette.posthook(ctx::HookCtx, out, f, args...) = push!(ctx.metadata[2], (out, f, args))
 
-ctx = HookCtx(metadata=(Any[], Any[]))
-@overdub(ctx, 1 + 1 * 1)
-# assumes the prehook trace is `[(*, ...), (mul_int, ...), (+, ...), (add_int, ...)]`
-@test ctx.metadata[1][1] == ctx.metadata[2][2]
-@test ctx.metadata[1][2] == ctx.metadata[2][1]
-@test ctx.metadata[1][3] == ctx.metadata[2][4]
-@test ctx.metadata[1][4] == ctx.metadata[2][3]
+pres, posts = Any[], Any[]
+ctx = HookCtx(metadata=(pres, posts))
+x1, x2, x3 = rand(Int), rand(Int), rand(Int)
+
+@overdub(ctx, x1 + x2 * x3)
+@test pres == [(*, (x2, x3)),
+               (Base.mul_int, (x2, x3)),
+               (+, (x1, x2*x3)),
+               (Base.add_int, (x1, x2*x3))]
+@test posts == [(Base.mul_int(x2, x3), Base.mul_int, (x2, x3)),
+                (*(x2, x3), *, (x2, x3)),
+                (Base.add_int(x1, x2*x3), Base.add_int, (x1, x2*x3)),
+                (+(x1, x2*x3), +, (x1, x2*x3))]
+empty!(pres)
+empty!(posts)
 
 Cassette.overdub(::HookCtx, ::typeof(+), args...) = +(args...)
-empty!(ctx.metadata[1])
-empty!(ctx.metadata[2])
 
-@overdub(ctx, 1 + 1 * 1)
-# assumes the prehook trace is `[(*, ...), (mul_int, ...), (+, ...)]`
-@test ctx.metadata[1][1] == ctx.metadata[2][2]
-@test ctx.metadata[1][2] == ctx.metadata[2][1]
-@test ctx.metadata[1][3] == ctx.metadata[2][3]
+@overdub(ctx, x1 + x2 * x3)
+@test pres == [(*, (x2, x3)),
+               (Base.mul_int, (x2, x3)),
+               (+, (x1, x2*x3))]
+@test posts == [(Base.mul_int(x2, x3), Base.mul_int, (x2, x3)),
+                (*(x2, x3), *, (x2, x3)),
+                (+(x1, x2*x3), +, (x1, x2*x3))]
+empty!(pres)
+empty!(posts)
+
+@overdub(ctx, Core._apply(+, (x1, x2), (x2 * x3, x3)))
+@test pres == [(tuple, (x1, x2)),
+               (*, (x2, x3)),
+               (Base.mul_int, (x2, x3)),
+               (tuple, (x2*x3, x3)),
+               (+, (x1, x2, x2*x3, x3))]
+@test posts == [((x1, x2), tuple, (x1, x2)),
+                (Base.mul_int(x2, x3), Base.mul_int, (x2, x3)),
+                (*(x2, x3), *, (x2, x3)),
+                ((x2*x3, x3), tuple, (x2*x3, x3)),
+                (+(x1, x2, x2*x3, x3), +, (x1, x2, x2*x3, x3))]
 
 println("done (took ", time() - before_time, " seconds)")
 
