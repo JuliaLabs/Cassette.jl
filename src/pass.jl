@@ -53,7 +53,7 @@ computed IR results, instead of recomputing results every time).
 See also: [`Context`](@ref), [`overdub`](@ref)
 """
 macro pass(transform)
-    Pass = Symbol("##PassType#$transform")
+    Pass = gensym("PassType")
     line = Expr(:quote, __source__.line)
     file = Expr(:quote, __source__.file)
     return esc(quote

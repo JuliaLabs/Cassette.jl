@@ -37,10 +37,6 @@ end
 
 # Declaring a `@context` with the same name twice, should be a No-Op, not an error
 # Code below will throw an error if this is not true
-@context FooBar
-@context FooBar
 
-# Declaring a `@pass` with the same name twice, should be a No-Op, not an error
-# Code below will throw an error if this is not true
-@pass BarFoo
-@pass BarFoo
+@context FooBar
+@context FooBar
