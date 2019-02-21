@@ -1,6 +1,6 @@
 module Cassette
 
-using Core: CodeInfo, SlotNumber, NewvarNode, GotoNode, SSAValue, Typeof
+using Core: CodeInfo, SlotNumber, SSAValue, Typeof
 
 include("context.jl")
 include("pass.jl")
