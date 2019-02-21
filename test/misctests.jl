@@ -363,6 +363,7 @@ before_time = time()
 dispatchtupletest(::Type{T}) where {T} = Base.isdispatchtuple(Tuple{T}) ? T : Any
 relu(x) = max(zero(x), x)
 relulayer(W, x, b) = relu.(W*x .+ b)
+kwargtest(foobar; foo = 1, bar = 2) = nothing
 
 @inferred(overdub(InferCtx(), typejoin, Float32, Float32, Float32))
 @inferred(overdub(InferCtx(), dispatchtupletest, Float32))
@@ -374,6 +375,7 @@ relulayer(W, x, b) = relu.(W*x .+ b)
 @inferred(overdub(InferCtx(), rand, Float32, 1))
 @inferred(overdub(InferCtx(), broadcast, +, rand(1), rand(1)))
 @inferred(overdub(InferCtx(), relulayer, rand(Float64, 1, 1), rand(Float32, 1), rand(Float32, 1)))
+@inferred(overdub(InferCtx(), () -> kwargtest(42; foo = 1, bar = 2)))
 
 println("done (took ", time() - before_time, " seconds)")
 
