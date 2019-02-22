@@ -260,12 +260,14 @@ macro context(_Ctx)
         @inline Cassette.overdub(ctx::$Ctx, ::typeof(Core._apply), f, args...) = Core._apply(overdub, (ctx, f), args...)
 
         # TODO: There are certain non-`Core.Builtin` functions which the compiler often
-        # relies upon constant propagation to infer, such as `isdispatchtuple`. Such
-        # functions should generally be contextual primitives by default for the sake of
-        # performance, and we should add more of them here as we encounter them.
+        # relies upon constant propagation/tfuncs to infer, instead of specializing on
+        # them, such as `isdispatchtuple`. Such functions should generally be contextual
+        # primitives by default for the sake of performance, and we should add more of
+        # them here as we encounter them.
         @inline Cassette.overdub(ctx::$Ctx, f::Typeof(Base.isdispatchtuple), T::Type) = fallback(ctx, f, T)
         @inline Cassette.overdub(ctx::$Ctx, f::Typeof(Base.eltype), T::Type) = fallback(ctx, f, T)
         @inline Cassette.overdub(ctx::$Ctx, f::Typeof(Base.convert), T::Type, t::Tuple) = fallback(ctx, f, T, t)
+        @inline Cassette.overdub(ctx::$Ctx{<:Any,Nothing}, f::Typeof(Core.kwfunc), x) = fallback(ctx, f, x)
         @inline Cassette.overdub(ctx::$Ctx{<:Any,Nothing}, f::Typeof(Base.getproperty), x::Any, s::Symbol) = fallback(ctx, f, x, s)
 
         # the below primitives are only active when the tagging system is enabled (`typeof(ctx) <: CtxTagged`)
