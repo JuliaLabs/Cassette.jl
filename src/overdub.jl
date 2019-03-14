@@ -142,7 +142,7 @@ function overdub_pass!(reflection::Reflection,
 
     # construct new slotnames/slotflags for added slots
     code_info.slotnames = Any[:overdub, OVERDUB_CONTEXT_NAME, OVERDUB_ARGUMENTS_NAME, code_info.slotnames...]
-    code_info.slotflags = UInt8[0x00, 0x00, 0x00, code_info.slotflags..., 0x00]
+    code_info.slotflags = UInt8[0x00, 0x00, 0x00, code_info.slotflags...]
     n_prepended_slots = 3
     overdub_ctx_slot = SlotNumber(2)
     overdub_args_slot = SlotNumber(3)
