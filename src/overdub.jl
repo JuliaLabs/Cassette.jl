@@ -494,32 +494,30 @@ function recurse end
 
 recurse(ctx::Context, ::typeof(Core._apply), f, args...) = Core._apply(recurse, (ctx, f), args...)
 
-function overdub_definition(line, file)
-    return quote
-        function $Cassette.overdub($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
-            $(Expr(:meta,
-                   :generated,
-                   Expr(:new,
-                        Core.GeneratedFunctionStub,
-                        :__overdub_generator__,
-                        Any[:overdub, OVERDUB_CONTEXT_NAME, OVERDUB_ARGUMENTS_NAME],
-                        Any[],
-                        line,
-                        QuoteNode(Symbol(file)),
-                        true)))
-        end
-        function $Cassette.recurse($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
-            $(Expr(:meta,
-                   :generated,
-                   Expr(:new,
-                        Core.GeneratedFunctionStub,
-                        :__overdub_generator__,
-                        Any[:recurse, OVERDUB_CONTEXT_NAME, OVERDUB_ARGUMENTS_NAME],
-                        Any[],
-                        line,
-                        QuoteNode(Symbol(file)),
-                        true)))
-        end
+@eval begin
+    function $Cassette.overdub($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
+        $(Expr(:meta,
+               :generated,
+               Expr(:new,
+                    Core.GeneratedFunctionStub,
+                    :__overdub_generator__,
+                    Any[:overdub, OVERDUB_CONTEXT_NAME, OVERDUB_ARGUMENTS_NAME],
+                    Any[],
+                    @__LINE__,
+                    QuoteNode(Symbol(@__FILE__)),
+                    true)))
+    end
+    function $Cassette.recurse($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
+        $(Expr(:meta,
+               :generated,
+               Expr(:new,
+                    Core.GeneratedFunctionStub,
+                    :__overdub_generator__,
+                    Any[:recurse, OVERDUB_CONTEXT_NAME, OVERDUB_ARGUMENTS_NAME],
+                    Any[],
+                    @__LINE__,
+                    QuoteNode(Symbol(@__FILE__)),
+                    true)))
     end
 end
 
