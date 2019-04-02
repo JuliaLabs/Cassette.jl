@@ -33,6 +33,14 @@ else
     copy_code_info(code_info) = copy(code_info)
 end
 
+if VERSION < v"1.2.0-DEV.573"
+    specialize_method(method, metharg, methsp, world, force) = Core.Compiler.code_for_method(method, metharg, methsp, world, force)
+else
+    specialize_method(method, metharg, methsp, world, force) = Core.Compiler.specialize_method(method, metharg, methsp, force)
+end
+
+
+
 # Return `Reflection` for signature `sigtypes` and `world`, if possible. Otherwise, return `nothing`.
 function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     if length(sigtypes) > 2 && sigtypes[1] === typeof(invoke)
@@ -63,7 +71,7 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     end
     method_index === 0 && return nothing
     type_signature, raw_static_params, method = _methods[method_index]
-    method_instance = Core.Compiler.code_for_method(method, type_signature, raw_static_params, world, false)
+    method_instance = specialize_method(method, type_signature, raw_static_params, world, false)
     method_instance === nothing && return nothing
     method_signature = method.sig
     static_params = Any[raw_static_params...]
