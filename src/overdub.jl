@@ -505,6 +505,7 @@ recurse(ctx::Context, ::typeof(Core._apply), f, args...) = Core._apply(recurse, 
 function overdub_definition(line, file)
     return quote
         function $Cassette.overdub($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
+            $(Expr(:meta, :generated_only))
             $(Expr(:meta,
                    :generated,
                    Expr(:new,
@@ -517,6 +518,7 @@ function overdub_definition(line, file)
                         true)))
         end
         function $Cassette.recurse($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
+            $(Expr(:meta, :generated_only))
             $(Expr(:meta,
                    :generated,
                    Expr(:new,
