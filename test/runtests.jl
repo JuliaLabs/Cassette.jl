@@ -12,3 +12,7 @@ println("running misc. tests (w/o tagging)")
 
 println("running misc. tests (w/ tagging)")
 @time @testset "misc. tests (w/ tagging)" begin include("misctaggingtests.jl") end
+
+# note should always be last
+println("running precompile test")
+include("precompile.jl")
