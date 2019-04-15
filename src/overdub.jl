@@ -471,7 +471,7 @@ const OVERDUB_FALLBACK = begin
 end
 
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
-function __overdub_generator__(pass_type, self, context_type, args::Tuple)
+function __overdub_generator__(self, context_type, args::Tuple)
     if nfields(args) > 0
         is_builtin = args[1] <: Core.Builtin
         is_invoke = args[1] === typeof(Core.invoke)
@@ -502,9 +502,9 @@ function recurse end
 
 recurse(ctx::Context, ::typeof(Core._apply), f, args...) = Core._apply(recurse, (ctx, f), args...)
 
-function overdub_definition(line, file, pass)
+function overdub_definition(line, file)
     return quote
-        function $Cassette.overdub($OVERDUB_CONTEXT_NAME::$Cassette.ContextWithPass{P}, $OVERDUB_ARGUMENTS_NAME...) where {P<:$pass}
+        function $Cassette.overdub($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
             $(Expr(:meta, :generated_only))
             $(Expr(:meta,
                    :generated,
@@ -512,12 +512,12 @@ function overdub_definition(line, file, pass)
                         Core.GeneratedFunctionStub,
                         :__overdub_generator__,
                         Any[:overdub, OVERDUB_CONTEXT_NAME, OVERDUB_ARGUMENTS_NAME],
-                        Any[:pass],
+                        Any[],
                         line,
                         QuoteNode(Symbol(file)),
                         true)))
         end
-        function $Cassette.recurse($OVERDUB_CONTEXT_NAME::$Cassette.ContextWithPass{P}, $OVERDUB_ARGUMENTS_NAME...) where {P<:$pass}
+        function $Cassette.recurse($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
             $(Expr(:meta, :generated_only))
             $(Expr(:meta,
                    :generated,
@@ -525,7 +525,7 @@ function overdub_definition(line, file, pass)
                         Core.GeneratedFunctionStub,
                         :__overdub_generator__,
                         Any[:recurse, OVERDUB_CONTEXT_NAME, OVERDUB_ARGUMENTS_NAME],
-                        Any[:pass],
+                        Any[],
                         line,
                         QuoteNode(Symbol(file)),
                         true)))
