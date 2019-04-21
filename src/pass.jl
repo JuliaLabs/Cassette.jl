@@ -160,9 +160,9 @@ function insert_statements!(code, codelocs, stmtcount, newstmts)
         end
     end
     Core.Compiler.renumber_ir_elements!(code, ssachangemap, labelchangemap)
-    for (i, addedstmts) in worklist
-        i += ssachangemap[i] - addedstmts # correct the index for accumulated offsets
-        stmts = newstmts(code[i], i)
+    for (orig_i, addedstmts) in worklist
+        i = orig_i + ssachangemap[orig_i] - addedstmts # correct the index for accumulated offsets
+        stmts = newstmts(code[i], orig_i)
         @assert length(stmts) == (addedstmts + 1)
         code[i] = stmts[end]
         for j in 1:(length(stmts) - 1) # insert in reverse to maintain the provided ordering
