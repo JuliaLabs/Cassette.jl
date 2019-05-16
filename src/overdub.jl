@@ -358,6 +358,14 @@ function overdub_pass!(reflection::Reflection,
         end
     end
 
+    #=== replace `Expr(:splatnew, ...)` with `Expr(:call, :tagged_splatnew)` if tagging is enabled ===#
+    if istaggingenabled && !iskwfunc
+        replace_match!(x -> Base.Meta.isexpr(x, :splatnew), overdubbed_code) do x
+            return Expr(:call, Expr(:nooverdub, GlobalRef(Cassette, :tagged_splatnew)), overdub_ctx_slot, x.args...)
+        end
+    end
+
+
     #=== replace `Expr(:call, ...)` with `Expr(:call, :overdub, ...)` calls ===#
 
     if iskwfunc
@@ -569,6 +577,7 @@ If `Cassette.hastagging(typeof(context))`, then a number of additional passes ar
 order to accomodate tagged value propagation:
 
 - `Expr(:new)` is replaced with a call to `Cassette.tagged_new`
+- `Expr(:splatnew)` is replaced with a call to `Cassette.tagged_splatnew`
 - conditional values passed to `Expr(:gotoifnot)` are untagged
 - arguments to `Expr(:foreigncall)` are untagged
 - load/stores to external module bindings are intercepted by the tagging system
