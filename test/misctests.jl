@@ -612,3 +612,34 @@ callback()
 @test global_test_cache == [a, b, result]
 
 println("done (took ", time() - before_time, " seconds)")
+
+# Test overdubbing of a call overload invoke
+
+using LinearAlgebra
+
+struct Dense{F,S,T}
+  W::S
+  b::T
+  σ::F
+end
+
+Dense(W, b) = Dense(W, b, identity)
+
+function (a::Dense)(x::AbstractArray)
+  W, b, σ = a.W, a.b, a.σ
+  σ.(W*x .+ b)
+end
+
+function (a::Dense{<:Any,W})(x::AbstractArray{T}) where {T <: Union{Float32,Float64}, W <: AbstractArray{T}}
+  invoke(a, Tuple{AbstractArray}, x)
+end
+
+function (a::Dense{<:Any,W})(x::AbstractArray{<:Real}) where {T <: Union{Float32,Float64}, W <: AbstractArray{T}}
+  a(T.(x))
+end
+
+Cassette.@context CtxCallOverload;
+let d = Dense(3,3)
+    data = rand(3)
+    Cassette.overdub(CtxCallOverload(), d, data)
+end

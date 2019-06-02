@@ -132,8 +132,15 @@ function overdub_pass!(reflection::Reflection,
     # this hack's first assumption: that `Core.kwfunc(f)` is going to return a function whose
     # type name is prefixed by `#kw##`. More assumptions for this hack will be commented on
     # as we go.
-    iskwfunc = startswith(String(signature.parameters[1].name.name), "#kw##")
+    name = String(signature.parameters[1].name.name)
+    iskwfunc = startswith(name, "#kw##")
     istaggingenabled = hastagging(context_type)
+
+    is_calloverload = false
+    if length(code_info.slotnames) > 0
+        # TODO: is this sufficient?
+        is_calloverload = first(code_info.slotnames) !== Symbol("#self#")
+    end
 
     #=== execute user-provided pass (is a no-op by default) ===#
 
@@ -167,7 +174,11 @@ function overdub_pass!(reflection::Reflection,
     n_method_args = Int(method.nargs)
     for i in 1:n_method_args
         slot = i + n_prepended_slots
-        actual_argument = Expr(:call, GlobalRef(Core, :getfield), overdub_args_slot, i + invoke_offset)
+        offset = i + invoke_offset
+        if is_invoke && is_calloverload && i == 1
+            offset = 2 # 1 is invoke, 2 is f, 3 is Tuple{}, 4... is args
+        end
+        actual_argument = Expr(:call, GlobalRef(Core, :getfield), overdub_args_slot, offset)
         push!(overdubbed_code, :($(SlotNumber(slot)) = $actual_argument))
         push!(overdubbed_codelocs, code_info.codelocs[1])
         code_info.slotflags[slot] |= 0x02 # ensure this slotflag has the "assigned" bit set
