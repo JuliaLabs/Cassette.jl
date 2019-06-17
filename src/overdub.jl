@@ -78,6 +78,11 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     code_info = Core.Compiler.retrieve_code_info(method_instance)
     isa(code_info, CodeInfo) || return nothing
     code_info = copy_code_info(code_info)
+@static if VERSION >= v"1.3.0-DEV.379"
+        edges = Core.MethodInstance[method_instance]
+        @assert code_info.edges === nothing
+        code_info.edges = edges
+    end
     return Reflection(S, method, static_params, code_info)
 end
 
