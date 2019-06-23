@@ -257,7 +257,7 @@ macro context(_Ctx)
 
         @inline Cassette.overdub(::C, ::Typeof(Tag), ::Type{N}, ::Type{X}) where {C<:$Ctx,N,X} = Tag(N, X, tagtype(C))
 
-        @inline Cassette.overdub(ctx::$Ctx, ::typeof(Core._apply), f, args...) = Core._apply(overdub, (ctx, f), args...)
+        @inline Cassette.overdub(ctx::$Ctx, ::typeof(Core._apply), f, args...) = Core._apply(overdub, (ctx, f), args)
 
         # TODO: There are certain non-`Core.Builtin` functions which the compiler often
         # relies upon constant propagation/tfuncs to infer, instead of specializing on
@@ -472,7 +472,7 @@ Note that unlike `overdub`, `fallback`, etc., this function is not intended to b
 See also:  [`overdub`](@ref), [`fallback`](@ref), [`recurse`](@ref)
 """
 @inline canrecurse(ctx::Context, f, ::Vararg{Any}) = !(isa(untag(f, ctx), Core.Builtin) || _iscompilerfunc(untag(f, ctx)))
-@inline canrecurse(ctx::Context, ::typeof(Core._apply), f, args...) = Core._apply(canrecurse, (ctx, f), args...)
+@inline canrecurse(ctx::Context, ::typeof(Core._apply), f, args...) = Core._apply(canrecurse, (ctx, f), args)
 @inline canrecurse(ctx::Context, ::typeof(Core.invoke), f, _, args...) = canrecurse(ctx, f, args...)
 
 _iscompilerfunc(::F) where {F} = Core.Compiler.typename(F).module === Core.Compiler
