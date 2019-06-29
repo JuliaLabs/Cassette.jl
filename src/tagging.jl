@@ -460,9 +460,9 @@ destructstate(ctx, state) = untag(state, ctx)
 Base.iterate(t::Tagged) = destructstate(t.context, overdub(t.context, iterate, t))
 Base.iterate(t::Tagged, state) = destructstate(t.context, overdub(t.context, iterate, t, state))
 
-################
-# `tagged_new` #
-################
+##################################
+# `tagged_new`/`tagged_splatnew` #
+##################################
 
 @generated function tagged_new(context::C, ::Type{T}, args...) where {C<:Context,T}
     argmetaexprs = Any[]
@@ -493,34 +493,7 @@ Base.iterate(t::Tagged, state) = destructstate(t.context, overdub(t.context, ite
     end
 end
 
-@generated function tagged_splatnew(context::C, ::Type{T}, args...) where {C<:Context,T}
-    argmetaexprs = Any[]
-    for i in 1:fieldcount(T)
-        if i <= nfields(args) && istaggedtype(args[i], C)
-            push!(argmetaexprs, :(args[$i].meta))
-        else
-            push!(argmetaexprs, :NOMETA)
-        end
-    end
-    untagged_args = [:(untag(args[$i], context)) for i in 1:nfields(args)]
-    newexpr = Expr(:splatnew, T, (untagged_args...))
-    onlytypeargs = true
-    for arg in args
-        if !(arg <: Type)
-            onlytypeargs = false
-            break
-        end
-    end
-    if (all(x == :NOMETA for x in argmetaexprs) && doesnotneedmetatype(T)) || onlytypeargs
-        return newexpr
-    else
-        metametaexpr = _metametaexpr(C, T, argmetaexprs)
-        return quote
-            M = metatype(C, T)
-            return Tagged(context, $newexpr, Meta(NoMetaData(), $metametaexpr))
-        end
-    end
-end
+@inline tagged_splatnew(context::Context, T::Type, args) = tagged_new(context, T, args...)
 
 @generated function tagged_new_array(context::C, ::Type{T}, args...) where {C<:Context,T<:Array}
     untagged_args = [:(untag(args[$i], context)) for i in 1:nfields(args)]
