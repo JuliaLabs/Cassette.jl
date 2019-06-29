@@ -460,9 +460,9 @@ destructstate(ctx, state) = untag(state, ctx)
 Base.iterate(t::Tagged) = destructstate(t.context, overdub(t.context, iterate, t))
 Base.iterate(t::Tagged, state) = destructstate(t.context, overdub(t.context, iterate, t, state))
 
-################
-# `tagged_new` #
-################
+##################################
+# `tagged_new`/`tagged_splatnew` #
+##################################
 
 @generated function tagged_new(context::C, ::Type{T}, args...) where {C<:Context,T}
     argmetaexprs = Any[]
@@ -492,6 +492,8 @@ Base.iterate(t::Tagged, state) = destructstate(t.context, overdub(t.context, ite
         end
     end
 end
+
+@inline tagged_splatnew(context::Context, T::Type, args) = tagged_new(context, T, args...)
 
 @generated function tagged_new_array(context::C, ::Type{T}, args...) where {C<:Context,T<:Array}
     untagged_args = [:(untag(args[$i], context)) for i in 1:nfields(args)]

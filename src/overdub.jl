@@ -277,7 +277,7 @@ function overdub_pass!(reflection::Reflection,
                                 i >= original_code_start_index || return nothing
                                 stmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
                                 Base.Meta.isexpr(stmt, :replaceglobalref) && return 1
-                                if isa(stmt, Expr) # Base.Meta.isexpr(stmt, :call) || Base.Meta.isexpr(stmt, :new) || Base.Meta.isexpr(stmt, :return)
+                                if isa(stmt, Expr)
                                     count = 0
                                     for arg in stmt.args
                                         if Base.Meta.isexpr(arg, :replaceglobalref)
@@ -296,7 +296,7 @@ function overdub_pass!(reflection::Reflection,
                                     globalref = stmt.args[2]
                                     name = QuoteNode(globalref.name)
                                     result = Expr(:call, Expr(:nooverdub, GlobalRef(Cassette, :tagged_globalref)), overdub_ctx_slot, tagmodssa, name, globalref)
-                                elseif isa(stmt, Expr) # Base.Meta.isexpr(stmt, :call) || Base.Meta.isexpr(stmt, :new) || Base.Meta.isexpr(stmt, :return)
+                                elseif isa(stmt, Expr)
                                     result = Expr(stmt.head)
                                     for arg in stmt.args
                                         if Base.Meta.isexpr(arg, :replaceglobalref)
@@ -366,11 +366,13 @@ function overdub_pass!(reflection::Reflection,
                             ])
     end
 
-    #=== replace `Expr(:new, ...)` with `Expr(:call, :tagged_new)` if tagging is enabled ===#
+    #=== replace `Expr(:new, ...)`/`Expr(:splatnew, ...)` with                            ===#
+    #=== `Expr(:call, :tagged_new)`/`Expr(:call, :tagged_splatnew)` if tagging is enabled ===#
 
     if istaggingenabled && !iskwfunc
-        replace_match!(x -> Base.Meta.isexpr(x, :new), overdubbed_code) do x
-            return Expr(:call, Expr(:nooverdub, GlobalRef(Cassette, :tagged_new)), overdub_ctx_slot, x.args...)
+        replace_match!(x -> Base.Meta.isexpr(x, :new) || Base.Meta.isexpr(x, :splatnew), overdubbed_code) do x
+            tagged_version = x.head == :new ? :tagged_new : :tagged_splatnew
+            return Expr(:call, Expr(:nooverdub, GlobalRef(Cassette, tagged_version)), overdub_ctx_slot, x.args...)
         end
     end
 
@@ -598,6 +600,7 @@ If `Cassette.hastagging(typeof(context))`, then a number of additional passes ar
 order to accomodate tagged value propagation:
 
 - `Expr(:new)` is replaced with a call to `Cassette.tagged_new`
+- `Expr(:splatnew)` is replaced with a call to `Cassette.tagged_splatnew`
 - conditional values passed to `Expr(:gotoifnot)` are untagged
 - arguments to `Expr(:foreigncall)` are untagged
 - load/stores to external module bindings are intercepted by the tagging system
