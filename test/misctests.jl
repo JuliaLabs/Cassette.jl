@@ -423,6 +423,26 @@ println("done (took ", time() - before_time, " seconds)")
 
 #############################################################################################
 
+print("   running Invoke2Ctx test...")
+
+before_time = time()
+
+# issue #89
+invoked2(x::Int) = x + x
+invoked2(x::Number, y=4) = x^2 + y
+invoker2(x) = invoke(invoked2, Tuple{Number}, x)
+
+@context Invoke2Ctx
+Cassette.prehook(ctx::Invoke2Ctx, f, args...) = push!(ctx.metadata, f)
+ctx = Invoke2Ctx(metadata=Any[])
+
+@test overdub(ctx, invoker2, 3) === invoker2(3) === 13
+
+println("done (took ", time() - before_time, " seconds)")
+
+
+#############################################################################################
+
 # taken from https://stackoverflow.com/questions/52050262/how-to-do-memoization-or-memoisation-in-julia-1-0/52062639#52062639
 
 print("   running MemoizeCtx test...")
