@@ -166,7 +166,7 @@ function overdub_pass!(reflection::Reflection,
     n_prepended_slots = 3
     overdub_ctx_slot = SlotNumber(2)
     overdub_args_slot = SlotNumber(3)
-    invoke_offset = is_invoke ? 2 : 0
+    invoke_offset = is_invoke ? 1 : 0
 
     # For the sake of convenience, the rest of this pass will translate `code_info`'s fields
     # into these overdubbed equivalents instead of updating `code_info` in-place. Then, at
@@ -180,6 +180,9 @@ function overdub_pass!(reflection::Reflection,
     for i in 1:n_method_args
         slot = i + n_prepended_slots
         offset = i + invoke_offset
+        if is_invoke && i == 1
+            invoke_offset += 1
+        end
         if is_invoke && is_calloverload && i == 1
             offset = 2 # 1 is invoke, 2 is f, 3 is Tuple{}, 4... is args
         end
