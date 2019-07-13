@@ -141,12 +141,6 @@ function overdub_pass!(reflection::Reflection,
     iskwfunc = startswith(name, "#kw##")
     istaggingenabled = hastagging(context_type)
 
-    is_calloverload = false
-    if length(code_info.slotnames) > 0
-        # TODO: is this sufficient?
-        is_calloverload = first(code_info.slotnames) !== Symbol("#self#")
-    end
-
     #=== execute user-provided pass (is a no-op by default) ===#
 
     if !iskwfunc
@@ -166,7 +160,6 @@ function overdub_pass!(reflection::Reflection,
     n_prepended_slots = 3
     overdub_ctx_slot = SlotNumber(2)
     overdub_args_slot = SlotNumber(3)
-    invoke_offset = is_invoke ? 2 : 0
 
     # For the sake of convenience, the rest of this pass will translate `code_info`'s fields
     # into these overdubbed equivalents instead of updating `code_info` in-place. Then, at
@@ -177,16 +170,20 @@ function overdub_pass!(reflection::Reflection,
     # destructure the generated argument slots into the overdubbed method's argument slots.
     n_actual_args = fieldcount(signature)
     n_method_args = Int(method.nargs)
+    offset = 1
     for i in 1:n_method_args
-        slot = i + n_prepended_slots
-        offset = i + invoke_offset
-        if is_invoke && is_calloverload && i == 1
-            offset = 2 # 1 is invoke, 2 is f, 3 is Tuple{}, 4... is args
+        if is_invoke && (i == 1 || i == 2)
+            # With an invoke call, we have: 1 is invoke, 2 is f, 3 is Tuple{}, 4... is args.
+            # In the first loop iteration, we should skip invoke and process f.
+            # In the second loop iteration, we should skip the Tuple type and process args[1].
+            offset += 1
         end
+        slot = i + n_prepended_slots
         actual_argument = Expr(:call, GlobalRef(Core, :getfield), overdub_args_slot, offset)
         push!(overdubbed_code, :($(SlotNumber(slot)) = $actual_argument))
         push!(overdubbed_codelocs, code_info.codelocs[1])
         code_info.slotflags[slot] |= 0x02 # ensure this slotflag has the "assigned" bit set
+        offset += 1
     end
 
     # If `method` is a varargs method, we have to restructure the original method call's
@@ -203,9 +200,10 @@ function overdub_pass!(reflection::Reflection,
             trailing_arguments = Expr(:call, GlobalRef(Core, :tuple))
         end
         for i in n_method_args:n_actual_args
-            push!(overdubbed_code, Expr(:call, GlobalRef(Core, :getfield), overdub_args_slot, i + invoke_offset))
+            push!(overdubbed_code, Expr(:call, GlobalRef(Core, :getfield), overdub_args_slot, offset - 1))
             push!(overdubbed_codelocs, code_info.codelocs[1])
             push!(trailing_arguments.args, SSAValue(length(overdubbed_code)))
+            offset += 1
         end
         push!(overdubbed_code, Expr(:(=), SlotNumber(n_method_args + n_prepended_slots), trailing_arguments))
         push!(overdubbed_codelocs, code_info.codelocs[1])
