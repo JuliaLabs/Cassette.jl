@@ -633,7 +633,11 @@ callback()
 
 println("done (took ", time() - before_time, " seconds)")
 
+#############################################################################################
 # Test overdubbing of a call overload invoke
+
+print("   running CtxCallOverload test...")
+before_time = time()
 
 using LinearAlgebra
 
@@ -664,11 +668,43 @@ let d = Dense(3,3)
     Cassette.overdub(CtxCallOverload(), d, data)
 end
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
 
-print("   running OverdubOverdubCtx test...")
+println("   running OverdubOverdubCtx test...")
 
 # Fixed in PR #148
 Cassette.@context OverdubOverdubCtx;
 overdub_overdub_me() = 2
 Cassette.overdub(OverdubOverdubCtx(), Cassette.overdub, OverdubOverdubCtx(), overdub_overdub_me)
+
+#############################################################################################
+
+print("   running LLVMCallCtx test...")
+before_time = time()
+Cassette.@context LLVMCallCtx
+
+# This overdub does nothing, intentionally not marked `@inline`
+function Cassette.overdub(ctx::LLVMCallCtx, f, args...)
+    if Cassette.canrecurse(ctx, f, args...)
+        Cassette.recurse(ctx, f, args...)
+    else
+        Cassette.fallback(ctx, f, args...)
+    end
+end
+
+function llvm_sin(x::Float64)
+    Core.Intrinsics.llvmcall(
+        (
+            """declare double @llvm.sin.f64(double)""",
+            """%2 = call double @llvm.sin.f64(double %0)
+               ret double %2"""
+        ),
+        Float64, Tuple{Float64}, x
+    )
+end
+
+Cassette.@overdub LLVMCallCtx() llvm_sin(4.0)
+
+println("done (took ", time() - before_time, " seconds)")

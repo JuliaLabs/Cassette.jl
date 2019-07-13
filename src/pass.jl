@@ -197,3 +197,35 @@ function is_ir_element(x, y, code::Vector)
     end
     return result
 end
+
+"""
+    ir_element(x, code::Vector)
+
+Follows the series of `SSAValue` that define `x`.
+
+See also: [`is_ir_element`](@ref)
+"""
+function ir_element(x, code::Vector)
+    while isa(x, Core.SSAValue)
+        x = code[x.id]
+    end
+    return x
+end
+
+"""
+    resolve_early(ref::GlobalRef)
+
+Resolves a `Core.Compiler.GlobalRef` during compilation, may
+return `nothing` if the binding is not resolved or defined yet.
+Only use this when you are certain that the result of the lookup
+will not change.
+"""
+function resolve_early(ref::GlobalRef)
+    mod = ref.mod
+    name = ref.name
+    if Base.isbindingresolved(mod, name) && Base.isdefined(mod, name)
+        return getfield(mod, name)
+    else
+        return nothing
+    end
+end
