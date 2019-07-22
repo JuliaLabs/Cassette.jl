@@ -518,21 +518,8 @@ function recurse end
 
 recurse(ctx::Context, ::typeof(Core._apply), f, args...) = Core._apply(recurse, (ctx, f), args...)
 
-function delete_overdub_or_recurse_method(overdub_or_recurse)
-    ms = Base.methods(overdub_or_recurse, (Context, Any)).ms
-    for m in ms
-        if m.sig == Tuple{typeof(overdub_or_recurse),Context,Vararg{Any}}
-            Base.delete_method(m)
-            return nothing
-        end
-    end
-    return nothing
-end
-
 function overdub_definition(line, file)
     return quote
-        $Cassette.delete_overdub_or_recurse_method($Cassette.overdub)
-        $Cassette.delete_overdub_or_recurse_method($Cassette.recurse)
         function $Cassette.overdub($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
             $(Expr(:meta, :generated_only))
             $(Expr(:meta,
