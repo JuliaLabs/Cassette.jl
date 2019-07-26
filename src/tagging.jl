@@ -389,7 +389,7 @@ metadata(x, context::Context)
 Return the `metadata` attached to `x` if `hasmetadata(x, context)`, otherwise return
 `Cassette.NoMetaData()`.
 
-In other words, `metadata(tag(x, context, m)), context) === m` is always `true`.
+In other words, `metadata(tag(x, context, m), context) === m` is always `true`.
 
 If `!hasmetadata(x, context)`, then `metadata(x, context) === Cassette.NoMetaData()` is
 `true`.
