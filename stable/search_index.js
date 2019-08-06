@@ -309,7 +309,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Cassette API Documentation",
     "title": "Cassette.metadata",
     "category": "function",
-    "text": "metadata(x, context::Context)\n\nReturn the metadata attached to x if hasmetadata(x, context), otherwise return Cassette.NoMetaData().\n\nIn other words, metadata(tag(x, context, m)), context) === m is always true.\n\nIf !hasmetadata(x, context), then metadata(x, context) === Cassette.NoMetaData() is true.\n\n\n\n\n\n"
+    "text": "metadata(x, context::Context)\n\nReturn the metadata attached to x if hasmetadata(x, context), otherwise return Cassette.NoMetaData().\n\nIn other words, metadata(tag(x, context, m), context) === m is always true.\n\nIf !hasmetadata(x, context), then metadata(x, context) === Cassette.NoMetaData() is true.\n\n\n\n\n\n"
 },
 
 {
