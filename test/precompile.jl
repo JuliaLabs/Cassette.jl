@@ -24,7 +24,7 @@ mktempdir() do dir
         run(pipeline(`$(Base.julia_cmd()) --project=./MyPkg -e "using MyPkg"`, stderr="errs.log"))
         errs = read("errs.log", String)
         @testset "Precompilation" begin
-            @test_broken !occursin("WARNING: Method definition overdub", errs)
+            @test !occursin("WARNING: Method definition overdub", errs)
         end
     end
 end

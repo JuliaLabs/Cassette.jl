@@ -144,7 +144,10 @@ function overdub_pass!(reflection::Reflection,
     #=== execute user-provided pass (is a no-op by default) ===#
 
     if !iskwfunc
-        code_info = passtype(context_type)(context_type, reflection)
+        # passtype is defined in the wrong world-age so we need to run it in the newest
+        # ideally we would add a edge from that function to the generated thunk, but
+        # alas that would require us, to trace all dynamic function calls. Here be dragons.
+        code_info = Core._apply_pure(passtype(context_type), (context_type, reflection))
         isa(code_info, Expr) && return code_info
     end
 
@@ -548,6 +551,7 @@ function overdub_definition(line, file)
         end
     end
 end
+eval(overdub_definition(@__LINE__, @__FILE__))
 
 @doc(
 """
