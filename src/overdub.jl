@@ -80,11 +80,10 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     code_info = copy_code_info(code_info)
 @static if VERSION >= v"1.3.0-DEV.379"
         edges = Core.MethodInstance[method_instance]
-        if code_info.edges === nothing
-            code_info.edges = edges
-        else
-            append!(code_info.edges, edges)
-        end
+        # if the reflected CI has already edges on it,
+        # we can safely ignore them since the new CI will
+        # depend on the MI of the old one. 
+        code_info.edges = edges
     end
     return Reflection(S, method, static_params, code_info)
 end
