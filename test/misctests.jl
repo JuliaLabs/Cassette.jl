@@ -670,6 +670,5 @@ print("   running OverdubOverdubCtx test...")
 
 # Fixed in PR #148
 Cassette.@context OverdubOverdubCtx;
-f() = 2
-Cassette.overdub(OverdubOverdubCtx(), Cassette.overdub, OverdubOverdubCtx(), f)
-
+overdub_overdub_me() = 2
+Cassette.overdub(OverdubOverdubCtx(), Cassette.overdub, OverdubOverdubCtx(), overdub_overdub_me)
