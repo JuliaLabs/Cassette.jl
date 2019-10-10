@@ -663,3 +663,12 @@ let d = Dense(3,3)
     data = rand(3)
     Cassette.overdub(CtxCallOverload(), d, data)
 end
+
+#############################################################################################
+
+print("   running OverdubOverdubCtx test...")
+
+# Fixed in PR #148
+Cassette.@context OverdubOverdubCtx;
+overdub_overdub_me() = 2
+Cassette.overdub(OverdubOverdubCtx(), Cassette.overdub, OverdubOverdubCtx(), overdub_overdub_me)
