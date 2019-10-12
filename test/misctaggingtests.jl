@@ -502,7 +502,7 @@ println("done (took ", time() - before_time, " seconds)")
 print("   running TaggedLLVMCallCtx test...")
 before_time = time()
 Cassette.@context TaggedLLVMCallCtx
-Cassette.metadatatype(::Type{<:ArrayIndexCtx}, ::Type{Float64}) = Float64
+Cassette.metadatatype(::Type{<:TaggedLLVMCallCtx}, ::Type{Float64}) = Float64
 
 function Cassette.overdub(ctx::TaggedLLVMCallCtx, f, args...)
     if Cassette.canrecurse(ctx, f, args...)

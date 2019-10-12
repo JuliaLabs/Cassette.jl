@@ -225,8 +225,7 @@ function overdub_pass!(reflection::Reflection,
 
     #=== mark all `llvmcall`s as nooverdub, optionally mark all `Intrinsics`/`Builtins` nooverdub ===#
 
-    function unravel_intrinsics(x)
-        stmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
+    function unravel_intrinsics(stmt)
         if Base.Meta.isexpr(stmt, :call)
             applycall = is_ir_element(stmt.args[1], GlobalRef(Core, :_apply), overdubbed_code)
             f = applycall ? stmt.args[2] : stmt.args[1]
@@ -264,17 +263,21 @@ function overdub_pass!(reflection::Reflection,
     if !iskwfunc
         insert_statements!(overdubbed_code, overdubbed_codelocs,
                             (x, i) -> begin
-                                intrinsic = unravel_intrinsics(x)
-                                if intrinsic === nothing
-                                    return nothing
-                                end
+                                stmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
+                                intrinsic = unravel_intrinsics(stmt)
+                                intrinsic === nothing && return nothing
+
+                                applycall = is_ir_element(stmt.args[1], GlobalRef(Core, :_apply), overdubbed_code)
                                 if intrinsic === Core.Intrinsics.llvmcall
                                     if istaggingenabled
                                         count = 0
-                                        for arg in stmt.args
+                                        offset = applycall ? 3 : 2 
+                                        while offset <= length(stmt.args)
+                                            arg = stmt.args[offset]
                                             if isa(arg, SSAValue) || isa(arg, SlotNumber)
                                                 count += 1
                                             end
+                                            offset += 1
                                         end
                                         return count + 1
                                     else
@@ -284,31 +287,26 @@ function overdub_pass!(reflection::Reflection,
                             end,
                             (x, i) -> begin
                                 stmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
+                                intrinsic = unravel_intrinsics(stmt)
                                 applycall = is_ir_element(stmt.args[1], GlobalRef(Core, :_apply), overdubbed_code)
-                                intrinsic = unravel_intrinsics(x)
                                 items = Any[]
-                                args = nothing
-                                if istaggingenabled
-                                    args = Any[]
-                                    for arg in stmt.args
-                                        if isa(arg, SSAValue) || isa(arg, SlotNumber)
-                                            push!(args, SSAValue(i + length(items)))
-                                            push!(items, Expr(:call, Expr(:nooverdub, GlobalRef(Cassette, :untag)), arg, overdub_ctx_slot))
-                                        else
-                                            push!(result.args, arg)
-                                        end
-                                    end
-                                end
-                                idx = 1
-                                if applycall
-                                    idx = 2
-                                end
+
+                                idx = applycall ? 2 :  1
                                 # using stmt.args[idx] instead of `intrinsic` leads to a bug
                                 stmt.args[idx] = Expr(:nooverdub, intrinsic)
-                                if args !== nothing
-                                    idx += 1
-                                    stmt.args[idx:end] = args
+                                idx += 1
+
+                                if istaggingenabled
+                                    while idx <= length(stmt.args)
+                                        arg = stmt.args[idx]
+                                        if isa(arg, SSAValue) || isa(arg, SlotNumber)
+                                            stmt.args[idx] = SSAValue(i + length(items))
+                                            push!(items, Expr(:call, Expr(:nooverdub, GlobalRef(Cassette, :untag)), arg, overdub_ctx_slot))
+                                        end
+                                        idx += 1
+                                    end
                                 end
+                              
                                 push!(items, x)
                                 return items
                             end)
