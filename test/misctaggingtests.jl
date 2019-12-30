@@ -496,3 +496,34 @@ result = overdub(ctx, matrixliteral, tag(1, ctx, "hi"))
 @test metameta(result, ctx) == fill(Cassette.Meta("hi", Cassette.NoMetaMeta()), 2, 2)
 
 println("done (took ", time() - before_time, " seconds)")
+
+#############################################################################################
+
+print("   running TaggedLLVMCallCtx test...")
+before_time = time()
+Cassette.@context TaggedLLVMCallCtx
+Cassette.metadatatype(::Type{<:TaggedLLVMCallCtx}, ::Type{Float64}) = Float64
+
+function Cassette.overdub(ctx::TaggedLLVMCallCtx, f, args...)
+    if Cassette.canrecurse(ctx, f, args...)
+        Cassette.recurse(ctx, f, args...)
+    else
+        Cassette.fallback(ctx, f, args...)
+    end
+end
+
+function llvm_sin(x::Float64)
+    Core.Intrinsics.llvmcall(
+        (
+            """declare double @llvm.sin.f64(double)""",
+            """%2 = call double @llvm.sin.f64(double %0)
+               ret double %2"""
+        ),
+        Float64, Tuple{Float64}, x
+    )
+end
+
+ctx = enabletagging(TaggedLLVMCallCtx(), llvm_sin)
+Cassette.@overdub ctx llvm_sin(tag(4.0, ctx, 1.0))
+
+println("done (took ", time() - before_time, " seconds)")

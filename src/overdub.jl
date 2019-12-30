@@ -226,6 +226,95 @@ function overdub_pass!(reflection::Reflection,
     append!(overdubbed_code, code_info.code)
     append!(overdubbed_codelocs, code_info.codelocs)
 
+    #=== mark all `llvmcall`s as nooverdub, optionally mark all `Intrinsics`/`Builtins` nooverdub ===#
+
+    function unravel_intrinsics(stmt)
+        if Base.Meta.isexpr(stmt, :call)
+            applycall = is_ir_element(stmt.args[1], GlobalRef(Core, :_apply), overdubbed_code)
+            f = applycall ? stmt.args[2] : stmt.args[1]
+            f = ir_element(f, overdubbed_code)
+            if f isa Expr && Base.Meta.isexpr(f, :call) &&
+               is_ir_element(f.args[1], GlobalRef(Base, :getproperty), overdubbed_code)
+
+                # resolve getproperty here
+                # this is formed by Core.Intrinsics.llvmcall
+                # %1 = Base.getproperty(Core, :Intrinsics)
+                # %2 = GlobalRef(%1, :llvmcall)
+                mod = ir_element(f.args[2], overdubbed_code)
+                if mod isa GlobalRef
+                    mod = resolve_early(mod) # returns nothing if fails
+                end
+                if !(mod isa Module)
+                    # might be nothing or a Slot
+                    return nothing
+                end
+                fname = ir_element(f.args[3], overdubbed_code)
+                if fname isa QuoteNode
+                    fname = fname.value
+                end
+                f = GlobalRef(mod, fname)
+            end
+            if f isa GlobalRef
+                f = resolve_early(f)
+            end
+            return f 
+        end
+        return nothing
+    end
+
+    # TODO: add user-facing flag to do this for all intrinsics
+    if !iskwfunc
+        insert_statements!(overdubbed_code, overdubbed_codelocs,
+                            (x, i) -> begin
+                                stmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
+                                intrinsic = unravel_intrinsics(stmt)
+                                intrinsic === nothing && return nothing
+
+                                applycall = is_ir_element(stmt.args[1], GlobalRef(Core, :_apply), overdubbed_code)
+                                if intrinsic === Core.Intrinsics.llvmcall
+                                    if istaggingenabled
+                                        count = 0
+                                        offset = applycall ? 3 : 2 
+                                        while offset <= length(stmt.args)
+                                            arg = stmt.args[offset]
+                                            if isa(arg, SSAValue) || isa(arg, SlotNumber)
+                                                count += 1
+                                            end
+                                            offset += 1
+                                        end
+                                        return count + 1
+                                    else
+                                        return 1
+                                    end
+                                end
+                            end,
+                            (x, i) -> begin
+                                stmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
+                                intrinsic = unravel_intrinsics(stmt)
+                                applycall = is_ir_element(stmt.args[1], GlobalRef(Core, :_apply), overdubbed_code)
+                                items = Any[]
+
+                                idx = applycall ? 2 :  1
+                                # using stmt.args[idx] instead of `intrinsic` leads to a bug
+                                stmt.args[idx] = Expr(:nooverdub, intrinsic)
+                                idx += 1
+
+                                if istaggingenabled
+                                    while idx <= length(stmt.args)
+                                        arg = stmt.args[idx]
+                                        if isa(arg, SSAValue) || isa(arg, SlotNumber)
+                                            stmt.args[idx] = SSAValue(i + length(items))
+                                            push!(items, Expr(:call, Expr(:nooverdub, GlobalRef(Cassette, :untag)), arg, overdub_ctx_slot))
+                                        end
+                                        idx += 1
+                                    end
+                                end
+                              
+                                push!(items, x)
+                                return items
+                            end)
+    end
+
     #=== perform tagged module transformation if tagging is enabled ===#
 
     if istaggingenabled && !iskwfunc
