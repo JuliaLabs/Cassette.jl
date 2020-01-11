@@ -451,8 +451,8 @@ See also:  [`canrecurse`](@ref), [`overdub`](@ref), [`recurse`](@ref), [`prehook
 # to `Core.apply_type`. In the future, it would be best for Julia's compiler to better handle
 # varargs calls to such functions with type arguments, or at least provide a better way to
 # force specialization on the type arguments.
-@inline call(::ContextUntagged, f::typeof(Core.apply_type), ::Type{A}, ::Type{B}) where {A,B} = f(A, B)
-@inline call(::ContextTagged, f::typeof(Core.apply_type), ::Type{A}, ::Type{B}) where {A,B} = f(A, B)
+@inline call(::ContextUntagged, f::typeof(Core.apply_type), a::Type{A}, b::Type{B}) where {A,B} = @isdefined(A) && @isdefined(B) ? f(A, B) : f(a, b)
+@inline call(::ContextTagged, f::typeof(Core.apply_type), a::Type{A}, b::Type{B}) where {A,B} = @isdefined(A) && @isdefined(B) ? f(A, B) : f(a, b)
 
 """
 ```
