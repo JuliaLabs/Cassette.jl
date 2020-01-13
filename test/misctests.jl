@@ -678,5 +678,17 @@ reflecton_test(x::Float64) = "float64"
 reflecton_test(x::Int) = "int"
 
 Cassette.@context ReflectOnCtx
-@test @inferred(Cassette.overdub(ReflectOnCtx(), Cassette.ReflectOn{Tuple{typeof(reflecton_test), Int}}(), 1.0)) == "int"
-@test @inferred(Cassette.overdub(ReflectOnCtx(), Cassette.ReflectOn{Tuple{typeof(reflecton_test), Float64}}(), 1)) == "float64"
+@test @inferred(Cassette.overdub(ReflectOnCtx(), Cassette.ReflectOn{Tuple{typeof(reflecton_test), Int}}(), reflecton_test, 1.0)) == "int"
+@test @inferred(Cassette.overdub(ReflectOnCtx(), Cassette.ReflectOn{Tuple{typeof(reflecton_test), Float64}}(), reflecton_test, 1)) == "float64"
+
+function reflecton_closure_test(x::Int64)
+    function inner(y::Int)
+        (x, "int")
+    end
+    function inner(y::Float64)
+        (x, "float64")
+    end
+    inner
+end
+@test @inferred(Cassette.overdub(ReflectOnCtx(), Cassette.ReflectOn{Tuple{typeof(reflecton_closure_test(0)), Float64}}(), reflecton_closure_test(8), 1)) == (8, "float64")
+@test @inferred(Cassette.overdub(ReflectOnCtx(), Cassette.ReflectOn{Tuple{typeof(reflecton_closure_test(0)), Int64}}(), reflecton_closure_test(8), 1.0)) == (8, "int")
