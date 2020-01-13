@@ -666,9 +666,17 @@ end
 
 #############################################################################################
 
-print("   running OverdubOverdubCtx test...")
+println("   running OverdubOverdubCtx test...")
 
 # Fixed in PR #148
 Cassette.@context OverdubOverdubCtx;
 overdub_overdub_me() = 2
 Cassette.overdub(OverdubOverdubCtx(), Cassette.overdub, OverdubOverdubCtx(), overdub_overdub_me)
+
+print("   running ReflectOn test...")
+reflecton_test(x::Float64) = "float64"
+reflecton_test(x::Int) = "int"
+
+Cassette.@context ReflectOnCtx
+@test @inferred(Cassette.overdub(ReflectOnCtx(), Cassette.ReflectOn{Tuple{typeof(reflecton_test), Int}}(), 1.0)) == "int"
+@test @inferred(Cassette.overdub(ReflectOnCtx(), Cassette.ReflectOn{Tuple{typeof(reflecton_test), Float64}}(), 1)) == "float64"
