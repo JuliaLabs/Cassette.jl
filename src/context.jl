@@ -258,6 +258,9 @@ macro context(_Ctx)
         @inline Cassette.overdub(::C, ::Typeof(Tag), ::Type{N}, ::Type{X}) where {C<:$Ctx,N,X} = Tag(N, X, tagtype(C))
 
         @inline Cassette.overdub(ctx::$Ctx, ::typeof(Core._apply), f, args...) = Core._apply(overdub, (ctx, f), args...)
+        if VERSION >= v"1.4.0-DEV.304"
+            @inline Cassette.overdub(ctx::$Ctx, ::typeof(Core._apply_iterate), f, args...) = Core._apply_iterate((args...)->overdub(ctx, f, args...), args...)
+        end
 
         # TODO: There are certain non-`Core.Builtin` functions which the compiler often
         # relies upon constant propagation/tfuncs to infer, instead of specializing on
