@@ -523,10 +523,7 @@ function recurse end
 
 recurse(ctx::Context, ::typeof(Core._apply), f, args...) = Core._apply(recurse, (ctx, f), args...)
 if VERSION >= v"1.4.0-DEV.304"
-    function recurse(ctx::Context, ::typeof(Core._apply_iterate), f, args...)
-        new_args = ((_args...) -> overdub(ctx, args[1], _args...), Base.tail(args)...)
-        Core._apply_iterate((args...)->recurse(ctx, f, args...), new_args...)
-    end
+    recurse(ctx::Context, ::typeof(Core._apply_iterate), f, args...) = Core._apply_iterate((args...)->recurse(ctx, f, args...), args...)
 end
 
 function overdub_definition(line, file)

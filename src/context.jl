@@ -259,10 +259,7 @@ macro context(_Ctx)
 
         @inline Cassette.overdub(ctx::$Ctx, ::typeof(Core._apply), f, args...) = Core._apply(overdub, (ctx, f), args...)
         if VERSION >= v"1.4.0-DEV.304"
-            @inline function Cassette.overdub(ctx::$Ctx, ::typeof(Core._apply_iterate), f, args...)
-                new_args = ((_args...) -> overdub(ctx, args[1], _args...), Base.tail(args)...)
-                Core._apply_iterate((args...)->overdub(ctx, f, args...), new_args...)
-            end
+            @inline Cassette.overdub(ctx::$Ctx, ::typeof(Core._apply_iterate), f, args...) = Core._apply_iterate((args...)->overdub(ctx, f, args...), args...)
         end
 
         # TODO: There are certain non-`Core.Builtin` functions which the compiler often
