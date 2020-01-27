@@ -706,3 +706,17 @@ if VERSION >= v"1.4.0-DEV.304"
 else
     @test_broken Cassette.overdub(NukeContext(), launch, Silo()) === ()
 end
+
+if VERSION >= v"1.4.0-DEV.304"
+    Cassette.@context ApplyIterateCtx;
+
+    const instructions = []
+    function Cassette.prehook(ctx::ApplyIterateCtx,
+                              op::Any,
+                              a::T1, b::T2) where {T1, T2}
+        push!(instructions, (op, T1, T2))
+    end
+
+    Cassette.overdub(ApplyIterateCtx(), ()->pi*2.0)
+    @test instructions[end] === (Core.Intrinsics.mul_float, Float64, Float64)
+end
