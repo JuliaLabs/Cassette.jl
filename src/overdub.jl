@@ -523,37 +523,14 @@ function recurse end
 
 recurse(ctx::Context, ::typeof(Core._apply), f, args...) = Core._apply(recurse, (ctx, f), args...)
 
-function overdub_definition(line, file)
-    return quote
-        function $Cassette.overdub($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
-            $(Expr(:meta, :generated_only))
-            $(Expr(:meta,
-                   :generated,
-                   Expr(:new,
-                        Core.GeneratedFunctionStub,
-                        :__overdub_generator__,
-                        Any[:overdub, OVERDUB_CONTEXT_NAME, OVERDUB_ARGUMENTS_NAME],
-                        Any[],
-                        line,
-                        QuoteNode(Symbol(file)),
-                        true)))
-        end
-        function $Cassette.recurse($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
-            $(Expr(:meta, :generated_only))
-            $(Expr(:meta,
-                   :generated,
-                   Expr(:new,
-                        Core.GeneratedFunctionStub,
-                        :__overdub_generator__,
-                        Any[:recurse, OVERDUB_CONTEXT_NAME, OVERDUB_ARGUMENTS_NAME],
-                        Any[],
-                        line,
-                        QuoteNode(Symbol(file)),
-                        true)))
-        end
-    end
+
+@generated function overdub(ctx::Context, args...)
+    return __overdub_generator__(overdub, ctx, args)
 end
-eval(overdub_definition(@__LINE__, @__FILE__))
+
+@generated function recurse(ctx::Context, args...)
+    return __overdub_generator__(recurse, ctx, args)
+end
 
 @doc(
 """
