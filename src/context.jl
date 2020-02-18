@@ -275,6 +275,7 @@ macro context(_Ctx)
         @inline Cassette.overdub(ctx::$Ctx, f::Typeof(Base.convert), T::Type, t::Tuple) = fallback(ctx, f, T, t)
         @inline Cassette.overdub(ctx::$Ctx{<:Any,Nothing}, f::Typeof(Core.kwfunc), x) = fallback(ctx, f, x)
         @inline Cassette.overdub(ctx::$Ctx{<:Any,Nothing}, f::Typeof(Base.getproperty), x::Any, s::Symbol) = fallback(ctx, f, x, s)
+        @inline Cassette.overdub(ctx::$Ctx, f::Typeof(Base.throw), exception) = fallback(ctx, f, exception)
 
         # the below primitives are only active when the tagging system is enabled (`typeof(ctx) <: CtxTagged`)
 
