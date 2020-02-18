@@ -206,6 +206,8 @@ println("done (took ", time() - before_time, " seconds)")
 
 #############################################################################################
 
+# OVERDUB_ARGUMENTS_NAME is no longer defined. Not sure what this test is doing so I can't fix it. 
+
 print("   running PassFallbackCtx test...")
 
 before_time = time()
@@ -213,7 +215,7 @@ before_time = time()
 @context PassFallbackCtx
 fallbackpass = @pass (ctx, ref) -> begin
     if ref.signature <: Tuple{typeof(sin),Any}
-        return :(cos($(Cassette.OVERDUB_ARGUMENTS_NAME)[2]))
+        return :(cos(args[2]))
     end
     return ref.code_info
 end
