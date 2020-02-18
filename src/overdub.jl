@@ -127,7 +127,8 @@ const OVERDUB_ARGUMENTS_NAME = gensym("overdub_arguments")
 #   4. If tagging is enabled, do the necessary IR transforms for the metadata tagging system
 function overdub_pass!(reflection::Reflection,
                        context_type::DataType,
-                       is_invoke::Bool = false)
+                       is_invoke::Bool = false,
+                       offset::Int=1)
     signature = reflection.signature
     method = reflection.method
     static_params = reflection.static_params
@@ -175,7 +176,6 @@ function overdub_pass!(reflection::Reflection,
     # destructure the generated argument slots into the overdubbed method's argument slots.
     n_actual_args = fieldcount(signature)
     n_method_args = Int(method.nargs)
-    offset = 1
     for i in 1:n_method_args
         if is_invoke && (i == 1 || i == 2)
             # With an invoke call, we have: 1 is invoke, 2 is f, 3 is Tuple{}, 4... is args.
