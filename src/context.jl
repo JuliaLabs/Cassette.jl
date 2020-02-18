@@ -258,6 +258,12 @@ macro context(_Ctx)
         @inline Cassette.overdub(::C, ::Typeof(Tag), ::Type{N}, ::Type{X}) where {C<:$Ctx,N,X} = Tag(N, X, tagtype(C))
 
         @inline Cassette.overdub(ctx::$Ctx, ::typeof(Core._apply), f, args...) = Core._apply(overdub, (ctx, f), args...)
+        if VERSION >= v"1.4.0-DEV.304"
+            @inline function Cassette.overdub(ctx::$Ctx, ::typeof(Core._apply_iterate), f, args...)
+                new_args = ((_args...) -> overdub(ctx, args[1], _args...), Base.tail(args)...)
+                Core._apply_iterate((args...)->overdub(ctx, f, args...), new_args...)
+            end
+        end
 
         # TODO: There are certain non-`Core.Builtin` functions which the compiler often
         # relies upon constant propagation/tfuncs to infer, instead of specializing on
@@ -269,6 +275,7 @@ macro context(_Ctx)
         @inline Cassette.overdub(ctx::$Ctx, f::Typeof(Base.convert), T::Type, t::Tuple) = fallback(ctx, f, T, t)
         @inline Cassette.overdub(ctx::$Ctx{<:Any,Nothing}, f::Typeof(Core.kwfunc), x) = fallback(ctx, f, x)
         @inline Cassette.overdub(ctx::$Ctx{<:Any,Nothing}, f::Typeof(Base.getproperty), x::Any, s::Symbol) = fallback(ctx, f, x, s)
+        @inline Cassette.overdub(ctx::$Ctx, f::Typeof(Base.throw), exception) = fallback(ctx, f, exception)
 
         # the below primitives are only active when the tagging system is enabled (`typeof(ctx) <: CtxTagged`)
 
