@@ -373,15 +373,15 @@ kwargtest(foobar; foo = 1, bar = 2) = nothing
 @inferred(overdub(InferCtx(), *, rand(Float32, 1, 1), rand(Float32, 1, 1)))
 if VERSION <= v"1.3"
     @inferred(overdub(InferCtx(), *, rand(Float32, 1, 1), rand(Float32, 1)))
-    @inferred(overdub(InferCtx(), rand, Float32, 1))
     @inferred(overdub(InferCtx(), relulayer, rand(Float64, 1, 1), rand(Float32, 1), rand(Float32, 1)))
+    @inferred(overdub(InferCtx(), rand, Float32, 1))
 else
     # test depends on constant propagation
     @test_throws Exception @inferred(overdub(InferCtx(), *, rand(Float32, 1, 1), rand(Float32, 1)))
+    # test depends on M*v which is the test above 
+    @test_throws Exception @inferred(overdub(InferCtx(), relulayer, rand(Float64, 1, 1), rand(Float32, 1), rand(Float32, 1)))
     # XXX: Figure out why this broke
     @test_throws Exception @inferred(overdub(InferCtx(), rand, Float32, 1))
-    # XXX: Figure out why this broke
-    @test_throws Exception @inferred(overdub(InferCtx(), relulayer, rand(Float64, 1, 1), rand(Float32, 1), rand(Float32, 1)))
 end
 @inferred(overdub(InferCtx(), broadcast, +, rand(1), rand(1)))
 @inferred(overdub(InferCtx(), () -> kwargtest(42; foo = 1, bar = 2)))
