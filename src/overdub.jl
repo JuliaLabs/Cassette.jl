@@ -39,7 +39,9 @@ else
     specialize_method(method, metharg, methsp, world, force) = Core.Compiler.specialize_method(method, metharg, methsp, force)
 end
 
-
+function overdubbed_iterate(ctx, iterate)
+    (args...) -> overdub(ctx, iterate, args...)
+end
 
 # Return `Reflection` for signature `sigtypes` and `world`, if possible. Otherwise, return `nothing`.
 function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
@@ -408,10 +410,19 @@ function overdub_pass!(reflection::Reflection,
             stmt = isassign ? x.args[2] : x
             if Base.Meta.isexpr(stmt, :call) && !(Base.Meta.isexpr(stmt.args[1], :nooverdub))
                 isapplycall = is_ir_element(stmt.args[1], GlobalRef(Core, :_apply), overdubbed_code)
-                if isapplycall && arehooksenabled
-                    return 7
-                elseif isapplycall
-                    return 2 + isassign
+                isapplyiteratecall = is_ir_element(stmt.args[1], GlobalRef(Core, :_apply_iterate), overdubbed_code)
+                if isapplycall
+                    if arehooksenabled
+                        return 7
+                    else
+                        return 2 + isassign
+                    end
+                elseif isapplyiteratecall
+                    if arehooksenabled
+                        return 8
+                    else
+                        return 3 + isassign
+                    end
                 elseif arehooksenabled
                     return 4
                 else
@@ -423,26 +434,57 @@ function overdub_pass!(reflection::Reflection,
         newstmts = (x, i) -> begin
             callstmt = Base.Meta.isexpr(x, :(=)) ? x.args[2] : x
             isapplycall = is_ir_element(callstmt.args[1], GlobalRef(Core, :_apply), overdubbed_code)
-            if isapplycall && arehooksenabled
-                callf = callstmt.args[2]
-                callargs = callstmt.args[3:end]
-                stmts = Any[
-                    Expr(:call, GlobalRef(Core, :tuple), overdub_ctx_slot),
-                    Expr(:call, GlobalRef(Core, :tuple), callf),
-                    Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :prehook), SSAValue(i), SSAValue(i + 1), callargs...),
-                    Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :overdub), SSAValue(i), SSAValue(i + 1), callargs...),
-                    Expr(:call, GlobalRef(Core, :tuple), SSAValue(i + 3)),
-                    Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :posthook), SSAValue(i), SSAValue(i + 4), SSAValue(i + 1), callargs...),
-                    Base.Meta.isexpr(x, :(=)) ? Expr(:(=), x.args[1], SSAValue(i + 3)) : SSAValue(i + 3)
-                ]
-            elseif isapplycall
-                callf = callstmt.args[2]
-                callargs = callstmt.args[3:end]
-                stmts = Any[
-                    Expr(:call, GlobalRef(Core, :tuple), overdub_ctx_slot, callf),
-                    Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :overdub), SSAValue(i), callargs...),
-                ]
-                Base.Meta.isexpr(x, :(=)) && push!(stmts, Expr(:(=), x.args[1], SSAValue(i + 1)))
+            isapplyiteratecall = is_ir_element(callstmt.args[1], GlobalRef(Core, :_apply_iterate), overdubbed_code)
+            if isapplycall
+                if arehooksenabled
+                    callf = callstmt.args[2]
+                    callargs = callstmt.args[3:end]
+                    stmts = Any[
+                        Expr(:call, GlobalRef(Core, :tuple), overdub_ctx_slot),
+                        Expr(:call, GlobalRef(Core, :tuple), callf),
+                        Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :prehook), SSAValue(i), SSAValue(i + 1), callargs...),
+                        Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :overdub), SSAValue(i), SSAValue(i + 1), callargs...),
+                        Expr(:call, GlobalRef(Core, :tuple), SSAValue(i + 3)),
+                        Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :posthook), SSAValue(i), SSAValue(i + 4), SSAValue(i + 1), callargs...),
+                        Base.Meta.isexpr(x, :(=)) ? Expr(:(=), x.args[1], SSAValue(i + 3)) : SSAValue(i + 3)
+                    ]
+                else
+                    callf = callstmt.args[2]
+                    callargs = callstmt.args[3:end]
+                    stmts = Any[
+                        Expr(:call, GlobalRef(Core, :tuple), overdub_ctx_slot, callf),
+                        Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :overdub), SSAValue(i), callargs...),
+                    ]
+                    Base.Meta.isexpr(x, :(=)) && push!(stmts, Expr(:(=), x.args[1], SSAValue(i + 1)))
+                end
+            elseif isapplyiteratecall
+                if arehooksenabled
+                    iterf = callstmt.args[2]
+                    callf = callstmt.args[3]
+                    callargs = callstmt.args[4:end]
+                    stmts = Any[
+                        Expr(:call, GlobalRef(Core, :tuple), overdub_ctx_slot),
+                        Expr(:call, GlobalRef(Core, :tuple), callf),
+                        # XXX: Overdubbing the iterate function breaks things
+                        nothing, # Expr(:call, GlobalRef(Cassette, :overdubbed_iterate), SSAValue(i), iterf),
+                        Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :prehook), SSAValue(i), SSAValue(i + 1), callargs...),
+                        Expr(:call, GlobalRef(Core, :_apply_iterate), iterf, GlobalRef(Cassette, :overdub), SSAValue(i), SSAValue(i+1), callargs...),
+                        Expr(:call, GlobalRef(Core, :tuple), SSAValue(i + 4)),
+                        Expr(:call, GlobalRef(Core, :_apply), GlobalRef(Cassette, :posthook), SSAValue(i), SSAValue(i + 5), SSAValue(i + 1), callargs...),
+                        Base.Meta.isexpr(x, :(=)) ? Expr(:(=), x.args[1], SSAValue(i + 4)) : SSAValue(i + 4)
+                    ]
+                else
+                    iterf = callstmt.args[2]
+                    callf = callstmt.args[3]
+                    callargs = callstmt.args[4:end]
+                    stmts = Any[
+                        # XXX: Overdubbing the iterate function breaks things
+                        nothing, # Expr(:call, GlobalRef(Cassette, :overdubbed_iterate), overdub_ctx_slot, iterf),
+                        Expr(:call, GlobalRef(Core, :tuple), overdub_ctx_slot, callf),
+                        Expr(:call, GlobalRef(Core, :_apply_iterate), iterf, GlobalRef(Cassette, :overdub), SSAValue(i+1), callargs...),
+                    ]
+                    Base.Meta.isexpr(x, :(=)) && push!(stmts, Expr(:(=), x.args[1], SSAValue(i+2)))
+                end
             elseif arehooksenabled
                 stmts = Any[
                     Expr(:call, GlobalRef(Cassette, :prehook), overdub_ctx_slot, callstmt.args...),
@@ -521,11 +563,13 @@ function overdub end
 
 function recurse end
 
-recurse(ctx::Context, ::typeof(Core._apply), f, args...) = Core._apply(recurse, (ctx, f), args...)
+@inline recurse(ctx::Context, ::typeof(Core._apply), f, args...) = Core._apply(recurse, (ctx, f), args...)
+
 if VERSION >= v"1.4.0-DEV.304"
-    function recurse(ctx::Context, ::typeof(Core._apply_iterate), f, args...)
-        new_args = ((_args...) -> overdub(ctx, args[1], _args...), Base.tail(args)...)
-        Core._apply_iterate((args...)->recurse(ctx, f, args...), new_args...)
+    @inline function Cassette.recurse(ctx::Context, ::typeof(Core._apply_iterate), iter, f, args...)
+        # XXX: Overdubbing the iterate function breaks things
+        # overdubbed_iter = (args...) -> Cassette.recurse(ctx, iter, args...)
+        Core._apply_iterate(iter, recurse, (ctx, f), args...)
     end
 end
 

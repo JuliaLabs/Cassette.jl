@@ -258,10 +258,12 @@ macro context(_Ctx)
         @inline Cassette.overdub(::C, ::Typeof(Tag), ::Type{N}, ::Type{X}) where {C<:$Ctx,N,X} = Tag(N, X, tagtype(C))
 
         @inline Cassette.overdub(ctx::$Ctx, ::typeof(Core._apply), f, args...) = Core._apply(overdub, (ctx, f), args...)
+
         if VERSION >= v"1.4.0-DEV.304"
-            @inline function Cassette.overdub(ctx::$Ctx, ::typeof(Core._apply_iterate), f, args...)
-                new_args = ((_args...) -> overdub(ctx, args[1], _args...), Base.tail(args)...)
-                Core._apply_iterate((args...)->overdub(ctx, f, args...), new_args...)
+            @inline function Cassette.overdub(ctx::$Ctx, ::typeof(Core._apply_iterate), iter, f, args...)
+                # XXX: Overdubbing the iterate function breaks things
+                # overdubbed_iter = (args...) -> Core._apply(overdub, (ctx, iter), args...)
+                Core._apply_iterate(iter, overdub, (ctx, f), args...)
             end
         end
 
