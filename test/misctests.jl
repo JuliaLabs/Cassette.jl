@@ -294,11 +294,7 @@ end
 tracekw = Any[]
 @overdub(TraceCtx(metadata = tracekw), trkwtest(x, _y = y, _z = z)) == trtest(x, y, z)
 subtracekw = first(Iterators.filter(t -> t[1] === (Core.kwfunc(trkwtest), (_y = y, _z = z), trkwtest, x), tracekw))[2]
-if VERSION < v"1.4"
-    @test subtracekw == trace
-else
-    @test_broken subtracekw == trace
-end
+@test subtracekw == trace
 
 function enter!(t::HookTrace, args...)
     pair = args => Any[]
@@ -382,7 +378,7 @@ if VERSION <= v"1.3"
 else
     # test depends on constant propagation
     @test_throws Exception @inferred(overdub(InferCtx(), *, rand(Float32, 1, 1), rand(Float32, 1)))
-    # test depends on M*v which is the test above 
+    # test depends on M*v which is the test above
     @test_throws Exception @inferred(overdub(InferCtx(), relulayer, rand(Float64, 1, 1), rand(Float32, 1), rand(Float32, 1)))
     # XXX: Figure out why this broke
     @test_throws Exception @inferred(overdub(InferCtx(), rand, Float32, 1))

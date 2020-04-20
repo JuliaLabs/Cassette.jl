@@ -40,3 +40,13 @@ end
 
 @context FooBar
 @context FooBar
+
+# Test keyword function detection
+kwtest_1(; x) = x  # Normal function
+const kwtest_2 = (; x) -> x  # Anonymous function
+const kwtest_3  = let; (; x) -> x end  # Closure
+for n in 1:3
+    F = typeof(getfield(Main, Symbol(:kwtest_, n)))
+    @test iskwftype(Core.kwftype(F))
+    @test !iskwftype(F)
+end

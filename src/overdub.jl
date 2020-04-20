@@ -84,7 +84,7 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
         edges = Core.MethodInstance[method_instance]
         # if the reflected CI has already edges on it,
         # we can safely ignore them since the new CI will
-        # depend on the MI of the old one. 
+        # depend on the MI of the old one.
         code_info.edges = edges
     end
     return Reflection(S, method, static_params, code_info)
@@ -120,6 +120,15 @@ See also: [`OVERDUB_CONTEXT_NAME`](@ref), [`@pass`](@ref), [`overdub`](@ref)
 """
 const OVERDUB_ARGUMENTS_NAME = gensym("overdub_arguments")
 
+function iskwftype(::Type{F}) where F
+    name = string(F.name.name)
+    return @static if VERSION >= v"1.4"
+        startswith(name, "#") && endswith(name, "##kw")
+    else
+        startswith(name, "#kw##")
+    end
+end
+
 # The `overdub` pass has four intertwined tasks:
 #   1. Apply the user-provided pass, if one is given
 #   2. Munge the reflection-generated IR into a valid form for returning from
@@ -139,10 +148,9 @@ function overdub_pass!(reflection::Reflection,
     # jrevels/Cassette.jl#48. The assumptions made by this hack are quite fragile, so we
     # should eventually get Base to expose a standard/documented API for this. Here, we see
     # this hack's first assumption: that `Core.kwfunc(f)` is going to return a function whose
-    # type name is prefixed by `#kw##`. More assumptions for this hack will be commented on
-    # as we go.
-    name = String(signature.parameters[1].name.name)
-    iskwfunc = startswith(name, "#kw##")
+    # type name has a prefix and suffix.
+    # More assumptions for this hack will be commented on as we go.
+    iskwfunc = iskwftype(signature.parameters[1])
     istaggingenabled = hastagging(context_type)
 
     #=== execute user-provided pass (is a no-op by default) ===#
