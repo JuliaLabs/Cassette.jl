@@ -1,6 +1,6 @@
 The Cassette.jl package is licensed under the MIT "Expat" License:
 
-> Copyright (c) 2017: Jarrett Revels.
+> Copyright (c) 2017-2020: Jarrett Revels, and other contributors.
 > 
 > Permission is hereby granted, free of charge, to any person obtaining a copy
 > of this software and associated documentation files (the "Software"), to deal
