@@ -1,15 +1,14 @@
-
 <p align="center">
 <img width="350px" src="https://raw.githubusercontent.com/jrevels/Cassette.jl/master/docs/img/cassette-logo.png"/>
 </p>
 
-[![Build Status](https://travis-ci.org/jrevels/Cassette.jl.svg?branch=master)](https://travis-ci.org/jrevels/Cassette.jl)
-[![Coverage Status](https://coveralls.io/repos/github/jrevels/Cassette.jl/badge.svg)](https://coveralls.io/github/jrevels/Cassette.jl)
-
+[![DOI](https://zenodo.org/badge/86752121.svg)](https://zenodo.org/badge/latestdoi/86752121)
 [![](https://img.shields.io/badge/docs-stable-blue.svg)](https://jrevels.github.io/Cassette.jl/stable/)
 [![](https://img.shields.io/badge/docs-latest-blue.svg)](https://jrevels.github.io/Cassette.jl/latest/)
 
-[![DOI](https://zenodo.org/badge/86752121.svg)](https://zenodo.org/badge/latestdoi/86752121)
+[![CI](https://github.com/jrevels/Cassette.jl/workflows/CI/badge.svg)](https://github.com/jrevels/Cassette.jl/actions?query=workflow%3ACI)
+[![CI (Julia nightly)](https://github.com/jrevels/Cassette.jl/workflows/CI%20(Julia%20nightly)/badge.svg)](https://github.com/jrevels/v.jl/actions?query=workflow%3A%22CI+%28Julia+nightly%29%22)
+[![Codecov](https://codecov.io/gh/jrevels/Cassette.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/jrevels/Cassette.jl)
 
 ## Overview
 
