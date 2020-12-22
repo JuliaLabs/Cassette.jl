@@ -6,8 +6,8 @@
 [![](https://img.shields.io/badge/docs-stable-blue.svg)](https://julia.mit.edu/Cassette.jl/stable/)
 [![](https://img.shields.io/badge/docs-latest-blue.svg)](https://julia.mit.edu/Cassette.jl/latest/)
 
-[![CI](https://github.com/JuliaLabs/Cassette.jl/workflows/CI/badge.svg)](https://github.com/jrevels/Cassette.jl/actions?query=workflow%3ACI)
-[![CI (Julia nightly)](https://github.com/JuliaLabs/Cassette.jl/workflows/CI%20(Julia%20nightly)/badge.svg)](https://github.com/jrevels/v.jl/actions?query=workflow%3A%22CI+%28Julia+nightly%29%22)
+[![CI](https://github.com/JuliaLabs/Cassette.jl/workflows/CI/badge.svg)](https://github.com/JuliaLabs/Cassette.jl/actions?query=workflow%3ACI)
+[![CI (Julia nightly)](https://github.com/JuliaLabs/Cassette.jl/workflows/CI%20(Julia%20nightly)/badge.svg)](https://github.com/JuliaLabs/Cassette.jl/actions?query=workflow%3A%22CI+%28Julia+nightly%29%22)
 [![Codecov](https://codecov.io/gh/JuliaLabs/Cassette.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/JuliaLabs/Cassette.jl)
 
 ## Overview
