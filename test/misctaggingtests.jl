@@ -108,7 +108,11 @@ before_time = time()
 
 @context ApplyCtx
 x = rand()
-applytest(x) = Core._apply(hypot, (x,), (1, x), 1, x, (1, 2))
+@static if isdefined(Core, :_apply_iterate)
+    applytest(x) = Core._apply_iterate(iterate, hypot, (x,), (1, x), 1, x, (1, 2))
+else
+    applytest(x) = Core._apply(hypot, (x,), (1, x), 1, x, (1, 2))
+end
 ctx = enabletagging(ApplyCtx(), 1)
 @test overdub(ctx, applytest, tag(x, ctx)) === applytest(x)
 
