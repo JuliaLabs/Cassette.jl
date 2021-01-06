@@ -3,11 +3,16 @@
 using InteractiveUtils: subtypes
 using Core.Compiler: SSAValue, Const, GotoNode
 
+
 function const_bool_retval(f, sig)
     ctyped = code_typed(f, sig)[1].first
     retval = ctyped.code[end]
     retval = isa(retval, GotoNode) ? ctyped.code[retval.label] : retval
-    retval = Meta.isexpr(retval, :return) ? retval.args[1] : retval
+    @static if isdefined(Core, :ReturnNode)
+        retval = isa(retval, Core.ReturnNode) ? retval.val : retval
+    else
+        retval = Meta.isexpr(retval, :return) ? retval.args[1] : retval
+    end
     retval = isa(retval, SSAValue) ? ctyped.ssavaluetypes[retval.id] : retval
     retval = isa(retval, Const) ? retval.val : retval
     isa(retval, Bool) && return retval

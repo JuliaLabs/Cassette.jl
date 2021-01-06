@@ -371,12 +371,21 @@ function overdub_pass!(reflection::Reflection,
     #=== untag `gotoifnot` conditionals if tagging is enabled ===#
 
     if istaggingenabled && !iskwfunc
-        insert_statements!(overdubbed_code, overdubbed_codelocs,
-                            (x, i) -> Base.Meta.isexpr(x, :gotoifnot) ? 2 : nothing,
-                            (x, i) -> [
-                                Expr(:call, Expr(:nooverdub, GlobalRef(Cassette, :untag)), x.args[1], overdub_ctx_slot),
-                                Expr(:gotoifnot, SSAValue(i), x.args[2])
-                            ])
+        @static if isdefined(Core, :GotoIfNot)
+            insert_statements!(overdubbed_code, overdubbed_codelocs,
+                (x, i) -> isa(x, Core.GotoIfNot) ? 2 : nothing,
+                (x, i) -> [
+                    Expr(:call, Expr(:nooverdub, GlobalRef(Cassette, :untag)), x.cond, overdub_ctx_slot),
+                    Core.GotoIfNot(SSAValue(i), x.dest)
+                ])
+        else
+            insert_statements!(overdubbed_code, overdubbed_codelocs,
+                (x, i) -> Base.Meta.isexpr(x, :gotoifnot) ? 2 : nothing,
+                (x, i) -> [
+                    Expr(:call, Expr(:nooverdub, GlobalRef(Cassette, :untag)), x.args[1], overdub_ctx_slot),
+                    Expr(:gotoifnot, SSAValue(i), x.args[2])
+                ])
+        end
     end
 
     #=== replace `Expr(:new, ...)`/`Expr(:splatnew, ...)` with                            ===#
