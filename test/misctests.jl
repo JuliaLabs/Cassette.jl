@@ -617,14 +617,25 @@ function sliceprintln(::Type{<:SliceCtx}, reflection::Cassette.Reflection)
                                 end)
 
     # replace return statements of the form `return x` with `return (x, callback)`
-    Cassette.insert_statements!(ir.code, ir.codelocs,
-                                  (stmt, i) -> Base.Meta.isexpr(stmt, :return) ? 2 : nothing,
-                                  (stmt, i) -> begin
-                                      return [
-                                          Expr(:call, Expr(:nooverdub, GlobalRef(Core, :tuple)), stmt.args[1], callbackslot)
-                                          Expr(:return, SSAValue(i))
-                                      ]
-                                  end)
+    @static if isdefined(Core, :ReturnNode)
+        Cassette.insert_statements!(ir.code, ir.codelocs,
+            (stmt, i) -> isa(stmt, Core.ReturnNode) ? 2 : nothing,
+            (stmt, i) -> begin
+                return [
+                    Expr(:call, Expr(:nooverdub, GlobalRef(Core, :tuple)), stmt.val, callbackslot),
+                    Core.ReturnNode(SSAValue(i))
+                ]
+            end)
+    else
+        Cassette.insert_statements!(ir.code, ir.codelocs,
+            (stmt, i) -> Base.Meta.isexpr(stmt, :return) ? 2 : nothing,
+            (stmt, i) -> begin
+                return [
+                    Expr(:call, Expr(:nooverdub, GlobalRef(Core, :tuple)), stmt.args[1], callbackslot),
+                    Expr(:return, SSAValue(i))
+                ]
+            end)
+    end
     return ir
 end
 
