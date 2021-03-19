@@ -698,14 +698,20 @@ end
 
 print("   running OverdubOverdubCtx test...")
 
+before_time = time()
+
 # Fixed in PR #148
 Cassette.@context OverdubOverdubCtx
 overdub_overdub_me() = 2
 Cassette.overdub(OverdubOverdubCtx(), Cassette.overdub, OverdubOverdubCtx(), overdub_overdub_me)
 
+println("done (took ", time() - before_time, " seconds)")
+
 #############################################################################################
 
 print("   running NukeCtx test...")
+
+before_time = time()
 
 @Cassette.context NukeContext
 struct Silo; end
@@ -739,3 +745,40 @@ if VERSION >= v"1.4.0-DEV.304"
     Cassette.overdub(ApplyIterateCtx(), ()->pi*2.0)
     @test instructions[end] === (Core.Intrinsics.mul_float, Float64, Float64)
 end
+
+println("done (took ", time() - before_time, " seconds)")
+
+#############################################################################################
+
+print("   running NaNCtx test...")
+
+before_time = time()
+
+Cassette.@context NaNCtx;
+Cassette.posthook(::NaNCtx, out::Number, f, args...) = isnan(out) ? error("$f$args returned $out") : nothing
+
+checked(f, x...) = Cassette.overdub(NaNCtx(), f, x...)
+
+@test_throws ErrorException checked() do
+    (() -> 0 / 0)()
+end
+
+bt = try
+    checked() do
+        (() -> 0 / 0)()
+    end
+catch
+    Base.catch_backtrace()
+end
+s = sprint(Base.show_backtrace, bt)
+
+@test occursin("/(::Float64, ::Float64)", s)
+@test occursin("/(::$Int, ::$Int)", s)
+# TODO
+# if VERSION >= https://github.com/JuliaLang/julia/pull/40106
+#     @test occursin(r"\(::var\"#\d+#\d+\"\)\(\)", s)
+# else
+#     @test_broken occursin(r"\(::var\"#\d+#\d+\"\)\(\)", s)
+# end
+
+println("done (took ", time() - before_time, " seconds)")
