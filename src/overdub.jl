@@ -43,6 +43,32 @@ function overdubbed_iterate(ctx, iterate)
     (args...) -> overdub(ctx, iterate, args...)
 end
 
+# in order to get better stacktraces, we insert a fake LineNumberNode and change the code
+# locs, so that Julia thinks the method we overdubbed here was a separate method that simply
+# got inlined
+function verbose_lineinfo!(ci::CodeInfo, @nospecialize(sig::Type{<:Tuple}))
+    linetable, codelocs = ci.linetable, ci.codelocs
+    # we actually want to see the whole signature, not just the function name as is
+    # usually the case if a method is inlined
+    sig = Symbol(sprint(Base.show_tuple_as_call, :overdub, sig))
+    linfo = nothing
+    for _linfo in linetable
+        if _linfo.inlined_at == 0
+            linfo = Core.LineInfoNode(_linfo.module, sig, _linfo.file, _linfo.line, 1)
+            break
+        end
+    end
+    # @assert linfo !== nothing
+    linfo === nothing && return ci
+    push!(linetable, linfo)
+    for i in 1:length(codelocs)
+        if codelocs[i] <= 1
+            codelocs[i] = length(linetable)
+        end
+    end
+    return ci
+end
+
 # Return `Reflection` for signature `sigtypes` and `world`, if possible. Otherwise, return `nothing`.
 function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     if length(sigtypes) > 2 && sigtypes[1] === typeof(invoke)
@@ -80,6 +106,7 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     code_info = Core.Compiler.retrieve_code_info(method_instance)
     isa(code_info, CodeInfo) || return nothing
     code_info = copy_code_info(code_info)
+    verbose_lineinfo!(code_info, S)
 @static if VERSION >= v"1.3.0-DEV.379"
         edges = Core.MethodInstance[method_instance]
         # if the reflected CI has already edges on it,
