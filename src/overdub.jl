@@ -73,8 +73,14 @@ function verbose_lineinfo!(ci::CodeInfo, @nospecialize(sig::Type{<:Tuple}))
     return ci
 end
 
+if VERSION >= v"1.2"
+get_world_counter() = Base.get_world_counter()
+else
+get_world_counter() = typemax(UInt64)
+end
+
 # Return `Reflection` for signature `sigtypes` and `world`, if possible. Otherwise, return `nothing`.
-function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
+function reflect(@nospecialize(sigtypes::Tuple), world::UInt = get_world_counter())
     if length(sigtypes) > 2 && sigtypes[1] === typeof(invoke)
         @assert sigtypes[3] <: Type{<:Tuple}
         sigtypes = (sigtypes[2], sigtypes[3].parameters[1].parameters...)
