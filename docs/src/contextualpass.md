@@ -160,7 +160,7 @@ it. **I highly recommend reading the documentation for [`@pass`](@ref) and
 
 ```julia
 using Cassette
-using Core: CodeInfo, SlotNumber, SSAValue
+using Core: CodeInfo, SlotNumber, SSAValue, ReturnNode
 
 Cassette.@context SliceCtx
 
@@ -198,7 +198,7 @@ function sliceprintln(::Type{<:SliceCtx}, reflection::Cassette.Reflection)
                                     i > 1 || return nothing # don't slice the callback assignment
                                     stmt = Base.Meta.isexpr(stmt, :(=)) ? stmt.args[2] : stmt
                                     if Base.Meta.isexpr(stmt, :call)
-                                        isapply = Cassette.is_ir_element(stmt.args[1], GlobalRef(Core, :_apply), ir.code)
+                                        isapply = Cassette.is_ir_element(stmt.args[1], GlobalRef(Core, :_apply_iterate), ir.code)
                                         return 3 + isapply
                                     end
                                     return nothing
@@ -207,9 +207,9 @@ function sliceprintln(::Type{<:SliceCtx}, reflection::Cassette.Reflection)
                                     items = Any[]
                                     callstmt = Base.Meta.isexpr(stmt, :(=)) ? stmt.args[2] : stmt
                                     callssa = SSAValue(i)
-                                    if Cassette.is_ir_element(callstmt.args[1], GlobalRef(Core, :_apply), ir.code)
+                                    if Cassette.is_ir_element(callstmt.args[1], GlobalRef(Core, :_apply_iterate), ir.code)
                                         push!(items, Expr(:call, Expr(:nooverdub, GlobalRef(Core, :tuple)), callbackslot))
-                                        push!(items, Expr(:call, callstmt.args[1], callstmt.args[2], SSAValue(i), callstmt.args[3:end]...))
+                                        push!(items, Expr(:call, callstmt.args[1:3]..., SSAValue(i), callstmt.args[4:end]...))
                                         callssa = SSAValue(i + 1)
                                     else
                                         push!(items, Expr(:call, callstmt.args[1], callbackslot, callstmt.args[2:end]...))
@@ -225,11 +225,11 @@ function sliceprintln(::Type{<:SliceCtx}, reflection::Cassette.Reflection)
 
     # replace return statements of the form `return x` with `return (x, callback)`
     Cassette.insert_statements!(ir.code, ir.codelocs,
-                                  (stmt, i) -> Base.Meta.isexpr(stmt, :return) ? 2 : nothing,
+                                  (stmt, i) -> isa(stmt, ReturnNode) ? 2 : nothing,
                                   (stmt, i) -> begin
                                       return [
-                                          Expr(:call, Expr(:nooverdub, GlobalRef(Core, :tuple)), stmt.args[1], callbackslot)
-                                          Expr(:return, SSAValue(i))
+                                          Expr(:call, Expr(:nooverdub, GlobalRef(Core, :tuple)), stmt.val, callbackslot),
+                                          ReturnNode(SSAValue(i)),
                                       ]
                                   end)
     return ir
@@ -252,19 +252,19 @@ julia> begin
            end
            add(a, b)
        end
-I'm about to add [0.325019, 0.19358, 0.200598] + [0.195759, 0.653, 0.498859]
-c = [0.520778, 0.84658, 0.699457]
-3-element Array{Float64,1}:
- 0.5207782045663867
- 0.846579992552251
- 0.6994565474128307
+I'm about to add [0.67915246284728, 0.2756120072191095, 0.11756215681978621] + [0.36694497827600103, 0.8528773638511087, 0.5911748231895997]
+c = [1.046097441123281, 1.1284893710702182, 0.7087369800093859]
+3-element Vector{Float64}:
+ 1.046097441123281
+ 1.1284893710702182
+ 0.7087369800093859
 
 julia> ctx = SliceCtx(pass=sliceprintlnpass, metadata = () -> nothing);
 
 julia> result, callback = Cassette.@overdub(ctx, add(a, b))
-([0.520778, 0.84658, 0.699457], getfield(Main, Symbol("##4#5")){getfield(Main, Symbol("##4#5")){getfield(Main, Symbol("##18#19")),Tuple{String}},Tuple{String}}(getfield(Main, Symbol("##4#5")){getfield(Main, Symbol("##18#19")),Tuple{String}}(getfield(Main, Symbol("##18#19"))(), ("I'm about to add [0.325019, 0.19358, 0.200598] + [0.195759, 0.653, 0.498859]",)), ("c = [0.520778, 0.84658, 0.699457]",)))
+([1.046097441123281, 1.1284893710702182, 0.7087369800093859], var"#2#3"{var"#2#3"{var"#16#17", Tuple{String}}, Tuple{String}}(var"#2#3"{var"#16#17", Tuple{String}}(var"#16#17"(), ("I'm about to add [0.67915246284728, 0.2756120072191095, 0.11756215681978621] + [0.36694497827600103, 0.8528773638511087, 0.5911748231895997]",)), ("c = [1.046097441123281, 1.1284893710702182, 0.7087369800093859]",)))
 
 julia> callback()
-I'm about to add [0.325019, 0.19358, 0.200598] + [0.195759, 0.653, 0.498859]
-c = [0.520778, 0.84658, 0.699457]
+I'm about to add [0.67915246284728, 0.2756120072191095, 0.11756215681978621] + [0.36694497827600103, 0.8528773638511087, 0.5911748231895997]
+c = [1.046097441123281, 1.1284893710702182, 0.7087369800093859]
 ```
