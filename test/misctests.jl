@@ -380,8 +380,11 @@ else
     @test_throws Exception @inferred(overdub(InferCtx(), *, rand(Float32, 1, 1), rand(Float32, 1)))
     # test depends on M*v which is the test above
     @test_throws Exception @inferred(overdub(InferCtx(), relulayer, rand(Float64, 1, 1), rand(Float32, 1), rand(Float32, 1)))
-    # XXX: Figure out why this broke
-    @test_throws Exception @inferred(overdub(InferCtx(), rand, Float32, 1))
+    if VERSION < v"1.7"
+        @test_throws Exception @inferred(overdub(InferCtx(), rand, Float32, 1))
+    else
+        @inferred(overdub(InferCtx(), rand, Float32, 1))
+    end
 end
 @inferred(overdub(InferCtx(), broadcast, +, rand(1), rand(1)))
 @inferred(overdub(InferCtx(), () -> kwargtest(42; foo = 1, bar = 2)))
