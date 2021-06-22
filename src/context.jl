@@ -482,6 +482,9 @@ See also:  [`overdub`](@ref), [`fallback`](@ref), [`recurse`](@ref)
 """
 @inline canrecurse(ctx::Context, f, @nospecialize(args...)) = !(isa(untag(f, ctx), Core.Builtin) || _iscompilerfunc(untag(f, ctx)))
 @inline canrecurse(ctx::Context, ::typeof(Core._apply), f, @nospecialize(args...)) = Core._apply(canrecurse, (ctx, f), args...)
+@static if isdefined(Core, :_apply_iterate)
+    @inline canrecurse(ctx::Context, ::typeof(Core._apply_iterate), iterate, f, @nospecialize(args...)) = Core._apply_iterate(iterate, canrecurse, (ctx, f), args...)
+end
 @inline canrecurse(ctx::Context, ::typeof(Core.invoke), f, @nospecialize(_), @nospecialize(args...)) = canrecurse(ctx, f, args...)
 
 _iscompilerfunc(::F) where {F} = Core.Compiler.typename(F).module === Core.Compiler
