@@ -234,13 +234,22 @@ metadatatype(::Type{<:Context}, ::DataType) = NoMetaData
 
 #=== metametatype ===#
 
+@static if isdefined(Base, :ismutabletype)
+    using Base: ismutabletype
+else
+    function ismutabletype(@nospecialize(t::Type))
+        t = Base.unwrap_unionall(t)
+        return isa(t, DataType) && t.mutable
+    end
+end
+
 @generated function metametatype(::Type{C}, ::Type{T}) where {C<:Context,T}
     if T <: Type || fieldcount(T) == 0
         body = :(NoMetaMeta)
     elseif !(isconcretetype(T))
         body = :(error("cannot call metametatype on non-concrete type ", $T))
     else
-        F = T.mutable ? :Mutable : :Immutable
+        F = ismutabletype(T) ? :Mutable : :Immutable
         ftypes = [:($F{metatype(C, $S)}) for S in _fieldtypes_for_metatype(T)]
         tuplemetatype = :(Tuple{$(ftypes...)})
         if T <: Tuple
@@ -269,7 +278,7 @@ function _metametaexpr(::Type{C}, ::Type{V}, metaexprs::Vector) where {C,V}
     if V <: Type || fieldcount(V) == 0 || (all(x == :NOMETA for x in metaexprs) && doesnotneedmetatype(V))
         return :(NoMetaMeta())
     else
-        F = V.mutable ? :Mutable : :Immutable
+        F = ismutabletype(V) ? :Mutable : :Immutable
         metatypes = [:(metatype(C, $S)) for S in _fieldtypes_for_metatype(V)]
         metaconverts = [:(convert($(metatypes[i]), $(metaexprs[i]))) for i in 1:fieldcount(V)]
         metametafields = [:($F{$(metatypes[i])}($(metaconverts[i]))) for i in 1:fieldcount(V)]
