@@ -37,6 +37,10 @@ end
 @test canrecurse(ctx, Core.invoke, hypot, Tuple{Int,Int}, 1, 2)
 @test canrecurse(ctx, Core._apply, hypot, (1, 2))
 @test canrecurse(ctx, Core._apply, Core.invoke, (hypot, Tuple{Int,Int}, 1, 2))
+@static if isdefined(Core, :_apply_iterate)
+    @test canrecurse(ctx, Core._apply_iterate, Base.iterate, hypot, (1, 2))
+    @test canrecurse(ctx, Core._apply_iterate, Base.iterate, Core.invoke, (hypot, Tuple{Int,Int}, 1, 2))
+end
 
 ###########
 
