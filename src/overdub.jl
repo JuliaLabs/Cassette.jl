@@ -27,16 +27,19 @@ mutable struct Reflection
     code_info::CodeInfo
 end
 
-if VERSION < v"1.1.0-DEV.762"
+@static if VERSION < v"1.1.0-DEV.762"
     copy_code_info(code_info) = Core.Compiler.copy_code_info(code_info)
 else
     copy_code_info(code_info) = copy(code_info)
 end
 
-if VERSION < v"1.2.0-DEV.573"
-    specialize_method(method, metharg, methsp, world, force) = Core.Compiler.code_for_method(method, metharg, methsp, world, force)
+@static if VERSION ≥ v"1.8.0-DEV.369"
+    # https://github.com/JuliaLang/julia/pull/41920
+    specialize_method(method, metharg, methsp, world, preexisting) = Core.Compiler.specialize_method(method, metharg, methsp; preexisting)
+elseif VERSION < v"1.2.0-DEV.573"
+    specialize_method(method, metharg, methsp, world, preexisting) = Core.Compiler.code_for_method(method, metharg, methsp, world, preexisting)
 else
-    specialize_method(method, metharg, methsp, world, force) = Core.Compiler.specialize_method(method, metharg, methsp, force)
+    specialize_method(method, metharg, methsp, world, preexisting) = Core.Compiler.specialize_method(method, metharg, methsp, preexisting)
 end
 
 function overdubbed_iterate(ctx, iterate)
