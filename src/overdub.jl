@@ -577,6 +577,7 @@ function overdub_pass!(reflection::Reflection,
     code_info.code = overdubbed_code
     code_info.codelocs = overdubbed_codelocs
     code_info.ssavaluetypes = length(overdubbed_code)
+    code_info.ssaflags = [0x00 for _ in 1:length(overdubbed_code)] # XXX we need to copy flags that are set for the original code
     reflection.code_info = code_info
 
     return reflection
