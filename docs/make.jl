@@ -2,16 +2,14 @@ using Cassette
 using Documenter
 
 makedocs(;
-    modules=[Cassette],
-    authors="Jarrett Revels",
-    repo="https://github.com/jrevels/Cassette.jl/blob/{commit}{path}#L{line}",
-    sitename="Cassette",
-    format=Documenter.HTML(;
-        prettyurls=get(ENV, "CI", "false") == "true",
-        canonical="https://jrevels.github.io/Cassette.jl",
-        assets=String[],
+    modules = [Cassette],
+    authors = "Jarrett Revels",
+    sitename = "Cassette",
+    format = Documenter.HTML(;
+        prettyurls = get(ENV, "CI", "false") == "true",
+        ansicolor = true,
     ),
-    pages=[
+    pages = Any[
         "Introduction" => "index.md",
         "Disclaimers" => "disclaimers.md",
         "Why Cassette?" => "whycassette.md",
@@ -22,9 +20,9 @@ makedocs(;
         "Cassette API Documentation" => "api.md",
         "Related Work" => "relatedwork.md",
     ],
-    strict=false,
+    strict = false,
 )
 
-deploydocs(;
-    repo="github.com/jrevels/Cassette.jl",
-)
+deploydocs(; repo = "github.com/jrevels/Cassette.jl",
+             push_preview = true,
+             )

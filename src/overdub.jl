@@ -631,8 +631,8 @@ if VERSION >= v"1.4.0-DEV.304"
     end
 end
 
-function overdub_definition(line, file)
-    return quote
+let line = @__LINE__, file = @__FILE__
+    @eval (@__MODULE__) begin
         function $Cassette.overdub($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
             $(Expr(:meta, :generated_only))
             $(Expr(:meta,
@@ -661,10 +661,8 @@ function overdub_definition(line, file)
         end
     end
 end
-eval(overdub_definition(@__LINE__, @__FILE__))
 
-@doc(
-"""
+@doc """
 ```
 overdub(context::Context, f, args...)
 ```
@@ -721,11 +719,10 @@ true
 ```
 
 See also: [`recurse`](@ref), [`prehook`](@ref), [`posthook`](@ref)
-""",
-overdub)
-
-@doc(
 """
+overdub
+
+@doc """
 ```
 recurse(context::Context, f, args...)
 ```
@@ -761,8 +758,8 @@ end
 ```
 
 See Cassette's Contextual Dispatch documentation for more details and examples.
-""",
-recurse)
+"""
+recurse
 
 """
 ```

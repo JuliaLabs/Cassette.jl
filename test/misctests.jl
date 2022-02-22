@@ -22,7 +22,7 @@ x = rand(2)
 messages = String[]
 Cassette.prehook(::RosCtx, f, args...) = push!(messages, string("calling ", f, args))
 @test overdub(RosCtx(), rosenbrock, x) == rosenbrock(x)
-@test length(messages) > 90
+@test length(messages) > 50
 
 Cassette.prehook(ctx::RosCtx, f, args...) = push!(ctx.metadata, string("calling ", f, args))
 messages2 = String[]
