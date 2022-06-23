@@ -3,7 +3,7 @@
 Hello! Welcome to Cassette's documentation.
 
 For an initial overview of Cassette, please see the
-[README](https://github.com/jrevels/Cassette.jl). Otherwise, feel free to peruse available
+[README](https://github.com/JuliaLabs/Cassette.jl). Otherwise, feel free to peruse available
 documentation via the sidebar.
 
 It is recommended that all Cassette users read the documentation in its entirety. It is

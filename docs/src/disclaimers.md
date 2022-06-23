@@ -29,6 +29,6 @@ well as a loaded foot-gun. Here are some things one should know before using Cas
 - Due to limitations of Julia's current world-age mechanism, **Cassette exhibits a similar
     recompilation problem to the famous
     [JuliaLang/julia#265](https://github.com/JuliaLang/julia/issues/265)** (see
-    [jrevels/Cassette.jl#6](https://github.com/jrevels/Cassette.jl/issues/6) for details). In
+    [JuliaLabs/Cassette.jl#6](https://github.com/JuliaLabs/Cassette.jl/issues/6) for details). In
     order to resolve this issue, an update to Julia's world-age mechanism is planned for the
     Julia `1.x` release cycle.

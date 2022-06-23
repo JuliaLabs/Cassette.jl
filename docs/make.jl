@@ -23,6 +23,6 @@ makedocs(;
     strict = false,
 )
 
-deploydocs(; repo = "github.com/jrevels/Cassette.jl",
+deploydocs(; repo = "github.com/JuliaLabs/Cassette.jl",
              push_preview = true,
              )
