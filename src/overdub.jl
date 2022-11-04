@@ -46,6 +46,8 @@ function overdubbed_iterate(ctx, iterate)
     (args...) -> overdub(ctx, iterate, args...)
 end
 
+const lineinfo_T = VERSION >= v"1.9.0-DEV.502" ? Int32 : Int
+
 # in order to get better stacktraces, we insert a fake LineNumberNode and change the code
 # locs, so that Julia thinks the method we overdubbed here was a separate method that simply
 # got inlined
@@ -58,9 +60,9 @@ function verbose_lineinfo!(ci::CodeInfo, @nospecialize(sig::Type{<:Tuple}))
     for _linfo in linetable
         if _linfo.inlined_at == 0
             @static if fieldcount(Core.LineInfoNode) == 5
-                linfo = Core.LineInfoNode(getfield(_linfo, 1), sig, _linfo.file, _linfo.line, 1)
+                linfo = Core.LineInfoNode(getfield(_linfo, 1), sig, _linfo.file, _linfo.line, lineinfo_T(1))
             else
-                linfo = Core.LineInfoNode(sig, _linfo.file, _linfo.line, 1)
+                linfo = Core.LineInfoNode(sig, _linfo.file, _linfo.line, lineinfo_T(1))
             end
             break
         end
