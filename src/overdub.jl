@@ -162,6 +162,9 @@ See also: [`OVERDUB_CONTEXT_NAME`](@ref), [`@pass`](@ref), [`overdub`](@ref)
 """
 const OVERDUB_ARGUMENTS_NAME = gensym("overdub_arguments")
 
+@static if VERSION ≥ v"1.9.0-DEV.1598"
+iskwftype(@nospecialize(t::Type)) = t === typeof(Core.kwcall)
+else
 function iskwftype(::Type{F}) where F
     name = string(F.name.name)
     return @static if VERSION >= v"1.4"
@@ -169,6 +172,7 @@ function iskwftype(::Type{F}) where F
     else
         startswith(name, "#kw##")
     end
+end
 end
 
 # The `overdub` pass has four intertwined tasks:
