@@ -57,7 +57,9 @@ function verbose_lineinfo!(ci::CodeInfo, @nospecialize(sig::Type{<:Tuple}))
     linfo = nothing
     for _linfo in linetable
         if _linfo.inlined_at == 0
-            @static if fieldcount(Core.LineInfoNode) == 5
+            @static if fieldtype(Core.LineInfoNode, :inlined_at) === Int32
+                linfo = Core.LineInfoNode(getfield(_linfo, 1), sig, _linfo.file, _linfo.line, Int32(1))
+            elseif fieldcount(Core.LineInfoNode) == 5
                 linfo = Core.LineInfoNode(getfield(_linfo, 1), sig, _linfo.file, _linfo.line, 1)
             else
                 linfo = Core.LineInfoNode(sig, _linfo.file, _linfo.line, 1)
