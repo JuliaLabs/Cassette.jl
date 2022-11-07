@@ -22,7 +22,7 @@ post-lowering, pre-inference compiler passes as part of the overdubbing process.
 of Cassette is called "contextual pass injection". As we did in the preceding sections,
 we'll be using the classic "trial-by-fire" technique to better understand this feature.
 
-Note that the following example was originally inspired by [jrevels/Cassette.jl#66](https://github.com/jrevels/Cassette.jl/issues/66).
+Note that the following example was originally inspired by [JuliaLabs/Cassette.jl#66](https://github.com/JuliaLabs/Cassette.jl/issues/66).
 
 Let's say you wanted to use Cassette to ["slice" various separable
 subcomputations out from an overall computation](https://en.wikipedia.org/wiki/Program_slicing).

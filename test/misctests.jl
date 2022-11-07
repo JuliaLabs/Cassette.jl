@@ -282,7 +282,7 @@ trace = Any[]
     ]
 ]
 
-# jrevels/Cassette.jl#48
+# JuliaLabs/Cassette.jl#48
 @context HookTraceCtx
 
 mutable struct HookTrace
@@ -486,7 +486,7 @@ println("done (took ", time() - before_time, " seconds)")
 
 #############################################################################################
 
-# ref https://github.com/jrevels/Cassette.jl/issues/73
+# ref https://github.com/JuliaLabs/Cassette.jl/issues/73
 
 if VERSION >= v"1.1-"
     print("   running NoOpCtx test...")

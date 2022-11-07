@@ -187,7 +187,7 @@ function overdub_pass!(reflection::Reflection,
     code_info = reflection.code_info
 
     # TODO: This `iskwfunc` is part of a hack that `overdub_pass!` implements in order to fix
-    # jrevels/Cassette.jl#48. The assumptions made by this hack are quite fragile, so we
+    # JuliaLabs/Cassette.jl#48. The assumptions made by this hack are quite fragile, so we
     # should eventually get Base to expose a standard/documented API for this. Here, we see
     # this hack's first assumption: that `Core.kwfunc(f)` is going to return a function whose
     # type name has a prefix and suffix.
