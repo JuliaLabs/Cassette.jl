@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Contextual Dispatch · Cassette</title><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.045/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.24/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">Cassette</a></span></div><form class="docs-search" action="../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../">Introduction</a></li><li><a class="tocitem" href="../disclaimers/">Disclaimers</a></li><li><a class="tocitem" href="../whycassette/">Why Cassette?</a></li><li><a class="tocitem" href="../overdub/">The Overdubbing Mechanism</a></li><li class="is-active"><a class="tocitem" href>Contextual Dispatch</a></li><li><a class="tocitem" href="../contextualpass/">Contextual Compiler Pass Injection</a></li><li><a class="tocitem" href="../contextualtagging/">Contextual Tagging of Values</a></li><li><a class="tocitem" href="../api/">Cassette API Documentation</a></li><li><a class="tocitem" href="../relatedwork/">Related Work</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Contextual Dispatch</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Contextual Dispatch</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/JuliaLabs/Cassette.jl/blob/master/docs/src/contextualdispatch.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="Contextual-Dispatch"><a class="docs-heading-anchor" href="#Contextual-Dispatch">Contextual Dispatch</a><a id="Contextual-Dispatch-1"></a><a class="docs-heading-anchor-permalink" href="#Contextual-Dispatch" title="Permalink"></a></h1><p>In <a href="../overdub/">the previous section</a>, we saw how, within a given execution trace, Cassette&#39;s <code>overdub</code> mechanism transforms every method invocation of the form <code>f(args...)</code> into statements similar to the following:</p><pre><code class="language-julia hljs">begin
+    Cassette.prehook(context, f, args...)
+    %n = Cassette.overdub(context, f, args...)
+    Cassette.posthook(context, %n, f, args...)
+    %n
+end</code></pre><p>This transformation yields several extra points of overloadability in the form of various Cassette methods, such as <a href="../api/#Cassette.prehook"><code>prehook</code></a>, <a href="../api/#Cassette.posthook"><code>posthook</code></a>, and even <a href="../api/#Cassette.overdub"><code>overdub</code></a> itself. Together, these methods form Cassette&#39;s &quot;contextual dispatch&quot; interface, so-named because it enables an extra context parameter to participate in what would normally be a simple dispatch to the underlying method call.</p><p>In this section of the documentation, we&#39;ll go over these functions in a bit more detail.</p><p>To begin, let&#39;s define a simple contextual prehook by overloading the <a href="../api/#Cassette.prehook"><code>prehook</code></a> method w.r.t. to a dummy context:</p><pre><code class="language-julia hljs">julia&gt; using Cassette
+
+julia&gt; Cassette.@context Ctx;
+
+# this prehook implements simple trace logging for overdubbed functions
+julia&gt; Cassette.prehook(::Ctx, f, args...) = println(f, args)
+
+julia&gt; Cassette.overdub(Ctx(), /, 1, 2)
+float(1,)
+AbstractFloat(1,)
+Float64(1,)
+sitofp(Float64, 1)
+float(2,)
+AbstractFloat(2,)
+Float64(2,)
+sitofp(Float64, 2)
+/(1.0, 2.0)
+div_float(1.0, 2.0)
+0.5</code></pre><p>Cool beans!</p><p>Actually, there&#39;s a subtlety about <code>overdub</code> here that we should address before moving on. Why wasn&#39;t the first line in the trace log <code>/(1, 2)</code>? If the answer isn&#39;t obvious, recall the definition of <code>overdub</code> from the previous section. With that definition in mind, it makes sense that <code>/(1, 2)</code> is not printed in the above example, since <code>prehook(Ctx(), /, 1, 2)</code> is not actually ever called in the above example. If this still seems confusing, compare the output from the above example with the output generated via <code>overdub(Ctx(), () -&gt; 1/2)</code>.</p><p>Moving on, let&#39;s make our <code>prehook</code> slightly more complicated for pedagogy&#39;s sake. This time around, we&#39;ll only print calls whose first argument matches a specific type. A nice configurable way to do this is as follows:</p><pre><code class="language-julia hljs"># reset our prehook fallback for `Ctx` to a no-op
+julia&gt; Cassette.prehook(::Ctx, f, args...) = nothing
+
+# parameterize our prehook on the type of metadata stored in our context instance
+julia&gt; Cassette.prehook(::Ctx{Val{T}}, f, arg::T, rest...) where {T} = println(f, (arg, rest...))
+
+# construct our context instance with metadata to configure the prehook
+julia&gt; Cassette.overdub(Ctx(metadata=Val(Int)), /, 1, 2)
+float(1,)
+AbstractFloat(1,)
+Float64(1,)
+float(2,)
+AbstractFloat(2,)
+Float64(2,)
+0.5
+
+julia&gt; Cassette.overdub(Ctx(metadata=Val(DataType)), /, 1, 2)
+sitofp(Float64, 1)
+sitofp(Float64, 2)
+0.5</code></pre><p>Also of note is <code>prehook</code>&#39;s long-lost cousin <a href="../api/#Cassette.posthook"><code>posthook</code></a>, with which <code>prehook</code> shares many similarities. In fact, these functions are so similar that we won&#39;t be spending too much time on <code>posthook</code> individually. The key difference between <code>prehook</code> and <code>posthook</code> is that <code>posthook</code> runs <em>after</em> the overdubbed invocation is executed, such that it has access to the output of the overdubbed invocation.</p><p>For example, here we use <code>posthook</code> and <code>prehook</code> together to accumulate a trace that preserves nesting information:</p><pre><code class="language-julia hljs">using Cassette
+
+Cassette.@context TraceCtx
+
+mutable struct Trace
+    current::Vector{Any}
+    stack::Vector{Any}
+    Trace() = new(Any[], Any[])
+end
+
+function enter!(t::Trace, args...)
+    pair = args =&gt; Any[]
+    push!(t.current, pair)
+    push!(t.stack, t.current)
+    t.current = pair.second
+    return nothing
+end
+
+function exit!(t::Trace)
+    t.current = pop!(t.stack)
+    return nothing
+end
+
+Cassette.prehook(ctx::TraceCtx, args...) = enter!(ctx.metadata, args...)
+Cassette.posthook(ctx::TraceCtx, args...) = exit!(ctx.metadata)
+
+trace = Trace()
+x, y, z = rand(3)
+f(x, y, z) = x*y + y*z
+Cassette.overdub(TraceCtx(metadata = trace), () -&gt; f(x, y, z))
+
+# returns `true`
+trace.current == Any[
+    (f,x,y,z) =&gt; Any[
+        (*,x,y) =&gt; Any[(Base.mul_float,x,y)=&gt;Any[]]
+        (*,y,z) =&gt; Any[(Base.mul_float,y,z)=&gt;Any[]]
+        (+,x*y,y*z) =&gt; Any[(Base.add_float,x*y,y*z)=&gt;Any[]]
+    ]
+]</code></pre><p>Next, let&#39;s tackle the meatiest part of the contextual dispatch interface: contextual primitives. A method invocation of the form <code>f(args...)</code> within a given context <code>Ctx</code> is a primitive w.r.t. <code>Ctx</code> if <code>overdub(Ctx(), f, args...)</code> does not recursively overdub the function calls comprising the invoked method&#39;s implementation. There are two cases where <code>overdub(Ctx(), f, args...)</code> does not correspond to recursively overdubbing <code>f</code>&#39;s implementation:</p><ol><li><p><code>f(args...)</code> might be a built-in with no overdubbable Julia implementation (e.g. <code>getfield</code>), in which case <code>overdub(Ctx(), f, args...)</code> immediately redirects to <code>Cassette.fallback(Ctx(), f, args...)</code>.</p></li><li><p><code>overdub</code> can be overloaded by the user such that <code>overdub(::Ctx, ::typeof(f), ...)</code> dispatches to a context-specific primitive definition.</p></li></ol><p>If this definition isn&#39;t exactly intuitive, never fear - the concept of a contextual primitive is more easily understood via examples. The simplest example is to define a context that simply redirects all method call of a specific type (let&#39;s say <code>sin(x)</code>) to a different method call of a specific type (let&#39;s say <code>cos(x)</code>). This can be expressed as follows:</p><pre><code class="language-julia hljs">using Cassette, Test
+
+Cassette.@context SinToCosCtx
+
+# Override the default recursive `overdub` implementation for `sin(x)`.
+# Note that there&#39;s no tricks here; this is just a normal Julia method
+# overload using the normal multiple dispatch semantics.
+Cassette.overdub(::SinToCosCtx, ::typeof(sin), x) = cos(x)
+
+x = rand(10)
+y = Cassette.overdub(SinToCosCtx(), sum, i -&gt; cos(i) + sin(i), x)
+@test y == sum(i -&gt; 2 * cos(i), x)</code></pre><p>Pretty nifty!</p><p>Here&#39;s a more motivating example. Below, we define a context that allows us to memoize the computation of Fibonacci numbers (many thanks to the illustrious Simon Byrne, <a href="https://stackoverflow.com/questions/52050262/how-to-do-memoization-or-memoisation-in-julia-1-0/52062639#52062639">the original author of this example</a>):</p><pre><code class="language-julia hljs">using Cassette: Cassette, @context, overdub, recurse
+
+fib(x) = x &lt; 3 ? 1 : fib(x - 2) + fib(x - 1)
+fibtest(n) = fib(2 * n) + n
+
+@context MemoizeCtx
+
+function Cassette.overdub(ctx::MemoizeCtx, ::typeof(fib), x)
+    result = get(ctx.metadata, x, 0)
+    if result === 0
+        result = recurse(ctx, fib, x)
+        ctx.metadata[x] = result
+    end
+    return result
+end</code></pre><p>Note that this example uses Cassette&#39;s <a href="../api/#Cassette.recurse"><code>recurse</code></a> function. This function is exactly equivalent to Cassette&#39;s default <code>overdub</code> implementation, but is not meant to be overloaded by users, thus allowing one to recursively overdub &quot;through&quot; invocations that might otherwise be contextual primitives.</p><p>We can do some toy performance tests to see that we get the expected speedup using this implementation (skipping the warm-up calls used to compile both functions):</p><pre><code class="language-julia hljs">julia&gt; ctx = MemoizeCtx(metadata = Dict{Int,Int}());
+
+julia&gt; @time Cassette.overdub(ctx, fibtest, 20)
+  0.000011 seconds (8 allocations: 1.547 KiB)
+102334175
+
+julia&gt; @time Cassette.overdub(ctx, fibtest, 20)
+  0.000006 seconds (5 allocations: 176 bytes)
+102334175
+
+julia&gt; @time fibtest(20)
+  0.276069 seconds (5 allocations: 176 bytes)
+102334175</code></pre><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p>A bunch of reasonable default contextual primitives are generated automatically upon context definition. It is possible, of course, to simply override these defaults if necessary. For more details, see <a href="../api/#Cassette.@context"><code>@context</code></a>.</p></div></div><p>Finally, to get a sense of the interaction between <code>recurse</code> and <code>overdub</code>, let&#39;s reimplement our previous nested tracing example using recursion instead of maintaining a stack:</p><pre><code class="language-julia hljs">using Cassette
+
+Cassette.@context TraceCtx
+
+function Cassette.overdub(ctx::TraceCtx, args...)
+    subtrace = Any[]
+    push!(ctx.metadata, args =&gt; subtrace)
+    if Cassette.canrecurse(ctx, args...)
+        newctx = Cassette.similarcontext(ctx, metadata = subtrace)
+        return Cassette.recurse(newctx, args...)
+    else
+        return Cassette.fallback(ctx, args...)
+    end
+end
+
+trace = Any[]
+x, y, z = rand(3)
+f(x, y, z) = x*y + y*z
+Cassette.overdub(TraceCtx(metadata = trace), f, x, y, z)
+
+# returns `true`
+trace == Any[
+   (f,x,y,z) =&gt; Any[
+       (*,x,y) =&gt; Any[(Base.mul_float,x,y)=&gt;Any[]]
+       (*,y,z) =&gt; Any[(Base.mul_float,y,z)=&gt;Any[]]
+       (+,x*y,y*z) =&gt; Any[(Base.add_float,x*y,y*z)=&gt;Any[]]
+   ]
+]</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../overdub/">« The Overdubbing Mechanism</a><a class="docs-footer-nextpage" href="../contextualpass/">Contextual Compiler Pass Injection »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.23 on <span class="colophon-date" title="Monday 7 November 2022 09:30">Monday 7 November 2022</span>. Using Julia version 1.8.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Contextual Compiler Pass Injection · Cassette</title><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.045/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.24/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">Cassette</a></span></div><form class="docs-search" action="../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../">Introduction</a></li><li><a class="tocitem" href="../disclaimers/">Disclaimers</a></li><li><a class="tocitem" href="../whycassette/">Why Cassette?</a></li><li><a class="tocitem" href="../overdub/">The Overdubbing Mechanism</a></li><li><a class="tocitem" href="../contextualdispatch/">Contextual Dispatch</a></li><li class="is-active"><a class="tocitem" href>Contextual Compiler Pass Injection</a></li><li><a class="tocitem" href="../contextualtagging/">Contextual Tagging of Values</a></li><li><a class="tocitem" href="../api/">Cassette API Documentation</a></li><li><a class="tocitem" href="../relatedwork/">Related Work</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Contextual Compiler Pass Injection</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Contextual Compiler Pass Injection</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/JuliaLabs/Cassette.jl/blob/master/docs/src/contextualpass.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="Contextual-Compiler-Pass-Injection"><a class="docs-heading-anchor" href="#Contextual-Compiler-Pass-Injection">Contextual Compiler Pass Injection</a><a id="Contextual-Compiler-Pass-Injection-1"></a><a class="docs-heading-anchor-permalink" href="#Contextual-Compiler-Pass-Injection" title="Permalink"></a></h1><p>In the previous section on <a href="../overdub/">Cassette&#39;s overdubbing mechanism</a>, we explored how Cassette can automatically transform methods&#39; lowered representation to insert a bunch of statements around method calls encountered while overdubbing. In <a href="../contextualdispatch/">the section that followed</a>, we discussed the result of this IR transformation: Cassette&#39;s contextual dispatch interface, a suite of normal Julia methods that can be easily overloaded to perform the kinds of method replacement and instrumentation that would otherwise require manually implemented compiler passes.</p><p>Some use cases, however, require the ability to access and/or alter properties of the execution trace that just can&#39;t be reached via simple method overloading, like control flow or the surrounding scope of a method call. In these cases, you probably <em>do</em> want to manually implement a compiler pass!</p><p>To facilitate these use cases, Cassette allows users to write and inject their own arbitrary post-lowering, pre-inference compiler passes as part of the overdubbing process. This feature of Cassette is called &quot;contextual pass injection&quot;. As we did in the preceding sections, we&#39;ll be using the classic &quot;trial-by-fire&quot; technique to better understand this feature.</p><p>Note that the following example was originally inspired by <a href="https://github.com/JuliaLabs/Cassette.jl/issues/66">JuliaLabs/Cassette.jl#66</a>.</p><p>Let&#39;s say you wanted to use Cassette to <a href="https://en.wikipedia.org/wiki/Program_slicing">&quot;slice&quot; various separable subcomputations out from an overall computation</a>. For a specific example, let&#39;s say you wanted to implement a tool that takes a Julia function and strips out calls to <code>println</code> encountered in the trace. When this function returns, we also want to return a callback that executes all the <code>println</code> calls that we stripped out. How would you implement this with Cassette?</p><p>Well, it&#39;s not too hard to achieve this via the contextual dispatch interface:</p><pre><code class="language-julia hljs">using Cassette
+
+Cassette.@context Ctx
+
+mutable struct Callback
+    f::Any
+end
+
+function Cassette.overdub(ctx::Ctx, ::typeof(println), args...)
+    previous = ctx.metadata.f
+    ctx.metadata.f = () -&gt; (previous(); println(args...))
+    return nothing
+end</code></pre><p>We can check our implementation using the following test case:</p><pre><code class="language-julia hljs">julia&gt; begin
+           a = rand(3)
+           b = rand(3)
+           function add(a, b)
+               println(&quot;I&#39;m about to add $a + $b&quot;)
+               c = a + b
+               println(&quot;c = $c&quot;)
+               return c
+           end
+           add(a, b)
+       end
+I&#39;m about to add [0.457465, 0.62078, 0.954555] + [0.0791336, 0.744041, 0.976194]
+c = [0.536599, 1.36482, 1.93075]
+3-element Array{Float64,1}:
+ 0.5365985032259399
+ 1.3648210555868863
+ 1.9307494378914405
+
+julia&gt; ctx = Ctx(metadata = Callback(() -&gt; nothing));
+
+julia&gt; c = Cassette.overdub(ctx, add, a, b)
+3-element Array{Float64,1}:
+ 0.5365985032259399
+ 1.3648210555868863
+ 1.9307494378914405
+
+julia&gt; ctx.metadata.f()
+I&#39;m about to add [0.457465, 0.62078, 0.954555] + [0.0791336, 0.744041, 0.976194]
+c = [0.536599, 1.36482, 1.93075]</code></pre><p>This is pretty cool, but also a bit limited. First of all, what if we want to move more than just <code>println</code> invocations into our callback, e.g. what if we want to slice the construction of <code>println</code>&#39;s arguments as well? Another potential issue is that this implementation requires an explicit <code>Any</code> barrier, preventing the compiler from inferring callback construction (note, however, that this does not prevent inferring <em>invocation</em> of the callback). This is possibly desirable in some cases, since you&#39;re being easier on the compiler, but what if you really wanted to expose Julia&#39;s type inference to callback construction?</p><p>To resolve issues like these, we&#39;ll need to dig deeper than contextual dispatch and implement an actual compiler pass. First, let&#39;s go over a high-level description of the pass we&#39;ll implement. Essentially, we want this method:</p><pre><code class="language-julia hljs">function add(a, b)
+    println(&quot;I&#39;m about to add $a + $b&quot;)
+    c = a + b
+    println(&quot;c = $c&quot;)
+    return c
+end</code></pre><p>...to become something akin to the following when overdubbed:</p><pre><code class="language-julia hljs">function overdub(ctx::Ctx, add, a, b)
+    _callback_ = ctx.metadata
+    _, _callback_ = overdub(ctx, println, _callback_, &quot;I&#39;m about to add $a + $b&quot;)
+    c, _callback_ = overdub(ctx, +, _callback_, a, b)
+    _, _callback_ = overdub(ctx, println, _callback_, &quot;c = $c&quot;)
+    return c, _callback_
+end</code></pre><p>Note that I reduced a lot of the contextual dispatch boilerplate, such that the above is essentially pseudocode.</p><p>Here, we can overload <code>Ctx</code>&#39;s <code>overdub</code> method with the following definitions:</p><pre><code class="language-julia hljs">function Cassette.overdub(ctx::SliceCtx, f, callback, args...)
+    if Cassette.canrecurse(ctx, f, args...)
+        _ctx = Cassette.similarcontext(ctx, metadata = callback)
+        return Cassette.recurse(_ctx, f, args...) # return result, callback
+    else
+        return Cassette.fallback(ctx, f, args...), callback
+    end
+end
+
+function Cassette.overdub(ctx::SliceCtx, ::typeof(println), callback, args...)
+    return nothing, () -&gt; (callback(); println(args...))
+end</code></pre><p>This, then, essentially accumulates the same closure we were accumulating before, but does so in a way where...</p><ul><li>...in theory, there is no longer any barrier to the inference of the closure construction.</li><li>...the pass itself determines the &quot;capture region&quot; manually, such that one could just alter it   to do e.g. linear dependence analysis to capture <code>println</code> argument construction code an arbitrary   number of degrees out from the actual <code>println</code> invocation.</li></ul><p>Next, let&#39;s list the steps our compiler pass will actually need to perform in order to actually accomplish the above:</p><ul><li>At the beginning of each method body, insert something like <code>_callback_ = context.metadata</code></li><li>Change every method invocation of the form <code>f(args...)</code> to <code>f(_callback_, args...)</code>.</li><li>Change every return statement of the form <code>return x</code> to <code>return (x, _callback_)</code></li><li>Ensure the output of every method invocation is properly destructured into the original assignment slot/SSAValue and the <code>_callback_</code> slot.</li></ul><p>Okay! Now that we have a high-level description of our pass, let&#39;s look at the code that implements it. <strong>I highly recommend reading the documentation for <a href="../api/#Cassette.@pass"><code>@pass</code></a> and <a href="../api/#Cassette.insert_statements!"><code>insert_statements!</code></a> before trying to understand this code</strong>.</p><pre><code class="language-julia hljs">using Cassette
+using Core: CodeInfo, SlotNumber, SSAValue, ReturnNode
+
+Cassette.@context SliceCtx
+
+function Cassette.overdub(ctx::SliceCtx, f, callback, args...)
+    if Cassette.canrecurse(ctx, f, args...)
+        _ctx = Cassette.similarcontext(ctx, metadata = callback)
+        return Cassette.recurse(_ctx, f, args...) # return result, callback
+    else
+        return Cassette.fallback(ctx, f, args...), callback
+    end
+end
+
+function Cassette.overdub(ctx::SliceCtx, ::typeof(println), callback, args...)
+    return nothing, () -&gt; (callback(); println(args...))
+end
+
+function sliceprintln(::Type{&lt;:SliceCtx}, reflection::Cassette.Reflection)
+    ir = reflection.code_info
+    callbackslotname = gensym(&quot;callback&quot;)
+    push!(ir.slotnames, callbackslotname)
+    push!(ir.slotflags, 0x00)
+    callbackslot = SlotNumber(length(ir.slotnames))
+    getmetadata = Expr(:call, Expr(:nooverdub, GlobalRef(Core, :getfield)), Expr(:contextslot), QuoteNode(:metadata))
+
+    # insert the initial `callbackslot` assignment into the IR.
+    Cassette.insert_statements!(ir.code, ir.codelocs,
+                                (stmt, i) -&gt; i == 1 ? 2 : nothing,
+                                (stmt, i) -&gt; [Expr(:(=), callbackslot, getmetadata), stmt])
+
+    # replace all calls of the form `f(args...)` with `f(callback, args...)`, taking care to
+    # properly handle Core._apply calls and destructure the returned `(result, callback)`
+    # into the appropriate statements
+    Cassette.insert_statements!(ir.code, ir.codelocs,
+                                (stmt, i) -&gt; begin
+                                    i &gt; 1 || return nothing # don&#39;t slice the callback assignment
+                                    stmt = Base.Meta.isexpr(stmt, :(=)) ? stmt.args[2] : stmt
+                                    if Base.Meta.isexpr(stmt, :call)
+                                        isapply = Cassette.is_ir_element(stmt.args[1], GlobalRef(Core, :_apply_iterate), ir.code)
+                                        return 3 + isapply
+                                    end
+                                    return nothing
+                                end,
+                                (stmt, i) -&gt; begin
+                                    items = Any[]
+                                    callstmt = Base.Meta.isexpr(stmt, :(=)) ? stmt.args[2] : stmt
+                                    callssa = SSAValue(i)
+                                    if Cassette.is_ir_element(callstmt.args[1], GlobalRef(Core, :_apply_iterate), ir.code)
+                                        push!(items, Expr(:call, Expr(:nooverdub, GlobalRef(Core, :tuple)), callbackslot))
+                                        push!(items, Expr(:call, callstmt.args[1:3]..., SSAValue(i), callstmt.args[4:end]...))
+                                        callssa = SSAValue(i + 1)
+                                    else
+                                        push!(items, Expr(:call, callstmt.args[1], callbackslot, callstmt.args[2:end]...))
+                                    end
+                                    push!(items, Expr(:(=), callbackslot, Expr(:call, Expr(:nooverdub, GlobalRef(Core, :getfield)), callssa, 2)))
+                                    result = Expr(:call, Expr(:nooverdub, GlobalRef(Core, :getfield)), callssa, 1)
+                                    if Base.Meta.isexpr(stmt, :(=))
+                                        result = Expr(:(=), stmt.args[1], result)
+                                    end
+                                    push!(items, result)
+                                    return items
+                                end)
+
+    # replace return statements of the form `return x` with `return (x, callback)`
+    Cassette.insert_statements!(ir.code, ir.codelocs,
+                                  (stmt, i) -&gt; isa(stmt, ReturnNode) ? 2 : nothing,
+                                  (stmt, i) -&gt; begin
+                                      return [
+                                          Expr(:call, Expr(:nooverdub, GlobalRef(Core, :tuple)), stmt.val, callbackslot),
+                                          ReturnNode(SSAValue(i)),
+                                      ]
+                                  end)
+    return ir
+end
+
+const sliceprintlnpass = Cassette.@pass sliceprintln</code></pre><p>Here&#39;s how to invoke this new implementation on the above test case:</p><pre><code class="language-julia hljs">julia&gt; begin
+           a = rand(3)
+           b = rand(3)
+           function add(a, b)
+               println(&quot;I&#39;m about to add $a + $b&quot;)
+               c = a + b
+               println(&quot;c = $c&quot;)
+               return c
+           end
+           add(a, b)
+       end
+I&#39;m about to add [0.67915246284728, 0.2756120072191095, 0.11756215681978621] + [0.36694497827600103, 0.8528773638511087, 0.5911748231895997]
+c = [1.046097441123281, 1.1284893710702182, 0.7087369800093859]
+3-element Vector{Float64}:
+ 1.046097441123281
+ 1.1284893710702182
+ 0.7087369800093859
+
+julia&gt; ctx = SliceCtx(pass=sliceprintlnpass, metadata = () -&gt; nothing);
+
+julia&gt; result, callback = Cassette.@overdub(ctx, add(a, b))
+([1.046097441123281, 1.1284893710702182, 0.7087369800093859], var&quot;#2#3&quot;{var&quot;#2#3&quot;{var&quot;#16#17&quot;, Tuple{String}}, Tuple{String}}(var&quot;#2#3&quot;{var&quot;#16#17&quot;, Tuple{String}}(var&quot;#16#17&quot;(), (&quot;I&#39;m about to add [0.67915246284728, 0.2756120072191095, 0.11756215681978621] + [0.36694497827600103, 0.8528773638511087, 0.5911748231895997]&quot;,)), (&quot;c = [1.046097441123281, 1.1284893710702182, 0.7087369800093859]&quot;,)))
+
+julia&gt; callback()
+I&#39;m about to add [0.67915246284728, 0.2756120072191095, 0.11756215681978621] + [0.36694497827600103, 0.8528773638511087, 0.5911748231895997]
+c = [1.046097441123281, 1.1284893710702182, 0.7087369800093859]</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../contextualdispatch/">« Contextual Dispatch</a><a class="docs-footer-nextpage" href="../contextualtagging/">Contextual Tagging of Values »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.23 on <span class="colophon-date" title="Monday 7 November 2022 09:30">Monday 7 November 2022</span>. Using Julia version 1.8.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
