@@ -4,7 +4,7 @@
 
 [![DOI](https://zenodo.org/badge/86752121.svg)](https://zenodo.org/badge/latestdoi/86752121)
 [![](https://img.shields.io/badge/docs-stable-blue.svg)](https://julia.mit.edu/Cassette.jl/stable/)
-[![](https://img.shields.io/badge/docs-latest-blue.svg)](https://julia.mit.edu/Cassette.jl/latest/)
+[![](https://img.shields.io/badge/docs-dev-blue.svg)](https://julia.mit.edu/Cassette.jl/dev/)
 
 [![CI](https://github.com/JuliaLabs/Cassette.jl/workflows/CI/badge.svg)](https://github.com/JuliaLabs/Cassette.jl/actions?query=workflow%3ACI)
 [![CI (Julia nightly)](https://github.com/JuliaLabs/Cassette.jl/workflows/CI%20(Julia%20nightly)/badge.svg)](https://github.com/JuliaLabs/Cassette.jl/actions?query=workflow%3A%22CI+%28Julia+nightly%29%22)
