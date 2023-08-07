@@ -602,7 +602,10 @@ const OVERDUB_FALLBACK = begin
 end
 
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
-function __overdub_generator__(self, context_type, args::Tuple)
+function __overdub_generator__(world, source, self, context_type, args)
+    __overdub_generator__(self, context_type, args)
+end
+function __overdub_generator__(self, context_type, args)
     if nfields(args) > 0
         is_builtin = args[1] <: Core.Builtin
         is_invoke = args[1] === typeof(Core.invoke)
