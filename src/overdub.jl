@@ -642,6 +642,18 @@ if VERSION >= v"1.4.0-DEV.304"
 end
 
 let line = @__LINE__, file = @__FILE__
+    @static if VERSION >= v"1.10.0-DEV.873"
+    @eval (@__MODULE__) begin
+        function $Cassette.overdub($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
+            $(Expr(:meta, :generated_only))
+            $(Expr(:meta, :generated, __overdub_generator__))
+        end
+        function $Cassette.recurse($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
+            $(Expr(:meta, :generated_only))
+            $(Expr(:meta, :generated, __overdub_generator__))
+        end
+    end
+    else
     @eval (@__MODULE__) begin
         function $Cassette.overdub($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
             $(Expr(:meta, :generated_only))
@@ -669,6 +681,7 @@ let line = @__LINE__, file = @__FILE__
                         QuoteNode(Symbol(file)),
                         true)))
         end
+    end
     end
 end
 
