@@ -118,7 +118,11 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = get_world_counter
     method_instance === nothing && return nothing
     method_signature = method.sig
     static_params = Any[raw_static_params...]
-    code_info = Core.Compiler.retrieve_code_info(method_instance)
+    @static if VERSION >= v"1.10.0-DEV.873"
+        code_info = Core.Compiler.retrieve_code_info(method_instance, world)
+    else
+        code_info = Core.Compiler.retrieve_code_info(method_instance)
+    end
     isa(code_info, CodeInfo) || return nothing
     code_info = copy_code_info(code_info)
     verbose_lineinfo!(code_info, S)
