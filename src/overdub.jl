@@ -602,8 +602,29 @@ const OVERDUB_FALLBACK = begin
 end
 
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
-function __overdub_generator__(world, source, self, context_type, args)
-    __overdub_generator__(self, context_type, args)
+function __overdub_generator__(world::UInt, source, self, context_type, args)
+    if nfields(args) > 0
+        is_builtin = args[1] <: Core.Builtin
+        is_invoke = args[1] === typeof(Core.invoke)
+        if !is_builtin || is_invoke
+            try
+                untagged_args = ntuple(i->untagtype(args[i], context_type), nfields(args))
+                reflection = reflect(untagged_args, world)
+                if isa(reflection, Reflection)
+                    result = overdub_pass!(reflection, context_type, is_invoke)
+                    isa(result, Expr) && return result
+                    return reflection.code_info
+                end
+            catch err
+                errmsg = "ERROR COMPILING $args IN CONTEXT $(context_type): \n" #* sprint(showerror, err)
+                errmsg *= "\n" .* repr("text/plain", stacktrace(catch_backtrace()))
+                return quote
+                    error($errmsg)
+                end
+            end
+        end
+    end
+    return copy_code_info(OVERDUB_FALLBACK)
 end
 function __overdub_generator__(self, context_type, args)
     if nfields(args) > 0
@@ -611,7 +632,7 @@ function __overdub_generator__(self, context_type, args)
         is_invoke = args[1] === typeof(Core.invoke)
         if !is_builtin || is_invoke
             try
-                untagged_args = ((untagtype(args[i], context_type) for i in 1:nfields(args))...,)
+                untagged_args = ntuple(i->untagtype(args[i], context_type), nfields(args))
                 reflection = reflect(untagged_args)
                 if isa(reflection, Reflection)
                     result = overdub_pass!(reflection, context_type, is_invoke)

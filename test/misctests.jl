@@ -17,7 +17,9 @@ function rosenbrock(x::Vector{Float64})
 end
 
 x = rand(2)
-@inferred(overdub(RosCtx(), rosenbrock, x))
+if VERSION < v"1.9"
+    @inferred (overdub(RosCtx(), rosenbrock, x))
+end
 
 messages = String[]
 Cassette.prehook(::RosCtx, f, args...) = push!(messages, string("calling ", f, args))
@@ -79,16 +81,18 @@ empty!(pres)
 empty!(posts)
 
 @overdub(ctx, Core._apply(+, (x1, x2), (x2 * x3, x3)))
-@test pres == [(tuple, (x1, x2)),
-               (*, (x2, x3)),
-               (Base.mul_int, (x2, x3)),
-               (tuple, (x2*x3, x3)),
-               (+, (x1, x2, x2*x3, x3))]
-@test posts == [((x1, x2), tuple, (x1, x2)),
-                (Base.mul_int(x2, x3), Base.mul_int, (x2, x3)),
-                (*(x2, x3), *, (x2, x3)),
-                ((x2*x3, x3), tuple, (x2*x3, x3)),
-                (+(x1, x2, x2*x3, x3), +, (x1, x2, x2*x3, x3))]
+if v"1.9" <= VERSION < v"1.10"
+    @test pres == [(tuple, (x1, x2)),
+                   (*, (x2, x3)),
+                   (Base.mul_int, (x2, x3)),
+                   (tuple, (x2*x3, x3)),
+                   (+, (x1, x2, x2*x3, x3))]
+    @test posts == [((x1, x2), tuple, (x1, x2)),
+                    (Base.mul_int(x2, x3), Base.mul_int, (x2, x3)),
+                    (*(x2, x3), *, (x2, x3)),
+                    ((x2*x3, x3), tuple, (x2*x3, x3)),
+                    (+(x1, x2, x2*x3, x3), +, (x1, x2, x2*x3, x3))]
+end
 
 println("done (took ", time() - before_time, " seconds)")
 
@@ -386,7 +390,10 @@ else
         @inferred(overdub(InferCtx(), rand, Float32, 1))
     end
 end
-@inferred(overdub(InferCtx(), broadcast, +, rand(1), rand(1)))
+
+if VERSION < v"1.9"
+    @inferred(overdub(InferCtx(), broadcast, +, rand(1), rand(1)))
+end
 @inferred(overdub(InferCtx(), () -> kwargtest(42; foo = 1, bar = 2)))
 
 println("done (took ", time() - before_time, " seconds)")
@@ -429,7 +436,7 @@ ctx = InvokeCtx(metadata=Any[])
 # we're testing here is that we properly trace through the `invoke` call.
 @test ctx.metadata == Any[Core.apply_type, Core.invoke, Core.apply_type,
                           Val{2}, Core.apply_type, Base.literal_pow, *,
-                          Base.mul_int]
+                          Base.mul_int] broken = VERSION >= v"1.9"
 
 println("done (took ", time() - before_time, " seconds)")
 
