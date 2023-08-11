@@ -434,9 +434,11 @@ ctx = InvokeCtx(metadata=Any[])
 @test overdub(ctx, invoker, 3) === 9
 # This is kind of fragile and may break for unrelated reasons - the main thing
 # we're testing here is that we properly trace through the `invoke` call.
-@test ctx.metadata == Any[Core.apply_type, Core.invoke, Core.apply_type,
-                          Val{2}, Core.apply_type, Base.literal_pow, *,
-                          Base.mul_int] broken = VERSION >= v"1.9"
+if VERSION < v"1.9"
+    @test ctx.metadata == Any[Core.apply_type, Core.invoke, Core.apply_type,
+                              Val{2}, Core.apply_type, Base.literal_pow, *,
+                              Base.mul_int]
+end
 
 println("done (took ", time() - before_time, " seconds)")
 
