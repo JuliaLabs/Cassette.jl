@@ -81,7 +81,7 @@ empty!(pres)
 empty!(posts)
 
 @overdub(ctx, Core._apply(+, (x1, x2), (x2 * x3, x3)))
-if v"1.9" <= VERSION < v"1.10"
+if !(v"1.9" <= VERSION < v"1.10")
     @test pres == [(tuple, (x1, x2)),
                    (*, (x2, x3)),
                    (Base.mul_int, (x2, x3)),
@@ -92,6 +92,17 @@ if v"1.9" <= VERSION < v"1.10"
                     (*(x2, x3), *, (x2, x3)),
                     ((x2*x3, x3), tuple, (x2*x3, x3)),
                     (+(x1, x2, x2*x3, x3), +, (x1, x2, x2*x3, x3))]
+else
+    @test pres == [(tuple, (x1, x2)),
+                   (*, (x2, x3)),
+                   (Base.mul_int, (x2, x3)),
+                   (tuple, (x2*x3, x3)),
+                   (Core._apply, (+, (x1, x2), (x2*x3, x3)))]
+    @test posts == [((x1, x2), tuple, (x1, x2)),
+                    (Base.mul_int(x2, x3), Base.mul_int, (x2, x3)),
+                    (*(x2, x3), *, (x2, x3)),
+                    ((x2*x3, x3), tuple, (x2*x3, x3)),
+                    (+(x1, x2, x2*x3, x3), Core._apply, (+, (x1, x2), (x2*x3, x3)))]
 end
 
 println("done (took ", time() - before_time, " seconds)")
