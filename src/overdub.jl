@@ -118,7 +118,11 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = get_world_counter
     method_instance === nothing && return nothing
     method_signature = method.sig
     static_params = Any[raw_static_params...]
-    code_info = Core.Compiler.retrieve_code_info(method_instance)
+    @static if VERSION >= v"1.10.0-DEV.873"
+        code_info = Core.Compiler.retrieve_code_info(method_instance, world)
+    else
+        code_info = Core.Compiler.retrieve_code_info(method_instance)
+    end
     isa(code_info, CodeInfo) || return nothing
     code_info = copy_code_info(code_info)
     verbose_lineinfo!(code_info, S)
@@ -598,13 +602,37 @@ const OVERDUB_FALLBACK = begin
 end
 
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
-function __overdub_generator__(self, context_type, args::Tuple)
+function __overdub_generator__(world::UInt, source, self, context_type, args)
     if nfields(args) > 0
         is_builtin = args[1] <: Core.Builtin
         is_invoke = args[1] === typeof(Core.invoke)
         if !is_builtin || is_invoke
             try
-                untagged_args = ((untagtype(args[i], context_type) for i in 1:nfields(args))...,)
+                untagged_args = ntuple(i->untagtype(args[i], context_type), nfields(args))
+                reflection = reflect(untagged_args, world)
+                if isa(reflection, Reflection)
+                    result = overdub_pass!(reflection, context_type, is_invoke)
+                    isa(result, Expr) && return result
+                    return reflection.code_info
+                end
+            catch err
+                errmsg = "ERROR COMPILING $args IN CONTEXT $(context_type): \n" #* sprint(showerror, err)
+                errmsg *= "\n" .* repr("text/plain", stacktrace(catch_backtrace()))
+                return quote
+                    error($errmsg)
+                end
+            end
+        end
+    end
+    return copy_code_info(OVERDUB_FALLBACK)
+end
+function __overdub_generator__(self, context_type, args)
+    if nfields(args) > 0
+        is_builtin = args[1] <: Core.Builtin
+        is_invoke = args[1] === typeof(Core.invoke)
+        if !is_builtin || is_invoke
+            try
+                untagged_args = ntuple(i->untagtype(args[i], context_type), nfields(args))
                 reflection = reflect(untagged_args)
                 if isa(reflection, Reflection)
                     result = overdub_pass!(reflection, context_type, is_invoke)
@@ -638,6 +666,18 @@ if VERSION >= v"1.4.0-DEV.304"
 end
 
 let line = @__LINE__, file = @__FILE__
+    @static if VERSION >= v"1.10.0-DEV.873"
+    @eval (@__MODULE__) begin
+        function $Cassette.overdub($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
+            $(Expr(:meta, :generated_only))
+            $(Expr(:meta, :generated, __overdub_generator__))
+        end
+        function $Cassette.recurse($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
+            $(Expr(:meta, :generated_only))
+            $(Expr(:meta, :generated, __overdub_generator__))
+        end
+    end
+    else
     @eval (@__MODULE__) begin
         function $Cassette.overdub($OVERDUB_CONTEXT_NAME::$Cassette.Context, $OVERDUB_ARGUMENTS_NAME...)
             $(Expr(:meta, :generated_only))
@@ -665,6 +705,7 @@ let line = @__LINE__, file = @__FILE__
                         QuoteNode(Symbol(file)),
                         true)))
         end
+    end
     end
 end
 
