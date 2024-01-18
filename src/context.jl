@@ -248,8 +248,6 @@ macro context(_Ctx)
     return quote
         struct $CtxName <: AbstractContextName end
 
-        Base.show(io::IO, ::Type{$CtxName}) = print(io, "nametype(", $(string(_Ctx)), ")")
-
         const $Ctx{$M,$T<:Union{Nothing,Tag}} = Context{$CtxName,$M,$T}
         const $CtxTagged = ContextTagged{$T,$CtxName} where {$T<:Tag}
 
