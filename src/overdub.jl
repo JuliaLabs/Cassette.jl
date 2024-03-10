@@ -19,12 +19,15 @@ specific method invocation.
 - `static_params`: a `Vector` representing the invoked method's static parameter list.
 
 - `code_info`: the `CodeInfo` object associated with the invoked method.
+
+- `world`: the world age at which the method was looked up.
 """
 mutable struct Reflection
     signature::DataType
     method::Method
     static_params::Vector{Any}
     code_info::CodeInfo
+    world::UInt
 end
 
 @static if VERSION < v"1.1.0-DEV.762"
@@ -133,7 +136,7 @@ function reflect(@nospecialize(sigtypes::Tuple), world::UInt = get_world_counter
         # depend on the MI of the old one.
         code_info.edges = edges
     end
-    return Reflection(S, method, static_params, code_info)
+    return Reflection(S, method, static_params, code_info, world)
 end
 
 ###########
