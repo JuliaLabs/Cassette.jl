@@ -595,10 +595,15 @@ end
 
 @eval _overdub_fallback($OVERDUB_CONTEXT_NAME, $OVERDUB_ARGUMENTS_NAME...) = fallback($OVERDUB_CONTEXT_NAME, $OVERDUB_ARGUMENTS_NAME...)
 
-const OVERDUB_FALLBACK = begin
-    code_info = reflect((typeof(_overdub_fallback), Any, Vararg{Any})).code_info
-    code_info.inlineable = true
-    code_info
+@static if Base.VERSION >= v"1.12-"
+    # Make Cassette.jl loadable (but not usable) on Julia 1.12.
+    @warn "Cassette.jl may not work on this version of Julia" Base.VERSION
+else
+    const OVERDUB_FALLBACK = begin
+        code_info = reflect((typeof(_overdub_fallback), Any, Vararg{Any})).code_info
+        code_info.inlineable = true
+        code_info
+    end
 end
 
 # `args` is `(typeof(original_function), map(typeof, original_args_tuple)...)`
