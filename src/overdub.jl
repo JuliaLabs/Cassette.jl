@@ -824,5 +824,8 @@ macro roughly expands to `Cassette.recurse(ctx, () -> expression)`.
 See also: [`overdub`](@ref), [`recurse`](@ref)
 """
 macro overdub(ctx, expr)
+    if Base.Meta.isexpr(expr, :(=))
+        return Expr(:(=), esc(expr.args[1]), :(@overdub($(esc(ctx)), $(esc(expr.args[2])))))
+    end
     return :(recurse($(esc(ctx)), () -> $(esc(expr))))
 end
